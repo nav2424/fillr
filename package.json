@@ -1,18 +1,37 @@
 {
-  "name": "allergy-scanner",
+  "name": "fillr",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:dev:ios": "eas build --profile development --platform ios",
+    "build:dev:android": "eas build --profile development --platform android",
+    "run:dev:ios": "expo run:ios",
+    "run:dev:android": "expo run:android"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^3.0.1",
+    "@supabase/supabase-js": "^2.99.2",
+    "@tanstack/react-query": "^5.90.21",
+    "dotenv": "^17.3.1",
     "expo": "~55.0.7",
+    "expo-blur": "^55.0.10",
+    "expo-camera": "~55.0.10",
+    "expo-constants": "^55.0.8",
+    "expo-dev-client": "~55.0.17",
+    "expo-linear-gradient": "^55.0.9",
+    "expo-linking": "^55.0.7",
+    "expo-router": "^55.0.6",
     "expo-status-bar": "~55.0.4",
     "react": "19.2.0",
-    "react-native": "0.83.2"
+    "react-dom": "^19.2.4",
+    "react-native": "0.83.2",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "^4.24.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
