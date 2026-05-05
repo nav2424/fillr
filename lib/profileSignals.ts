@@ -58,7 +58,8 @@ export const SENSITIVITY_SIGNALS: Record<string, SensitivitySignal> = {
   },
   gluten_sensitivity: {
     label: 'Gluten sensitivity',
-    ingredientPattern: /wheat|gluten|barley|rye|spelt|kamut|triticale|malt|brewer.s yeast/i,
+    ingredientPattern:
+      /wholewheat|whole wheat|\bwheat\b|wheat\s*(?:flour|starch|germ|bran|protein|dextrin|berries)|enriched\s+wheat|vital\s+wheat\s+gluten|hydroly(?:zed|sed)\s+wheat|bulgur|couscous|farro|einkorn|emmer|semolina|durum|spelt|kamut|triticale|seitan|soy\s+sauce|shoyu|\bbarley\b|\brye\b|\btrigo\b|\bcebada\b|\bcenteno\b|\bgluten\b(?![- ]\s*free)|\bmalt\b(?!odextrin)|malt\s+extract|malt\s+syrup|malt\s+vinegar|malted\s+barley|brewer'?s?\s+yeast/i,
     penalty: 20,
     triggersTier2: true,
   },
@@ -87,6 +88,40 @@ export const SENSITIVITY_SIGNALS: Record<string, SensitivitySignal> = {
       /sulfite|sulphite|sulphur dioxide|sulfur dioxide|e220|e221|e222|e223|e224|e225|e226|e227|e228/i,
     penalty: 15,
     triggersTier2: false,
+  },
+  caffeine: {
+    label: 'Caffeine',
+    ingredientPattern: /caffeine|coffee|tea\b|guarana|yerba|maté|mate|cola extract|guaraná/i,
+    penalty: 12,
+    triggersTier2: false,
+  },
+  fructose: {
+    label: 'Fructose',
+    ingredientPattern:
+      /fructose|high.fructose|hfcs|fruit juice concentrate|agave syrup|agave nectar|apple juice concentrate|pear juice concentrate/i,
+    penalty: 15,
+    triggersTier2: false,
+  },
+  histamine: {
+    label: 'Histamine',
+    ingredientPattern:
+      /histamine|fermented|aged cheese|smoked fish|wine vinegar|vinegar|sauerkraut|kimchi|yeast extract|miso|soy sauce/i,
+    penalty: 12,
+    triggersTier2: false,
+  },
+  nightshades: {
+    label: 'Nightshades',
+    ingredientPattern:
+      /\btomato\b|tomatoes|potato|eggplant|aubergine|paprika|chili|chilli|goji|bell pepper|pimiento|capsicum/i,
+    penalty: 15,
+    triggersTier2: false,
+  },
+  fodmaps: {
+    label: 'FODMAPs',
+    ingredientPattern:
+      /inulin|chicory|fructooligosaccharide|\bfos\b|polyol|sorbitol|mannitol|xylitol|lactitol|isomalt|wheat fructan|garlic|onion|honey|agave/i,
+    penalty: 15,
+    triggersTier2: true,
   },
 }
 
@@ -140,22 +175,80 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
       /\be\d{3}|modified starch|hydrogenated|glucose syrup|maltodextrin|artificial|sodium caseinate|carrageenan|xanthan/i,
     conflictPenalty: 8,
   },
+  kosher: {
+    label: 'Kosher',
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|shellfish|shrimp|crab|lobster|gelatin|cochineal|e120|non.kosher/i,
+    conflictPenalty: 22,
+  },
+  halal: {
+    label: 'Halal',
+    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    conflictPenalty: 22,
+  },
+  paleo: {
+    label: 'Paleo',
+    conflictPattern:
+      /wheat|barley|rye|oats|corn syrup|legume|lentil|chickpea|black bean|soybean|tofu|peanut|milk|cheese|yogurt|refined sugar/i,
+    conflictPenalty: 14,
+  },
+  whole30: {
+    label: 'Whole30',
+    conflictPattern:
+      /\bsugar\b|dextrose|maltodextrin|corn syrup|soy|legume|dairy|wine|beer|msg|carrageenan|sulfite/i,
+    conflictPenalty: 16,
+  },
+  diabetic_friendly: {
+    label: 'Diabetic-friendly',
+    conflictPattern: /\bsugar\b|glucose|fructose|corn syrup|maltose|maltodextrin|hfcs|dextrose/i,
+    conflictPenalty: 14,
+  },
 }
 
 // --- GOAL SIGNALS -----------------------------------------------------------
 
+const MORE_PROTEIN: GoalSignal = {
+  label: 'Eat more protein',
+  alignPattern: /protein|whey|casein|egg|chicken|beef|soy protein|pea protein|hemp protein/i,
+  alignBoost: 12,
+  conflictPattern: /hydrogenated|glucose syrup|artificial/i,
+  conflictPenalty: 5,
+}
+
+const BALANCED_DIET: GoalSignal = {
+  label: 'Maintain a balanced diet',
+  conflictPattern: /hydrogenated|glucose syrup|corn syrup|artificial|e\d{3}/i,
+  conflictPenalty: 6,
+}
+
 export const GOAL_SIGNALS: Record<string, GoalSignal> = {
+  more_protein: MORE_PROTEIN,
+  /** @deprecated use `more_protein` — kept for persisted profiles + tests */
+  build_muscle: MORE_PROTEIN,
+  less_sugar: {
+    label: 'Eat less sugar',
+    conflictPattern:
+      /\bsugar\b|glucose|fructose|corn syrup|dextrose|maltose|sucrose|honey|agave|maple syrup|molasses/i,
+    conflictPenalty: 12,
+  },
   lose_weight: {
     label: 'Lose weight',
     conflictPattern: /\bsugar\b|glucose syrup|corn syrup|hydrogenated|lard|shortening/i,
     conflictPenalty: 10,
   },
-  build_muscle: {
-    label: 'Build muscle',
-    alignPattern: /protein|whey|casein|egg|chicken|beef|soy protein|pea protein|hemp protein/i,
-    alignBoost: 12,
-    conflictPattern: /hydrogenated|glucose syrup|artificial/i,
-    conflictPenalty: 5,
+  gain_weight: {
+    label: 'Gain weight',
+    alignPattern: /protein|nut|almond|walnut|pecan|oil|butter|cream|avocado|mct|coconut oil|peanut/i,
+    alignBoost: 8,
+    conflictPattern: /artificial|e\d{3}|maltodextrin/i,
+    conflictPenalty: 4,
+  },
+  gut_health: {
+    label: 'Improve gut health',
+    alignPattern: /fiber|fibre|prebiotic|probiotic|ferment|yogurt|yoghurt|kefir|kimchi|miso/i,
+    alignBoost: 8,
+    conflictPattern: /carrageenan|polysorbate|aspartame|sucralose|saccharin|acesulfame|artificial/i,
+    conflictPenalty: 10,
   },
   eat_cleaner: {
     label: 'Eat cleaner',
@@ -165,14 +258,22 @@ export const GOAL_SIGNALS: Record<string, GoalSignal> = {
     alignPattern: /organic|whole|natural|unrefined/i,
     alignBoost: 5,
   },
-  improve_health: {
-    label: 'Improve overall health',
-    conflictPattern: /hydrogenated|glucose syrup|corn syrup|artificial|e\d{3}/i,
-    conflictPenalty: 6,
+  balanced_diet: BALANCED_DIET,
+  /** @deprecated use `balanced_diet` */
+  improve_health: BALANCED_DIET,
+  reduce_upf: {
+    label: 'Reduce ultra-processed foods',
+    conflictPattern:
+      /e\d{3}|modified starch|hydrogenated|glucose syrup|maltodextrin|artificial|hydrolyzed|textured vegetable protein/i,
+    conflictPenalty: 12,
+  },
+  lower_sodium: {
+    label: 'Lower sodium',
+    conflictPattern: /salt|sodium|soy sauce|msg|monosodium glutamate|e621|brine|miso|tamari/i,
+    conflictPenalty: 10,
   },
   understand: {
     label: "Understand what I'm eating",
-    // No scoring impact - informational only.
   },
 }
 
@@ -186,7 +287,8 @@ export const AVOIDING_SIGNALS: Record<string, RegExp | null> = {
     /sodium benzoate|potassium sorbate|\bbha\b|\bbht\b|\btbhq\b|e211|e202|e320|e321|e319|sodium nitrate|sodium nitrite|e250|e251/i,
   'added sugar':
     /\bsugar\b|glucose syrup|fructose|corn syrup|dextrose|maltose|sucrose|cane juice|cane sugar|honey|agave|maple syrup|molasses/i,
-  gluten: /\bwheat\b|gluten|barley|rye|spelt|triticale|\bmalt\b/i,
+  gluten:
+    /wholewheat|whole wheat|\bwheat\b|wheat\s*(?:flour|starch|germ|bran|protein|dextrin|berries)|enriched\s+wheat|vital\s+wheat\s+gluten|hydroly(?:zed|sed)\s+wheat|bulgur|couscous|farro|einkorn|emmer|semolina|durum|spelt|kamut|triticale|seitan|soy\s+sauce|shoyu|\bbarley\b|\brye\b|\bgluten\b(?![- ]\s*free)|\bmalt\b(?!odextrin)|malt\s+extract|malt\s+syrup|malt\s+vinegar|malted\s+barley|brewer'?s?\s+yeast/i,
   'processed meat':
     /sodium nitrate|sodium nitrite|e250|e251|mechanically separated|meat by-product|meat slurry/i,
   'palm oil': /palm oil|palm kernel oil|palmitate|palmitoyl/i,

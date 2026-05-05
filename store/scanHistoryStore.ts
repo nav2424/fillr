@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { createDebouncedPersistStorage } from '../lib/debouncedPersistStorage'
 import { storage } from '../lib/storage'
 import { persistScanHistoryRemote } from '../lib/overviewScanRemote'
+import { lightenScanResultForPersistence } from '../lib/lightenScanResultForPersistence'
 import type { SafetyStatus, ScanIngredientSource, ScanResult } from '../types'
 
 export interface ScanRecord {
@@ -27,6 +29,8 @@ interface ScanHistoryState {
   isSaved: (productId: string) => boolean
   clearAll: () => void
 }
+
+type ScanHistoryPersistedState = Pick<ScanHistoryState, 'scans' | 'savedProductIds'>
 
 export const useScanHistoryStore = create<ScanHistoryState>()(
   persist(
@@ -68,7 +72,16 @@ export const useScanHistoryStore = create<ScanHistoryState>()(
     }),
     {
       name: 'fillr-scan-history',
-      storage: createJSONStorage(() => storage),
+      storage: createJSONStorage<ScanHistoryPersistedState>(() =>
+        createDebouncedPersistStorage(storage, 700)
+      ),
+      partialize: (state) => ({
+        scans: state.scans.map((rec) => ({
+          ...rec,
+          result: rec.result ? lightenScanResultForPersistence(rec.result) : rec.result,
+        })),
+        savedProductIds: state.savedProductIds,
+      }),
     }
   )
 )

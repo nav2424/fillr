@@ -5,6 +5,7 @@
 
 import { supabase } from './supabase'
 import type { IngredientAnalysisItem } from '../services/openaiIngredientAnalysisPrompt'
+import { normalizeIngredientName } from './ingredientNameNormalization'
 
 export type IngredientKnowledgeRow = {
   id: string
@@ -97,7 +98,10 @@ export function knowledgeRowToAnalysisItem(
   )
   return {
     name,
-    headline: ensureMinProse(headline, `Here is what "${name}" usually means on a packaged-food label.`),
+    headline: ensureMinProse(
+      headline,
+      `${name} is included in this product and can affect texture, flavor, or nutrition depending on the formula.`
+    ),
     labelDecoder,
     whatItIs,
     whatItDoes,
@@ -109,11 +113,16 @@ export function knowledgeRowToAnalysisItem(
     contextStat: (row.context_stat ?? '').trim(),
     ratingSource: 'ai',
     from_cache: true,
+    evidenceRuleMatched: 'ingredient_knowledge_cache',
+    evidenceSource: 'ingredient_knowledge',
+    evidenceConfidence:
+      row.confidence_score >= 0.8 ? 'high' : row.confidence_score >= 0.5 ? 'medium' : 'low',
+    evidenceLastVerifiedAt: row.last_updated,
   }
 }
 
 export async function getIngredientFromCache(name: string): Promise<IngredientKnowledgeRow | null> {
-  const normalized = name.toLowerCase().trim()
+  const normalized = normalizeIngredientName(name)
   if (!normalized) return null
   if (!process.env.EXPO_PUBLIC_SUPABASE_URL?.trim()) return null
 
@@ -156,7 +165,7 @@ export async function getIngredientsFromCacheBatch(names: string[]): Promise<Cac
     return { cached: new Map(), uncached, allCached: uncached.length === 0 }
   }
 
-  const orderKeys = names.map((n) => n.toLowerCase().trim())
+  const orderKeys = names.map((n) => normalizeIngredientName(n))
   const unique = [...new Set(orderKeys.filter(Boolean))]
 
   const rowsByNorm = new Map<string, IngredientKnowledgeRow>()
@@ -225,7 +234,7 @@ export type IngredientKnowledgeSaveInput = {
 
 export async function saveIngredientToCache(ingredient: IngredientKnowledgeSaveInput): Promise<void> {
   if (!process.env.EXPO_PUBLIC_SUPABASE_URL?.trim()) return
-  const normalized = ingredient.name_display.toLowerCase().trim()
+  const normalized = normalizeIngredientName(ingredient.name_display)
   if (!normalized) return
   const r = String(ingredient.base_rating || '').toLowerCase()
   if (!validBaseRating(r)) return
@@ -255,7 +264,7 @@ export async function saveIngredientToCache(ingredient: IngredientKnowledgeSaveI
 export function analysisItemToSaveInput(item: IngredientAnalysisItem): IngredientKnowledgeSaveInput {
   return {
     name_display: item.name.trim(),
-    common_name: item.headline?.trim() || null,
+    common_name: item.shortLabel?.trim() || item.headline?.trim() || null,
     explanation: item.labelDecoder?.trim() || null,
     what_it_is: item.whatItIs?.trim() || null,
     what_it_does_in_product: item.whatItDoes?.trim() || null,
@@ -273,7 +282,7 @@ export async function updateIngredientFeedback(
   name: string,
   type: 'positive' | 'negative'
 ): Promise<void> {
-  const normalized = name.toLowerCase().trim()
+  const normalized = normalizeIngredientName(name)
   if (!normalized || !process.env.EXPO_PUBLIC_SUPABASE_URL?.trim()) return
   const field = type === 'positive' ? 'positive_feedback' : 'negative_feedback'
   await supabase.rpc('increment_feedback', {

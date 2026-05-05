@@ -1,6 +1,30 @@
 import { supabase } from './supabase'
 import type { ScanResult } from '../types'
 import type { OverviewScanRow } from './overviewAnalytics'
+import { parseScanHistoryDate } from './parseScanHistoryDate'
+
+function supabaseClientConfigured(): boolean {
+  return Boolean(
+    (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim() &&
+      (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+  )
+}
+
+/**
+ * Resolves `products.id` after a barcode upsert (which may still be in flight from `productService`).
+ */
+async function resolveProductIdByBarcodeWithRetry(barcode: string): Promise<string | null> {
+  if (!supabaseClientConfigured()) return null
+  const bc = barcode.trim()
+  if (!bc || bc.startsWith('ocr_')) return null
+  const waitsMs = [0, 40, 100, 180, 260]
+  for (const ms of waitsMs) {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms))
+    const { data, error } = await supabase.from('products').select('id').eq('barcode', bc).maybeSingle()
+    if (!error && data?.id) return data.id
+  }
+  return null
+}
 
 function parseResultJson(raw: unknown): ScanResult | null {
   if (!raw || typeof raw !== 'object') return null
@@ -40,12 +64,19 @@ export async function persistScanHistoryRemote(scan: {
   const uid = sessionData?.session?.user?.id
   if (!uid) return
 
+  const shouldLinkProduct =
+    !scan.barcode.startsWith('ocr_') && scan.result?.product?.source === 'openfoodfacts'
+
+  const productId = shouldLinkProduct
+    ? await resolveProductIdByBarcodeWithRetry(scan.barcode)
+    : null
+
   const { data, error } = await supabase
     .from('scan_history')
     .insert({
       user_id: uid,
       barcode: scan.barcode,
-      product_id: null,
+      product_id: productId,
       result_json: scan.result as unknown as Record<string, unknown>,
     })
     .select('id')
@@ -77,9 +108,9 @@ export function localScansToOverviewRows(
 ): OverviewScanRow[] {
   return scans
     .filter((s): s is typeof s & { result: ScanResult } => Boolean(s.result))
-    .map((s) => ({
-      createdAt: new Date(s.date),
-      result: s.result,
-    }))
+    .map((s) => {
+      const createdAt = parseScanHistoryDate(s.date) ?? new Date(NaN)
+      return { createdAt, result: s.result }
+    })
     .filter((r) => !Number.isNaN(r.createdAt.getTime()))
 }

@@ -7,7 +7,7 @@ import type { ScanResult, SafetyStatus } from '../types'
 import { getIngredientExplanation } from './ingredientExplanations'
 
 /** Demo product barcode (e.g. onboarding preview); skips cloud AI and scan quota when scanned. */
-export const DEMO_SCAN_BARCODE = '085000211111'
+export const DEMO_SCAN_BARCODE = '810072005008'
 
 /** True for the Fillr demo product barcode (any common formatting). */
 export function isDemoScanBarcode(raw: string): boolean {
@@ -19,122 +19,96 @@ export function isDemoScanBarcode(raw: string): boolean {
 const MOCK_PRODUCTS: ScanResult[] = [
   {
     product: {
-      id: 'prod_085000211111',
-      barcode: '085000211111',
-      name: 'Ultra Fudge Brownie Protein Squares',
-      brand: 'StackFuel',
+      id: 'prod_810072005008',
+      barcode: '810072005008',
+      name: 'Mid-Day Squares Dark Chocolate',
+      brand: 'Mid-Day Squares',
       imageUrl: undefined,
       ingredientText:
-        'Enriched wheat flour (wheat flour, niacin, reduced iron, thiamine mononitrate, riboflavin, folic acid), sugar, high fructose corn syrup, palm oil, cocoa processed with alkali, partially hydrogenated soybean oil, corn syrup solids, whey protein concentrate, milk protein isolate, soy lecithin, salt, baking soda, xanthan gum, guar gum, carrageenan, sodium stearoyl lactylate, mono- and diglycerides, polysorbate 60, natural and artificial flavors, caramel color, Yellow 5, Red 40, sodium benzoate and potassium sorbate (preservatives), soy flour, dried egg whites.',
+        'Dark chocolate (unsweetened chocolate, cocoa butter, alkalized cocoa powder, coconut sugar, vanilla powder, sea salt), sugars (maple syrup, organic tapioca syrup, cherry juice concentrate, organic apple juice concentrate, coconut sugar, red beet juice concentrate), alkalized cocoa powder, organic pea protein, Jerusalem artichoke fiber, olive oil, organic fava bean protein, shea butter, organic cacao nibs, vanilla extract, cocoa butter, organic apple cider vinegar, water, sea salt, cocoa extract.',
       source: 'mock',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
-    safetyStatus: 'UNSAFE',
-    matchedAllergens: [
-      {
-        allergenKey: 'milk',
-        allergenName: 'Milk',
-        matchedIngredient: 'Whey protein concentrate',
-        explanation:
-          'Contains milk-derived protein. Avoid if you have a milk allergy.',
-      },
-      {
-        allergenKey: 'soy',
-        allergenName: 'Soy',
-        matchedIngredient: 'Soy lecithin',
-        explanation: 'Soy-derived ingredients present. Relevant for soy allergies.',
-      },
-      {
-        allergenKey: 'wheat',
-        allergenName: 'Wheat',
-        matchedIngredient: 'Enriched wheat flour',
-        explanation: 'Contains wheat. Not suitable for wheat allergy or celiac disease.',
-      },
-      {
-        allergenKey: 'eggs',
-        allergenName: 'Eggs',
-        matchedIngredient: 'dried egg whites',
-        explanation: 'Contains egg. Avoid if you have an egg allergy.',
-      },
-    ],
+    safetyStatus: 'CAUTION',
+    matchedAllergens: [],
     matchedSensitivities: [],
     smartSummary:
-      'Heavily processed brownie-style bar with multiple sweeteners, gums, emulsifiers, dyes, and preservatives — plus wheat, milk, soy, and egg.',
+      'Mid-Day Squares dark chocolate bar with plant proteins, multiple sugar sources, and fiber-rich ingredients. No direct milk/soy/wheat ingredients listed in this panel, but always verify cross-contact statements on pack.',
     ingredientBreakdown: [
       {
-        name: 'High fructose corn syrup',
-        headline: 'A very sweet liquid sugar made from corn.',
+        name: 'Dark chocolate',
+        headline: 'Chocolate base with cocoa solids and cocoa butter.',
         labelDecoder:
-          'Corn is processed into a syrup that is extra sweet and cheap for factories, so it shows up a lot in packaged snacks.',
-        whatItIs: 'Liquid sugar made from corn starch.',
-        whyItsUsed: 'Sweetens the product and keeps texture soft.',
-        whatToKnow: 'Near the top of the list means a lot of added sugar in each serving.',
+          'This is the coating/base blend: unsweetened chocolate plus cocoa butter and a small amount of sweetener.',
+        whatItIs: 'A cocoa-based chocolate blend.',
+        whyItsUsed: 'Provides the core chocolate flavor and texture.',
+        whatToKnow: 'Still contributes saturated fat and some added sugar depending on the blend.',
         whyItMatters:
-          'If you are cutting added sugar, HFCS high on the list is a sign this is more of a treat than an everyday food.',
+          'Useful context if you watch total sugar and saturated fat across snacks in your day.',
+        ingredientRating: 'okay',
+        verdict: 'NEUTRAL',
+        ratingReason:
+          'Chocolate ingredients are expected in this product category; impact depends mostly on serving size and total sugar/fat load.',
+      },
+      {
+        name: 'Organic tapioca syrup',
+        headline: 'A tapioca-derived syrup used as a sweet binder.',
+        labelDecoder:
+          'Tapioca starch is processed into a syrup to sweeten and help hold bar texture together.',
+        whatItIs: 'A concentrated carbohydrate sweetener.',
+        whyItsUsed: 'Adds sweetness and chew while helping cohesion.',
+        whatToKnow: 'It counts toward added sugar exposure even when labeled organic.',
+        whyItMatters:
+          'If your goal is lowering added sugars, syrup-based sweeteners are one of the key lines to track.',
         ingredientRating: 'concerning',
         verdict: 'NEUTRAL',
         ratingReason:
-          'Highly processed sweetener linked to added sugar load; typical to rate as concerning in snack bars.',
+          'Concentrated sweetener; fits a caution profile for frequent snacking.',
       },
       {
-        name: 'Carrageenan',
-        headline: 'Thickener from seaweed that makes things feel creamy.',
+        name: 'Organic pea protein',
+        headline: 'Plant protein isolate from yellow peas.',
         labelDecoder:
-          'It comes from red seaweed and is used to thicken and smooth texture without adding cream.',
-        whatItIs: 'A thickener extracted from seaweed.',
-        whyItsUsed: 'Makes bars and fillings feel smoother and thicker.',
-        whatToKnow: 'Some people avoid it if it bothers their digestion.',
+          'Protein is extracted and concentrated from peas to raise total protein per serving.',
+        whatItIs: 'A concentrated plant-protein ingredient.',
+        whyItsUsed: 'Boosts protein without dairy protein powders.',
+        whatToKnow: 'Helpful for protein goals, but still part of a processed bar formula.',
         whyItMatters:
-          'If gums tend to upset your stomach, compare labels—many bars use carrageenan or similar thickeners.',
+          'Can support satiety/protein targets, especially for plant-forward diets.',
+        ingredientRating: 'okay',
+        verdict: 'NEUTRAL',
+        ratingReason:
+          'Common functional protein source in snack bars; generally neutral in this context.',
+      },
+      {
+        name: 'Jerusalem artichoke fiber',
+        headline: 'A chicory-family fiber used for texture and fiber content.',
+        labelDecoder:
+          'This is an inulin-type fiber ingredient added to improve fiber numbers and bar structure.',
+        whatItIs: 'A prebiotic-style soluble fiber.',
+        whyItsUsed: 'Adds fiber and helps texture.',
+        whatToKnow: 'Some people tolerate it well; others may notice bloating with larger amounts.',
+        whyItMatters:
+          'If you have sensitive digestion, fiber-enriched bars can feel different than whole-food snacks.',
         ingredientRating: 'concerning',
         verdict: 'NEUTRAL',
         ratingReason:
-          'Widely used gum; some people limit it for GI comfort — not a whole food, typical “concerning” in Fillr.',
-      },
-      {
-        name: 'Yellow 5',
-        headline: 'Artificial yellow food coloring.',
-        labelDecoder:
-          'A lab-made yellow dye—only a little is needed to color the whole product.',
-        whatItIs: 'Synthetic yellow dye (also called tartrazine).',
-        whyItsUsed: 'Colors frosting, coatings, and snacks.',
-        whatToKnow: 'Many families who skip artificial dyes watch for this name.',
-        whyItMatters:
-          'If you avoid artificial colors, “Yellow 5” or “tartrazine” on the list is what you are looking for.',
-        ingredientRating: 'avoid',
-        verdict: 'LIMIT',
-        ratingReason:
-          'Synthetic color additive; Fillr flags major artificial dyes as avoid for transparency.',
-      },
-      {
-        name: 'Polysorbate 60',
-        headline: 'Helps oil and water stay mixed in processed foods.',
-        labelDecoder:
-          'An additive that stops fat and water from separating so texture stays even on the shelf.',
-        whatItIs: 'An emulsifier—ingredients that blend oil and water.',
-        whyItsUsed: 'Keeps bakery items and fillings from separating.',
-        whatToKnow: 'You would not usually cook with this at home.',
-        whyItMatters:
-          'If you want short, whole-food ingredient lists, polysorbates are a sign of a factory-made formula.',
-        ingredientRating: 'concerning',
-        verdict: 'NEUTRAL',
-        ratingReason:
-          'Industrial emulsifier common in ultra-processed foods — not harmful at typical use for everyone, but not “clean.”',
+          'Can be beneficial for fiber intake, but GI tolerance varies person to person.',
       },
     ],
     productAnalysis: {
-      ratingCounts: { clean: 0, okay: 0, concerning: 3, avoid: 1 },
+      ratingCounts: { clean: 0, okay: 2, concerning: 2, avoid: 0 },
       viralHook:
-        'Ultra-processed bar with HFCS, emulsifiers, and artificial dyes — Yellow 5 is flagged avoid.',
+        'Mid-Day Squares style formula: real cocoa ingredients plus multiple sweetener sources and added plant proteins.',
       bottomLine:
-        'This formulation leans heavily on sweeteners, gums, emulsifiers, and artificial colors — not a “clean label” pick.',
+        'This is a functional snack bar with a mix of cocoa, sweeteners, oils, and added proteins/fibers—best read as a convenient snack, not a minimally processed whole-food bar.',
     },
     insights: [
-      'Multiple allergens: wheat, milk, soy, egg',
-      'Added sugars and HFCS',
-      'Artificial colors and preservatives',
-      'Several gums and emulsifiers',
+      'Multiple sweetener sources are present',
+      'Plant proteins (pea and fava) boost protein content',
+      'Fiber additive may affect sensitive digestion',
+      'Always check the package may-contain statement for peanut/tree nut/sesame risk',
     ],
   },
   {

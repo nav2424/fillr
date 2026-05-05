@@ -117,6 +117,14 @@ export const spacing = {
   xxxl: 32,
 } as const
 
+/**
+ * Home `HomeScreen` top wordmark column — reuse on tabs so the logo lines up everywhere.
+ */
+export const homeWordmarkLayout = {
+  horizontalPad: spacing.xl,
+  minStatusPad: spacing.sm,
+} as const
+
 export const radius = {
   sm: 12,
   md: 16,

@@ -65,7 +65,9 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: colors.backgroundLightGreen },
           animation: 'slide_from_right',
         }}
-      />
+      >
+        <Stack.Screen name="welcome" options={{ contentStyle: { backgroundColor: '#FFFFFF' } }} />
+      </Stack>
     </QueryClientProvider>
   )
 }

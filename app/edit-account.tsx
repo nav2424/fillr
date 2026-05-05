@@ -20,19 +20,13 @@ import { useAuthStore } from '../store/authStore'
 export default function EditAccountScreen() {
   const { email, fullName, updateAccount } = useAuthStore()
   const [name, setName] = useState(fullName || '')
-  const [emailInput, setEmailInput] = useState(email || '')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const handleSave = useCallback(() => {
     setError(null)
-    const trimmedEmail = emailInput.trim()
     const trimmedName = name.trim()
-    if (!trimmedEmail || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
-      setError('Enter a valid email address.')
-      return
-    }
     if (!trimmedName) {
       setError('Please enter your name.')
       return
@@ -51,9 +45,9 @@ export default function EditAccountScreen() {
         'Password changes will use your sign-in provider when Supabase auth is connected. Your name and email were saved on this device.'
       )
     }
-    updateAccount({ fullName: trimmedName, email: trimmedEmail })
+    updateAccount({ fullName: trimmedName, email: email || '' })
     router.back()
-  }, [emailInput, name, newPassword, confirmPassword, updateAccount])
+  }, [name, newPassword, confirmPassword, updateAccount, email])
 
   return (
     <GradientBackground variant="minimal">
@@ -70,7 +64,6 @@ export default function EditAccountScreen() {
               <Ionicons name="chevron-back" size={24} color={colors.text} />
               <Text style={styles.backBtnText}>Back</Text>
             </Pressable>
-            <Text style={styles.headerTitle}>Account details</Text>
           </View>
 
           <ScrollView
@@ -81,61 +74,91 @@ export default function EditAccountScreen() {
           >
             {error && <Text style={styles.error}>{error}</Text>}
 
-            <Text style={styles.label}>Full name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={(t) => {
-                setName(t)
-                setError(null)
-              }}
-              placeholder="Your name"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="words"
-            />
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Basic info</Text>
 
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={emailInput}
-              onChangeText={(t) => {
-                setEmailInput(t)
-                setError(null)
-              }}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+              <Text style={styles.label}>Full name</Text>
+              <View style={styles.inputWrap}>
+                <Ionicons name="person-outline" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={(t) => {
+                    setName(t)
+                    setError(null)
+                  }}
+                  placeholder="Your name"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="words"
+                />
+              </View>
 
-            <Text style={styles.sectionHint}>
-              To change password, enter a new one below. Leave blank to keep your current password.
-            </Text>
-            <Text style={styles.label}>New password</Text>
-            <TextInput
-              style={styles.input}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Optional"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <Text style={styles.label}>Confirm new password</Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Optional"
-              placeholderTextColor={colors.textMuted}
-              secureTextEntry
-              autoCapitalize="none"
-            />
+              <Text style={styles.label}>Email</Text>
+              <View style={styles.inputWrap}>
+                <Ionicons name="mail-outline" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={styles.input}
+                  value={email || ''}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={false}
+                  selectTextOnFocus={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Security</Text>
+              <Text style={styles.sectionHint}>
+                To change password, enter a new one below. Leave blank to keep your current password.
+              </Text>
+
+              <Text style={styles.label}>New password</Text>
+              <View style={styles.inputWrap}>
+                <Ionicons name="lock-closed-outline" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={styles.input}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="Optional"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <Text style={styles.label}>Confirm new password</Text>
+              <View style={styles.inputWrap}>
+                <Ionicons name="checkmark-circle-outline" size={17} color={colors.textMuted} />
+                <TextInput
+                  style={styles.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Optional"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            <Pressable
+              onPress={() => router.push('/delete-account')}
+              style={({ pressed }) => [styles.deleteRow, pressed && styles.deleteRowPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              <Text style={styles.deleteRowText}>Delete account</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
           </ScrollView>
 
           <View style={styles.footer}>
-            <FillrButton title="Save changes" onPress={handleSave} fullWidth />
+            <FillrButton title="Save changes" onPress={handleSave} variant="liquid" fullWidth />
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -148,6 +171,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.xxl,
     paddingTop: spacing.md,
+    backgroundColor: '#f4f8f5',
   },
   keyboard: {
     flex: 1,
@@ -155,13 +179,15 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.sm,
     marginLeft: -spacing.sm,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
   },
   backBtnPressed: {
     opacity: 0.7,
@@ -171,16 +197,28 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginLeft: spacing.xs,
   },
-  headerTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginLeft: spacing.md,
-  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: spacing.xl,
+  },
+  formCard: {
+    borderRadius: 20,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: 'transparent',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  sectionTitle: {
+    ...typography.label,
+    color: colors.text,
+    fontSize: 16,
+    marginBottom: spacing.xs,
   },
   error: {
     ...typography.bodySmall,
@@ -194,23 +232,48 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontWeight: '600',
   },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+  },
   input: {
+    flex: 1,
     ...typography.body,
     color: colors.text,
-    backgroundColor: colors.backgroundLightGreen,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
   sectionHint: {
     ...typography.bodySmall,
     color: colors.textMuted,
-    marginTop: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
     lineHeight: 20,
   },
   footer: {
     paddingVertical: spacing.lg,
+  },
+  deleteRow: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    backgroundColor: 'transparent',
+  },
+  deleteRowPressed: {
+    opacity: 0.72,
+  },
+  deleteRowText: {
+    ...typography.label,
+    color: colors.danger,
+    flex: 1,
   },
 })

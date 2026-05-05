@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
 import ViewShot from 'react-native-view-shot'
+import { FILLR_WEB_HOST } from '../constants/legalUrls'
 
 const CARD_W = 268
 
@@ -85,7 +86,7 @@ export const ShareCard = forwardRef<InstanceType<typeof ViewShot>, ShareCardProp
         </View>
 
         <View style={styles.footerRow}>
-          <Text style={styles.footerUrl}>usefillr.com</Text>
+          <Text style={styles.footerUrl}>{FILLR_WEB_HOST}</Text>
           <Text style={styles.footerDate}>{formatShareDate(scanDate)}</Text>
         </View>
       </View>

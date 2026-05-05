@@ -42,7 +42,7 @@ Copy `.env.example` to `.env` and set:
 
 - `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 - `EXPO_PUBLIC_REVENUECAT_IOS_KEY` (and Android key when shipping Android)
-- Optional: `EXPO_PUBLIC_TERMS_URL`, `EXPO_PUBLIC_PRIVACY_URL`, `EXPO_PUBLIC_IOS_APP_STORE_URL`
+- Optional: `EXPO_PUBLIC_TERMS_URL`, `EXPO_PUBLIC_PRIVACY_URL` (defaults: `https://www.usefillr.com/terms.html` and `https://www.usefillr.com/privacy.html`), `EXPO_PUBLIC_IOS_APP_STORE_URL`
 - **Do not** put `OPENAI_API_KEY` in public env vars; set it as a Supabase secret for the ingredient-analysis function.
 
 EAS Build injects secrets from the Expo dashboard / `eas secret` as needed.

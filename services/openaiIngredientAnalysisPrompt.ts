@@ -5,6 +5,7 @@
 
 import type { DietaryProfile, ProductAnalysis } from '../types'
 import { GOAL_OPTIONS } from '../types'
+import type { ProductPatternDetection } from '../lib/productPatternDetection'
 
 function formatGoalLine(profile: DietaryProfile): string {
   const raw = typeof profile.goal === 'string' ? profile.goal.trim() : ''
@@ -13,15 +14,69 @@ function formatGoalLine(profile: DietaryProfile): string {
   return label ? `${label} (${raw})` : raw
 }
 
+const SCORING_PREFERENCE_LABELS: Record<string, string> = {
+  high_protein: 'prioritizes high protein intake',
+  low_sugar: 'is actively reducing sugar consumption',
+  low_carb: 'follows a low-carb diet',
+  keto: 'follows a ketogenic diet',
+  low_caffeine: 'limits caffeine intake',
+  high_caffeine: 'relies on caffeine for performance',
+  low_sodium: 'monitors sodium intake',
+  low_calorie: 'is managing caloric intake',
+  whole_foods: 'prefers whole, minimally processed foods',
+  no_artificial_sweeteners: 'avoids all artificial sweeteners',
+  no_seed_oils: 'avoids seed and refined oils',
+  gut_health: 'prioritizes gut health and microbiome support',
+  anti_inflammatory: 'follows an anti-inflammatory diet',
+  hormone_health: 'is focused on hormone health',
+}
+
+const GOAL_INGREDIENT_GUIDANCE: Record<string, string> = {
+  more_protein: `For this user's higher-protein goal: flag protein quality, leucine-rich sources, and complete proteins positively. Flag empty calories from sugar and ultra-processed carriers as working against the goal.`,
+  build_muscle: `For this user's muscle-building goal: flag protein quality, leucine-rich sources, BCAAs as highly relevant (clean/okay → positive note). Flag high sugar, artificial sweeteners, and ultra-processed carbs as working against recovery and body composition.`,
+  less_sugar: `For eating less sugar: flag added sugars, syrups, concentrates, and maltodextrin; note fiber context when helpful; avoid moralizing language.`,
+  lose_weight: `For this user's weight loss goal: flag added sugars, maltodextrin, dextrose, and high-GI carbs as directly relevant concerns. Note artificial sweeteners — research suggests mixed effects on satiety and cravings. Flag fiber sources positively.`,
+  gain_weight: `For healthy weight gain: note energy-dense whole-food fats and quality proteins positively; still flag industrial additives and misleading health halos.`,
+  gut_health: `For gut health: highlight probiotics, fermented ingredients, fiber, and shorter formulas; flag emulsifiers (carrageenan, polysorbate, xanthan), some artificial sweeteners, and long preservative stacks when they work against gut comfort.`,
+  balanced_diet: `For balanced eating: emphasize variety signals (fiber, protein, micronutrients) without inventing medical outcomes; flag excess sodium, added sugar, and ultra-processing proportionally.`,
+  improve_health: `For general health improvement: practically flag sodium, added sugars, fiber quality, and micronutrient density without inventing medical outcomes.`,
+  reduce_upf: `For reducing ultra-processed foods: flag industrial sweeteners, long additive panels, modified starches, and protein isolates used as fillers; reward short recognizable ingredient lists.`,
+  lower_sodium: `For lower sodium: call out salt, brines, concentrated sauces, and flavor enhancers that carry sodium even when "reduced salt" marketing appears.`,
+  improve_energy: `For this user's energy goal: flag caffeine, B-vitamins, iron, and adaptogenic extracts as positively relevant. Flag sugar crashes (high dextrose, sucrose without fiber) as counterproductive. Note that sucralose and acesulfame may affect gut microbiome which impacts energy.`,
+  reduce_inflammation: `For this user's anti-inflammation goal: flag omega-3 sources, polyphenol-rich extracts, turmeric, ginger positively. Flag refined seed oils, artificial colors, high-fructose corn syrup, trans fats, and carrageenan as pro-inflammatory.`,
+  heart_health: `For this user's heart health goal: flag sodium, saturated fat, trans fats, and added sugars as directly relevant. Note omega-3s, plant sterols, and fiber sources positively.`,
+  hormone_health: `For this user's hormone health goal: flag endocrine disruptors — BPA-adjacent chemicals, parabens, phthalates, artificial colors — as concerning. Note phytoestrogen-rich ingredients. Flag chronic cortisol drivers like high caffeine and high sugar.`,
+  understand: `This user wants to understand what they eat: decode jargon, call out ultra-processing and hidden sugar sources, and tie each notable ingredient to a plain-English consequence — no medical claims.`,
+  eat_cleaner: `For eat cleaner: flag industrial sweeteners, long additive lists, and ultra-processed inputs; highlight recognizable whole-food ingredients and shorter formulas positively.`,
+}
+
+const PREFERENCE_CONFLICT_EXAMPLES: Record<string, string> = {
+  vegan: 'carmine, lactose, whey, casein, gelatin, beeswax, lanolin, L-cysteine (from feathers), isinglass',
+  vegetarian: 'gelatin, carmine, isinglass, L-cysteine (from feathers), animal-derived rennet',
+  halal: 'alcohol-derived ingredients, pork-derived gelatin, carmine, non-halal rennet',
+  kosher: 'pork-derived ingredients, shellfish derivatives, mixing of meat and dairy',
+  keto: 'maltodextrin, dextrose, corn syrup, high-fructose corn syrup, sugar, fruit juice concentrate',
+  paleo: 'grains, legumes, dairy, refined sugars, seed oils, artificial additives',
+  'low-fodmap': 'inulin, FOS, chicory root, high-fructose corn syrup, sorbitol, mannitol, xylitol',
+  low_fodmap: 'inulin, FOS, chicory root, high-fructose corn syrup, sorbitol, mannitol, xylitol',
+}
+
+function preferenceConflictLookup(pref: string): string | undefined {
+  const k = pref.toLowerCase().trim()
+  return PREFERENCE_CONFLICT_EXAMPLES[k] ?? PREFERENCE_CONFLICT_EXAMPLES[k.replace(/-/g, '_')]
+}
+
 export function buildPersonalizationSystemAppend(profile: DietaryProfile | null | undefined): string {
   if (!profile) return ''
+  const hasCeliac = Boolean(profile.celiacStrictGluten)
+  const hasScoringPrefs = (profile.scoringPreferenceKeys ?? []).length > 0
   const hasRows =
     profile.allergies.length > 0 ||
     profile.sensitivities.length > 0 ||
     profile.avoiding.length > 0 ||
     profile.preferences.length > 0
   const hasGoal = Boolean(typeof profile.goal === 'string' && profile.goal.trim().length > 0)
-  if (!hasRows && !hasGoal) return ''
+  if (!hasRows && !hasGoal && !hasCeliac && !hasScoringPrefs) return ''
 
   const allergies = profile.allergies.join(', ') || 'none'
   const sensitivities = profile.sensitivities.join(', ') || 'none'
@@ -29,7 +84,7 @@ export function buildPersonalizationSystemAppend(profile: DietaryProfile | null 
   const preferences = profile.preferences.join(', ') || 'none'
   const goalLine = formatGoalLine(profile)
 
-  return `
+  let append = `
 
 PERSONALIZATION — this user's specific profile:
 Allergies (MUST flag as 'avoid' for this user):
@@ -38,7 +93,7 @@ Allergies (MUST flag as 'avoid' for this user):
 Sensitivities (flag as 'concerning' for this user if base rating is clean or okay):
   ${sensitivities}
 
-Avoiding by choice (note in analysis; base rating unchanged unless it already warrants avoid):
+Avoiding by choice (upgrade base rating by one tier for this user — clean→okay, okay→concerning — and add personalFlag 'avoiding' and personalMessage explaining the conflict):
   ${avoiding}
 
 Dietary preferences (context — flag preference conflicts when an ingredient clearly conflicts):
@@ -53,7 +108,7 @@ For any ingredient that matches or is derived from the user's allergies list:
 
 For sensitivities: upgrade to 'concerning' from clean/okay only; set personalFlag 'sensitivity' and personalMessage.
 
-For avoiding: keep computed rating; add personalFlag 'avoiding' and personalMessage.
+For avoiding: upgrade the base tier as described above (do not upgrade past 'avoid'); add personalFlag 'avoiding' and personalMessage.
 
 For preferences (vegan, keto, halal, etc.): add personalFlag 'preference_conflict' and personalMessage when the ingredient conflicts (e.g. carmine for vegan).
 
@@ -64,7 +119,66 @@ SECOND-PERSON PRODUCT COPY (when this user's allergies/sensitivities are listed 
 
 INGREDIENT COPY — profile + goal:
 - For every ingredient with personalFlag + personalMessage, also make whyItMattersYou explicitly reinforce that same stake in different words (no contradiction).
+- On the intelligence field impact_for_you: state the highest-priority stake for this user on that line (allergy → celiac → sensitivity → goal → preference → additive/processed load → explicit no conflict). Never hedge with "if you avoid" or "some people."
 - When the user has a stated goal (not "not stated"), at least 2–3 ingredients most relevant to that goal (sugar load, protein quality, ultra-processing, allergens, etc.) should nod to it in whyItMattersYou without marketing fluff.`
+
+  const goalKey = (profile.goal ?? '').trim()
+  const goalGuidance = goalKey ? GOAL_INGREDIENT_GUIDANCE[goalKey] : undefined
+  if (goalGuidance) {
+    append += `
+
+GOAL-SPECIFIC INGREDIENT GUIDANCE:
+${goalGuidance}`
+  }
+
+  const scoringLines = (profile.scoringPreferenceKeys ?? [])
+    .map((k) => SCORING_PREFERENCE_LABELS[k])
+    .filter(Boolean)
+
+  if (scoringLines.length > 0) {
+    append += `
+
+ACTIVE SCORING PREFERENCES — this user specifically:
+${scoringLines.map((l) => `- ${l}`).join('\n')}
+When writing whyItMattersYou, connect ingredient impact directly to these preferences.
+For example: if the user prioritizes high protein, comment on amino acid profile or protein quality.
+If avoiding artificial sweeteners, flag sucralose/acesulfame with heightened urgency in personalMessage.
+If low_sugar is active, flag dextrose, maltodextrin, and sugar alcohols explicitly.
+Do not mention these preference labels verbatim — use natural language.`
+  }
+
+  const prefConflictLines = profile.preferences
+    .map((p) => {
+      const ex = preferenceConflictLookup(p)
+      return ex ? `- ${p}: watch for ${ex}` : `- ${p}`
+    })
+    .filter(Boolean)
+
+  if (prefConflictLines.length > 0) {
+    append += `
+
+PREFERENCE CONFLICT DETECTION — flag personalFlag 'preference_conflict' when ingredient matches:
+${prefConflictLines.join('\n')}`
+  }
+
+  if (profile.celiacStrictGluten) {
+    append += `
+
+CELIAC — STRICT GLUTEN MODE ENABLED (HIGHEST PRIORITY — ZERO TOLERANCE FOR MISSED GLUTEN):
+This user has celiac disease and has enabled strict gluten mode. A single missed wheat/barley/rye source is unacceptable.
+- Any ingredient that is or could be derived from wheat, barley, rye, triticale, spelt, kamut, farro, einkorn, emmer, regular (non-GF) oats, or gluten-containing malt
+  must be rated 'avoid' for this user, not merely 'concerning'.
+- Treat as 'avoid' when clearly gluten-based: wheat / barley / rye flours and starches, bulgur, couscous, semolina, durum, panko, matzo, vital wheat gluten, seitan, pearl barley, rye malt, soy sauce and shoyu (unless the label explicitly states gluten-free soy sauce or tamari as GF), hydrolyzed wheat protein, wheat germ/bran, graham, malt vinegar, barley malt in any form.
+- Brewer's yeast: rate at least 'concerning' with personalFlag 'celiac' when gluten status is unstated; use 'avoid' if the label implies beer/brewing origin or gives no gluten-free assurance for the yeast.
+- Malt extract, malt syrup, or unspecified "malt flavor" without a gluten-free claim: rate at least 'concerning', personalFlag 'celiac', and state that malt is typically barley-derived.
+- Ambiguous starches/sugars (maltodextrin, dextrose, modified food starch, caramel color, natural flavor) with no grain source on the label: rate at least 'concerning', personalFlag 'celiac', and say the gluten source cannot be verified from this text.
+- Multilingual labels: recognize French (blé, orge, seigle, gluten, farine de blé), Spanish (trigo, cebada, centeno), and English allergen lines ("contains wheat", "may contain gluten"). Map every gluten grain you see to strict English names in output.
+- Do not treat advisory or junk OCR lines as ingredients; real gluten in the ingredients enumeration must never be downgraded because of unrelated warning text.
+- Do not rely on a "gluten-free" marketing claim alone — evaluate each ingredient line; if you see both a GF claim and a gluten grain in the ingredient list, the gluten grain wins (label error / unsafe).
+- Never rate a line containing an obvious gluten grain as 'clean' or 'okay' for this user.`
+  }
+
+  return append
 }
 
 /** System message: fixed ratings first, then voice + JSON rules + self-check. */
@@ -77,6 +191,43 @@ OUTPUT LANGUAGE (mandatory — app default is English):
 - Every user-visible string in your JSON must be in English: ingredient "name", all prose fields, productVerdict, and every string inside productAnalysis (viralHook, bottomLine, redFlags, sugarSources, etc.).
 - If the ingredient list input is in French, Spanish, or any other language (including bilingual labels), translate all output text into clear, natural English. Use conventional English ingredient names in each "name" field (e.g. "wheat flour", "sugar") while staying accurate.
 - Do not mix non-English wording into English sentences. Do not leave French or other languages in any returned field.
+
+UNIVERSAL INGREDIENT BASELINE (MANDATORY):
+For EVERY ingredient, follow this exact structure:
+1) IDENTITY — what it really is, source, and processing level (whole food vs refined vs industrial).
+2) FUNCTION — why it exists here (flavor, texture, shelf life, nutrition positioning, cost/manufacturing optimization).
+3) BODY EFFECT — realistic plain-English effect at normal intake (energy speed, satiety, digestion, blood sugar behavior).
+4) HONEST INSIGHT — mandatory interpretation: choose one clear lens
+   (positive signal, tradeoff, hidden reality, engineering role, or cost optimization).
+If #4 is missing, output is invalid.
+
+SYSTEM-LEVEL ENFORCEMENT:
+- No generic ingredient explanations. If a sentence could fit 10+ ingredients, rewrite it.
+- Every ingredient must give a practical decision signal (keep / limit / watch / avoid, explicit or implied).
+- If an ingredient sounds healthy but acts like sugar/filler, say it clearly.
+- If an ingredient is genuinely high quality, say it clearly.
+- If an ingredient is mainly for manufacturing convenience, say it clearly.
+
+PRODUCT-LEVEL BASELINE (MANDATORY):
+After ingredient analysis, explicitly call out 1–3 product design patterns in productAnalysis.bottomLine:
+- Sugar system (stacked sugars / multiple sweeteners)
+- Texture system (oils, emulsifiers, syrups)
+- Functional system (protein/fiber positioning)
+- Shelf-life system (preservatives, stabilizers, modified oils)
+- Cost optimization system (cheaper substitutes/fillers)
+
+TONE + CLARITY STANDARD:
+- Write like a sharp, practical coach; not academic, clinical, or marketing.
+- Be direct ("mostly for texture", "behaves like sugar", "convenience tradeoff").
+- Avoid fluff, vague claims, and generic health language.
+- When evidence supports it, compress into simple translations in productVerdict or bottomLine
+  (e.g. "sugar delivery system", "convenience version of a whole food", "engineered for shelf life and taste").
+
+EVERY INGREDIENT CARD — NON-NEGOTIABLE QUALITY (Fillr will reject generic rows):
+- For EVERY line in the ingredients array: headline, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, and whyItMattersYou must read like a simple explainer for THAT exact ingredient name — a shopper should understand what it is without opening a textbook.
+- Forbidden patterns (never use as filler across rows): vague talk about "labels" or "trade names" without naming what this line is; "many manufacturers"; "nutrition facts panel" as a substitute for describing the ingredient; identical or near-identical opening sentences on different ingredients; generic "taste, texture, shelf life" without tying to this specific ingredient.
+- Each whatItIs must name the substance or category in plain words (e.g. cocoa butter, maple syrup, guar gum) and what role it usually plays — not a lecture about labeling law.
+- If you are unsure of exact chemistry, say what the label name usually refers to in food in one honest sentence — still specific to this line.
 
 The following ingredients have FIXED ratings that NEVER change
 regardless of context, amount, or product type. Do not
@@ -97,6 +248,9 @@ ALWAYS 'concerning':
 - Partially skimmed milk solids
 - Polysorbate 60, 65, 80
 - Sorbitan monostearate
+- Calcium disodium EDTA / disodium calcium EDTA / disodium EDTA / trisodium EDTA (chelating preservatives)
+- Sorbic acid
+- Potassium sorbate
 
 ALWAYS 'avoid':
 - Yellow 5 (Tartrazine)
@@ -148,17 +302,58 @@ based on the general rating framework below.
 
 GENERAL RATING FRAMEWORK (only when not determined by FIXED lists above)
 
-CLEAN: Whole foods only. Minimally processed. Single-ingredient whole foods match the ALWAYS clean list above.
+CLEAN: Whole foods and minimally processed single-ingredient foods only.
+Examples: water, tea, coffee, spices, fruit/vegetable extracts, plant oils (cold-pressed),
+vinegar, salt, honey, whole grain flours, probiotic cultures, enzyme preparations.
+Rule: if it could appear in a home kitchen as-is, it is clean.
 
-OKAY: Processed but common; use when not fixed as concerning/avoid/clean.
+OKAY: Industrially processed but well-established, low health concern.
+This includes:
+- Synthetic or semi-synthetic vitamins in their standard supplemental forms:
+  ascorbic acid, tocopherols, niacinamide, riboflavin, thiamine HCl, calcium pantothenate,
+  pyridoxine HCl, biotin, folate, cyanocobalamin, cholecalciferol, retinyl palmitate.
+- Mineral salts added for nutrition: calcium carbonate, magnesium oxide, zinc gluconate,
+  ferrous sulfate, chromium chelate, potassium iodide, sodium selenite.
+- Fermentation-derived compounds used as functional ingredients: taurine, L-carnitine,
+  creatine, glucuronolactone, inositol (when not on FIXED lists).
+- Common food acids used as pH regulators: citric acid, lactic acid, malic acid,
+  tartaric acid, acetic acid.
+- Natural flavor, flavour — treat as okay unless combined with other red flags.
+Rule: if it is a recognized nutrient, vitamin, mineral, or fermentation compound
+with an established safety profile, it is okay — not clean.
 
-CONCERNING: Synthetic additives, heavily processed inputs, or documented health debates — many are already on the FIXED concerning list.
+CONCERNING: Synthetic additives, heavily processed inputs, or documented health debates.
+This includes (beyond FIXED lists):
+- Synthetic non-nutritive sweeteners: sucralose, acesulfame potassium, saccharin,
+  advantame, neotame (these should already be on FIXED concerning list — apply here
+  if not caught).
+- Synthetic colorants not already on FIXED avoid list.
+- Highly refined industrial compounds with no nutritional value: polydextrose,
+  propylene glycol, TBHQ, BHA, BHT, sodium benzoate, potassium sorbate,
+  carrageenan, xanthan gum, guar gum (texture agents — borderline okay/concerning,
+  use concerning when ingredient count of additives in the product is already high).
+- Any ingredient whose primary function is preservation, texture manipulation,
+  or flavor enhancement through synthetic chemistry.
+Rule: when in doubt between okay and concerning, choose concerning.
 
-AVOID: Harmful or restricted in multiple jurisdictions — many dyes and additives are on the FIXED avoid list.
+AVOID: Harmful, banned, or restricted in multiple jurisdictions — see FIXED lists.
+
+CRITICAL RULES FOR SYNTHETIC VITAMINS AND MINERALS:
+- Pyridoxine hydrochloride, cyanocobalamin, calcium pantothenate, chromium chelate,
+  and similar synthetic micronutrients are OKAY, never CLEAN.
+- They are industrially synthesized — they do not grow in nature in this form.
+- Do not classify any compound with "hydrochloride", "sulfate", "chelate", "palmitate",
+  or similar salt/ester suffixes as CLEAN unless it is explicitly on the FIXED clean list.
+- Beta-carotene used as a colorant additive is OKAY at best, not CLEAN.
+- Calcium carbonate used as a pH buffer or filler (not in a dairy context) is OKAY,
+  not CLEAN.
+- Glucuronolactone is OKAY (fermentation-derived functional compound), not CLEAN.
+- Taurine in energy drinks/supplements is OKAY (synthetically produced at scale),
+  not CLEAN.
 
 If unsure between two ratings for a non-fixed ingredient, choose the safer/lower one (more cautious).
 
-You do not receive the user's allergen list. Never use rating "avoid" only because an ingredient is a common allergen — the app applies allergy overrides. Use "avoid" from the FIXED avoid list and similar cases above.
+When no PERSONALIZATION block is attached, you do not have this user's allergen list—never rate "avoid" solely because an ingredient is a common allergen (the app applies allergy overrides). When PERSONALIZATION is attached, follow it for ratings, personalFlag, personalMessage, and impact_for_you.
 
 ---
 
@@ -237,6 +432,58 @@ For bottomLine: be honest even when it is harsh. A product with HFCS + artificia
 
 productVerdict must align with the actual severity: do not praise a formulation that contains multiple concerning or avoid-rated additives.
 
+PRODUCT SUMMARY FORMULA (strict, every time):
+- viralHook = HOOK -> WHAT IT REALLY IS (one sharp sentence)
+- bottomLine = HOW IT IS BUILT (2-3 practical sentences, plain language)
+- productVerdict = WHAT YOU SHOULD DO (one actionable sentence)
+
+SIGNATURE STYLE TARGET:
+- "Middle-ground" products should sound like: real ingredients + processed systems for taste/convenience.
+- Use framing like: "not junk, but not truly whole" when evidence supports it.
+
+PRODUCT ARCHETYPE EXAMPLES (copy style and structure, not exact wording):
+1) Ultra-processed candy (KitKat/Oreo type):
+   - Hook angle: layered sugar system + engineered fats/additives.
+   - Bottom line angle: built for taste/repeat eating, low nutrition/satiety.
+   - Verdict angle: occasional treat, not a daily fuel source.
+2) Convenience whole food (processed peanut butter):
+   - Hook angle: real base ingredient modified for no-stir convenience.
+   - Bottom line angle: oils/emulsifiers trade purity for texture/shelf stability.
+   - Verdict angle: better than sugary spreads, less clean than natural versions.
+3) Functional snack (protein bar, Mid-Day Squares style):
+   - Hook angle: mix of real ingredients + processed functional add-ons.
+   - Bottom line angle: protein/fiber positioning with processing tradeoffs.
+   - Verdict angle: better than candy, still processed (middle-ground).
+4) Sugary/energy drink:
+   - Hook angle: fast sugar/stimulant delivery system.
+   - Bottom line angle: short-term boost, poor sustained fuel.
+   - Verdict angle: occasional tactical use, not a daily habit.
+5) Health-halo cereal/granola:
+   - Hook angle: healthy-looking but sugar/refined-carb-led formula.
+   - Bottom line angle: whole-food signals mixed with syrup/sweetener load.
+   - Verdict angle: better than dessert cereals, still a sweet treat.
+6) Clean whole-food product:
+   - Hook angle: simple ingredient list, minimal processing.
+   - Bottom line angle: recognizable foods, few/no industrial helpers.
+   - Verdict angle: clean staple option.
+7) Highly engineered snack (chips/crackers):
+   - Hook angle: texture-engineered refined-carb/oil system.
+   - Bottom line angle: crunch/flavor design over satiety/nutrition.
+   - Verdict angle: enjoyable processed snack, not a health-support staple.
+
+PATTERN CHEAT SHEET (encode directly in wording when present):
+- 3+ sugars -> say "stacked sugar system" or equivalent.
+- Emulsifiers + oils -> call out "texture/shelf-life engineering."
+- Added protein + fiber -> call out "functional nutrition layer."
+- Mostly whole foods -> call out "minimal processing."
+- Refined-carb base -> call out "fast-digesting, lower satiety base."
+- Artificial additives -> call out "engineered for taste, not nutrition."
+
+CONSISTENCY RULES:
+- Never call a product "clean" if multiple sugars/additives/industrial helpers are present.
+- Never use soft generic language when strong evidence exists (be specific about what drives your conclusion).
+- Keep tone direct and practical; no moralizing, no fear language, no marketing fluff.
+
 ---
 
 PRODUCT-LEVEL FIELDS:
@@ -258,12 +505,110 @@ VIRAL HOOK PRIORITY (write viralHook last, after you know sugarSources, regulato
 3) If sugarSources has 2 entries, still call out multiple sweetener names.
 4) Otherwise lead with the strongest avoid/concerning story from the actual ingredients.
 
-Output valid JSON only (no markdown fences). Every required prose field must be at least 25 characters and end with . or ! or ? — never truncate mid-sentence. viralHook must end with . ! or ?
+---
+
+FILLR INGREDIENT INTELLIGENCE (required on every ingredient object — snake_case keys in JSON):
+
+You are Fillr’s ingredient intelligence engine. Explain each line in a way that is clear, compact, confident, personalized to the user when personalization is provided, and useful for decisions—not a textbook.
+
+Include these keys on EVERY ingredient (alongside the legacy translator keys above):
+- "ingredient_name": same string as "name" (exact label line)
+- "short_label": 2–5 words; fast identity (e.g. "Artificial food dye", "Processed seed oil")
+- "why_it_matters": exactly two short strings (plain English bullets; health/processing/role; no chemistry trivia unless it changes the decision)
+- "system_judgment": one sentence; clear product-level judgment (aim under ~80 characters when possible)
+- "impact_for_you": one sentence only; must state impact for THIS user using the personalization block when present—priority: allergy → celiac/gluten → sensitivity → goal → preference → additive/processed pattern → no conflict (say directly: "No conflicts with your current profile." when true)
+- "flag_driver": one of "allergy" | "sensitivity" | "goal" | "preference" | "processing" indicating the primary reason this ingredient is highlighted for this user
+- "profile_anchor": short key or phrase for the matched profile driver (examples: "more_protein", "low_sugar", "vegan", "milk")
+- "actionability": one of "avoid" | "limit" | "okay" to support quick UI chips
+- "confidence": "high" or "medium"
+
+Tone: calm, modern, direct. Never write hypothetically. Never use: "if you avoid", "some people", "you may want to", "worth noting", "neutral for most people", or similar hedging.
+
+PERSONALIZATION ENFORCEMENT (strict):
+- Never use generic cohort phrasing like "not suitable for diabetics," "not suitable for athletes," "not suitable for people with X," "people with allergies should avoid," or "those trying to lose weight."
+- Always anchor reasoning to THIS user profile using second person ("you", "your profile", "your goal", "your preferences").
+- For every ingredient rated "concerning" or "avoid", make impact_for_you explicitly answer: "Why was this flagged for this user specifically?" in one sentence.
+- If the user has no allergy/sensitivity/preference conflict on that ingredient, tie impact_for_you to the strongest active profile signal in this order: stated goal -> scoring preferences -> Fillr additive/processing caution baseline.
+- If there is truly no personalized conflict, state that directly in impact_for_you ("No direct conflicts with your current profile, but this is flagged due to Fillr's additive/processing rules.").
+- whyItMattersYou must align with impact_for_you and cannot fall back to generic population advice.
+
+GOAL TEMPLATE ENFORCEMENT (when profile goal is more_protein or build_muscle):
+- For goal-relevant flagged ingredients, mention at least one of these concrete angles in impact_for_you or whyItMattersYou:
+  1) protein source quality/completeness,
+  2) additive/sweetener tradeoff in a protein product,
+  3) satiety/recovery relevance in plain non-medical language.
+- Keep this practical and user-specific ("for your protein goal"), not generic population advice.
+
+Intelligence strings may be short. Legacy fields (headline, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, whyItMattersYou, ratingReason) must still each be at least 25 characters with sentence-ending punctuation—expand the intelligence copy into those fields without changing meaning or contradicting rating.
+
+Output valid JSON only (no markdown fences). Every required legacy prose field must be at least 25 characters and end with . or ! or ? — never truncate mid-sentence. viralHook must end with . ! or ?
 
 Before returning your JSON response, review each ingredient
 rating against the fixed lists above. If any ingredient on
 the fixed lists has been given a different rating, correct it.
 Return the corrected version only.`
+
+/** Compact system prompt for barcode background enrichment. Keep this fast. */
+export function buildCompactIngredientAnalysisSystemPrompt(
+  profile: DietaryProfile | null | undefined
+): string {
+  return `You are Fillr's packaged-food ingredient decoder. Return valid JSON only.
+
+Language:
+- Every user-visible string must be clear English.
+- Keep sentences complete, practical, and shopper-friendly.
+- Do not use generic filler like "commonly found on labels" or "used for taste, texture, and shelf life" unless tied to the exact ingredient.
+
+Required output shape:
+{
+  "productVerdict": string,
+  "productAnalysis": {},
+  "ingredients": [
+    {
+      "name": string,
+      "ingredient_name": string,
+      "short_label": string,
+      "why_it_matters": [string, string],
+      "system_judgment": string,
+      "impact_for_you": string,
+      "flag_driver": "allergy" | "sensitivity" | "goal" | "preference" | "processing",
+      "profile_anchor": string,
+      "actionability": "avoid" | "limit" | "okay",
+      "confidence": "high" | "medium",
+      "headline": string,
+      "labelDecoder": string,
+      "whatItIs": string,
+      "whatItDoes": string,
+      "bodyEffect": string,
+      "funFact": string,
+      "whyItMattersYou": string,
+      "rating": "clean" | "okay" | "concerning" | "avoid",
+      "ratingReason": string,
+      "contextStat": string
+    }
+  ]
+}
+
+Rating rules:
+- clean: recognizable whole-food/minimally processed ingredients such as water, milk, cream, cocoa, peanuts, eggs, plain spices, honey, maple syrup.
+- okay: common processed but low-concern ingredients such as sugar, salt, wheat flour, vegetable oil, starches, citric acid, sodium citrate, baking powder.
+- concerning: additives/processing signals such as natural flavors, artificial flavors/colors, preservatives, emulsifiers, gums, mono- and diglycerides, carrageenan, polysorbates, maltodextrin, high-fructose corn syrup.
+- avoid: direct allergy conflict for this user, clear gluten conflict for strict celiac, partially hydrogenated oil, titanium dioxide, potassium bromate, BVO, Red 3, or other strong safety/regulatory red flags.
+- If unsure between two ratings, choose the more cautious one.
+
+Ingredient rules:
+- Include exactly one ingredient object for every requested line, in the same order.
+- name and ingredient_name must exactly match the input line.
+- All legacy prose fields must be at least 25 characters and end with punctuation.
+- why_it_matters must contain exactly two useful, non-repetitive strings.
+- productAnalysis must be {}.
+- productVerdict must be one honest sentence.
+- For milk, cream, whey, casein, lactose, butter, cheese, yogurt: identify as dairy and make profile impact explicit if dairy/milk/lactose/vegan is relevant.
+- For emulsifiers/gums/stabilizers: explain the texture/stability role and why it is a processing signal.
+- For sugars/syrups/starches: explain fast carbohydrate or sweetener role.
+- Never truncate mid-sentence.
+${buildPersonalizationSystemAppend(profile)}`
+}
 
 export function formatNutritionJsonForPrompt(
   nutritionJson: Record<string, unknown> | null | undefined
@@ -294,15 +639,79 @@ Use only these values for this product’s numbers. When comparing to famous bra
 `
 }
 
+export function formatDetectedPatternsForPrompt(
+  patterns: ProductPatternDetection | null | undefined
+): string {
+  if (!patterns) return ''
+  const lines: string[] = []
+  if (patterns.sugarSources.length) lines.push(`- sugarSources: ${patterns.sugarSources.join(', ')}`)
+  if (patterns.emulsifiers.length) lines.push(`- emulsifiers: ${patterns.emulsifiers.join(', ')}`)
+  if (patterns.modifiedOils.length) lines.push(`- modifiedOils: ${patterns.modifiedOils.join(', ')}`)
+  if (patterns.proteinIsolates.length) lines.push(`- proteinIsolates: ${patterns.proteinIsolates.join(', ')}`)
+  if (patterns.fiberAdditives.length) lines.push(`- fiberAdditives: ${patterns.fiberAdditives.join(', ')}`)
+  if (patterns.productPatternSummary.length) {
+    lines.push(`- patternSummary: ${patterns.productPatternSummary.join(' | ')}`)
+  }
+  if (!lines.length) return ''
+  return `
+
+Detected patterns (deterministic pre-scan signals; use as hints, then verify against ingredient list):
+${lines.join('\n')}
+`
+}
+
 /** Prepended to the user message when text came from a label photo (OCR). */
-export const OCR_INGREDIENT_ANALYSIS_PREFIX = `IMPORTANT: These ingredients were extracted via OCR from a food label photograph. The text may contain minor recognition errors. Before analyzing, silently correct obvious OCR artifacts:
-- "corn symp" → corn syrup
-- "artiflcial" → artificial
-- "modiied" → modified
-- "highfructose" → high fructose
-- "rnonosodium" → monosodium
-- Single stray letters at word boundaries — remove or fix when obvious
-If an ingredient is unrecognizable after correction, include it with rating "concerning" (or "okay" if harmless) and note "OCR unclear" in ratingReason — do not invent ingredients.
+export const OCR_INGREDIENT_ANALYSIS_PREFIX = `IMPORTANT: These ingredients were extracted via OCR from a food label photograph. The raw text may contain recognition errors. Before analyzing, silently reconstruct the correct ingredient list using the rules below.
+
+RECONSTRUCTION RULES:
+
+1. CHARACTER SUBSTITUTION — fix common OCR misreads:
+   - rn → m ("rnonosodium" → monosodium, "artiflcial" → artificial, "rnalt" → malt)
+   - 0 → O or o when in a word context ("s0dium" → sodium, "gl0cose" → glucose)
+   - 1 → l or i ("1actic" → lactic, "1ecithin" → lecithin, "tocopherc1" → tocopherol)
+   - l → I at word start before uppercase ("lngredients" → Ingredients)
+   - vv → w ("vvhey" → whey, "svveetener" → sweetener)
+   - ii → n or u in chemical names ("disodiiim" → disodium, "calciim" → calcium)
+   - 6 → G, 8 → B when in word context ("8eta-carotene" → Beta-carotene)
+   - Missing space between adjacent words run together ("cornstarch" may be "corn starch" — use ingredient knowledge to decide)
+
+2. CHEMICAL & ADDITIVE NAMES — reconstruct garbled scientific names using ingredient domain knowledge:
+   - Partial: "tocophe" → tocopherol, "carrag" → carrageenan, "xanth" → xanthan gum
+   - Broken: "mono-and diglycer" → mono- and diglycerides
+   - Truncated at line break: if an ingredient ends mid-word with no comma, it likely continues on the next token — merge if the result is a valid ingredient
+   - E-numbers: "E471", "E322", "E330" are valid ingredients — do not alter them
+
+3. BILINGUAL LABELS (English/French) — Canada and Quebec labels list ingredients twice:
+   - Identify when the same ingredient list appears in both languages (French follows English or vice versa)
+   - Use ONLY the English version for analysis
+   - French signals: "ingrédients", "contient", "amidon", "farine", "huile", "lait", "sel", "sucre", "eau"
+   - If only French is present, translate silently before analyzing — do not flag this as an error
+
+4. WARNINGS, DISCLAIMERS & NON-INGREDIENT BLOCKS — CRITICAL:
+   Regulatory advisory text, safety copy, and marketing footers are NOT ingredients. They must NEVER appear as rows in the "ingredients" array (no name, no rating, no analysis).
+   Strip these entirely before building the ingredient list. Do not summarize them as ingredients. Do not rate a sentence of legal text as "concerning" unless it is a real chemical name.
+   Typical patterns (English, French, Spanish, and OCR garbles of the same):
+   - Caffeine / stimulant notices: "high caffeine content", "not recommended for children", "pregnant women", "breastfeeding", "sensitive to caffeine", "consume in moderation"
+   - Health advisories: "consult your physician", "medical supervision", "not intended to diagnose", "dietary supplement" boilerplate, "keep out of reach of children"
+   - Allergen advisory sentences (when separate from the actual "Ingredients:" list): "may contain", "peut contenir", "manufactured in a facility", "traces of", "processed in a facility that also handles"
+   - Storage / usage: "refrigerate after opening", "shake well", "best before", batch codes, "KEEP REFRIGERATED", "see bottom for lot"
+   - Identity / logistics: net weight, UPC/barcode digits, "manufactured by", "distributed by", "imported by", URLs, phone numbers, addresses
+   - Standalone headers without a food substance: "WARNING", "ATTENTION", "CAUTION", "AVERTISSEMENT", "PRECAUCIÓN"
+   Rule of thumb: if the line is advice, law, or logistics — omit it. If it names a substance added to the formula (e.g. "caffeine" as an ingredient in an energy drink), keep it as one ingredient term only when it appears in the actual ingredients enumeration, not in a warning paragraph.
+
+5. STRUCTURAL CLEANUP (ingredients only, after stripping warnings):
+   - Sub-ingredients in parentheses may have been broken across lines — reconstruct: "cheddar cheese (milk" + "cultures salt enzymes)" → "cheddar cheese (milk, cultures, salt, enzymes)"
+   - Commas missing between ingredients due to line breaks — re-insert when two adjacent tokens are clearly separate ingredients
+   - "Contains 2% or less of:" / "moins de 2% de:" introduces a sub-list — treat all following items as ingredients until the next structural marker or end of text
+   - "Ingredients:" / "INGREDIENTS:" begins the enumerative list — only text that belongs to that enumeration counts as ingredients
+
+6. CONFIDENCE THRESHOLD (for real ingredient tokens only):
+   - If a token is unrecognizable after OCR fixes AND cannot be inferred from context, include it as-is with rating "concerning" and ratingReason "OCR unclear — could not reconstruct"
+   - Never invent or assume an ingredient that has no basis in the OCR text
+   - Never silently drop a token that is plausibly part of the ingredients enumeration — if you cannot fix it, flag it
+   - Omitting entire warning/disclaimer paragraphs (rule 4) is required and is not "dropping" an ingredient
+
+Perform all reconstruction silently. Do not mention corrections in your output unless a token was irrecoverable (use "OCR unclear" only in that case). Output only the analyzed ingredient list in the required JSON format.
 
 `
 
@@ -343,6 +752,15 @@ Return a single JSON object with this exact top-level shape:
   "ingredients": [
     {
       "name": string,
+      "ingredient_name": string,
+      "short_label": string,
+      "why_it_matters": [ string, string ],
+      "system_judgment": string,
+      "impact_for_you": string,
+      "flag_driver": "allergy" | "sensitivity" | "goal" | "preference" | "processing",
+      "profile_anchor": string,
+      "actionability": "avoid" | "limit" | "okay",
+      "confidence": "high" | "medium",
       "headline": string,
       "labelDecoder": string,
       "whatItIs": string,
@@ -361,12 +779,16 @@ Field rules:
 - productVerdict: honest overall sentence; must not sound positive if any ingredient is concerning or avoid.
 - productAnalysis.viralHook: must NOT be upbeat if any concerning/avoid ingredients exist (see system rules).
 - productAnalysis.bottomLine: harsh when deserved; never call a junky formulation "clean" or "simple."
+- productAnalysis fields must be written to this user (second person), not generic cohorts ("people with...", "those who...").
 - productAnalysis.labelVsReality: 1–5 items when inferable; else [].
 - productAnalysis.redFlags: 0–6 sentences.
 - productAnalysis.whatTheyDontTellYou: 1–2 short sentences, plain language.
 - productAnalysis.whoShouldAvoid: one sentence.
-- Per ingredient: prose fields at least 25 characters, ending with . ! or ?; contextStat may be "".
+- Per ingredient: legacy prose fields at least 25 characters, ending with . ! or ?; contextStat may be "".
 - labelDecoder and whyItMattersYou are mandatory for every ingredient (same length/punctuation rules).
+- Per ingredient: also include ingredient_name, short_label, why_it_matters (two strings), system_judgment, impact_for_you, confidence per system instructions (intelligence copy may be compact).
+- Every ingredient rated "concerning" or "avoid" must include a user-specific reason in impact_for_you and whyItMattersYou (why this is flagged for this exact profile).
+- Every ingredient row (including clean/okay) must include at least one concrete tradeoff or practical insight in funFact or whyItMattersYou (no generic filler).
 
 COVERAGE (mandatory):
 - The label text above has already had parenthetical and bracketed sub-lists removed — each comma/semicolon-separated phrase is one top-level ingredient (e.g. "Enriched wheat flour" is one line, not separate niacin/iron lines).
@@ -388,28 +810,41 @@ Rules:
  */
 export function buildPartialIngredientAnalysisUserPrompt(
   uncachedNames: string[],
-  nutritionAppend?: string
+  nutritionAppend?: string,
+  options?: {
+    productCategory?: string
+    hasUnmappedFrenchLikeName?: boolean
+  }
 ): string {
   const n = uncachedNames.length
   const list = uncachedNames.map((s) => s.trim()).filter(Boolean).join('; ')
-  return `You are decoding ONLY these ${n} ingredient line(s) from a longer product label (other lines are already handled). Names in order:
+  const categoryHint = options?.productCategory
+    ? `\nCategory context: this product is best classified as "${options.productCategory}". Keep product-level framing aligned with that category (do not default to snack framing for dairy/condiment/beverage products).`
+    : ''
+  const frenchHint = options?.hasUnmappedFrenchLikeName
+    ? '\nSome ingredient names may be French or bilingual label terms. If a line is unfamiliar, infer the likely English ingredient identity before describing it, and keep the decoded explanation specific to that ingredient.'
+    : ''
+  return `Decode ONLY these ${n} ingredient line(s), in this exact order:
 ${list}${nutritionAppend ?? ''}
+${categoryHint}${frenchHint}
 
-Return a single JSON object with this exact shape:
+Return JSON:
 {
   "productVerdict": string,
   "productAnalysis": {},
-  "ingredients": [ ... exactly ${n} objects in the SAME ORDER as the list above; each "name" must match the corresponding list entry ... ]
+  "ingredients": [ ... exactly ${n} objects, same order as input ... ]
 }
 
-Each ingredient object must include: name, headline, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, whyItMattersYou, rating (clean|okay|concerning|avoid), ratingReason, contextStat (string, may be "").
+Each ingredient object must include:
+name, ingredient_name, short_label, why_it_matters (2 strings), system_judgment, impact_for_you, flag_driver, profile_anchor, actionability, confidence, headline, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, whyItMattersYou, rating (clean|okay|concerning|avoid), ratingReason, contextStat.
 
 Rules:
-- productVerdict: one honest sentence (≥25 characters, ending with . ! or ?) about these ingredients only; do not claim the entire product label was fully analyzed.
-- productAnalysis must be {} (empty object).
-- Apply the FIXED rating lists from your system instructions first for every ingredient.
-- Same prose rules as the full analysis: every prose field ≥25 characters, ending with . ! or ?, English only.
-- Return ONLY valid JSON, no markdown, no code fences.`
+- Apply FIXED rating rules from the system prompt first.
+- productVerdict: one honest sentence about these ingredients only (>=25 chars, ending punctuation).
+- productAnalysis must be {}.
+- Plain-English legacy prose fields only (>=25 chars, ending punctuation).
+- "name" and "ingredient_name" must exactly match each input ingredient line.
+- Output valid JSON only; no markdown/code fences.`
 }
 
 export function buildSingleIngredientRepairUserPrompt(
@@ -421,15 +856,19 @@ ${fullIngredientsList}
 
 Re-analyze ONLY this one ingredient, exactly as it appears on the label: "${ingredientName}"
 
+The ingredient name may be French or bilingual; if so, infer the standard English identity before explaining it.
+
 Apply the FIXED rating lists from your system instructions first. Return a single JSON object with the SAME top-level shape as the full analysis (productVerdict, productAnalysis, ingredients with exactly ONE object in ingredients). Keep productVerdict and productAnalysis consistent with the severity of the full list.
 
 Each ingredient object must include contextStat (string, may be "").
 
-Every prose field must be at least 25 characters and end with . ! or ?. Include labelDecoder and whyItMattersYou on the single ingredient object. All strings must be in English. Return ONLY valid JSON, no markdown.`
+Every legacy prose field must be at least 25 characters and end with . ! or ?. Include intelligence keys (ingredient_name, short_label, why_it_matters, system_judgment, impact_for_you, flag_driver, profile_anchor, actionability, confidence) plus labelDecoder and whyItMattersYou on the single ingredient object. All strings must be in English. Return ONLY valid JSON, no markdown.`
 }
 
 export type IngredientAnalysisItem = {
   name: string
+  /** Exact label line when the model also sends `ingredient_name` (used for merge alignment). */
+  ingredient_name?: string
   headline: string
   /** Plain-English single-sentence label decode. */
   labelDecoder: string
@@ -445,10 +884,30 @@ export type IngredientAnalysisItem = {
   contextStat?: string
   ratingSource?: 'ai' | 'deterministic' | 'personal'
   ratingOverridden?: boolean
-  personalFlag?: 'allergy' | 'sensitivity' | 'avoiding' | 'preference_conflict'
+  personalFlag?: 'allergy' | 'sensitivity' | 'avoiding' | 'preference_conflict' | 'celiac'
   personalMessage?: string
   /** True when this row was built from `ingredient_knowledge` cache, not a fresh model response. */
   from_cache?: boolean
+  /** Fillr ingredient intelligence — compact identity (2–5 words). */
+  shortLabel?: string
+  /** Exactly two non-repetitive bullets (plain English). */
+  whyItMattersBullets?: readonly [string, string]
+  /** One sentence: product-level judgment. */
+  systemJudgment?: string
+  /** One sentence: direct user-profile impact (no hedging). */
+  impactForYou?: string
+  /** Structured reason driver for UI chips/order. */
+  flagDriver?: 'allergy' | 'sensitivity' | 'goal' | 'preference' | 'processing'
+  /** Structured profile key (goal/preference/allergen) linked to the flag. */
+  profileAnchor?: string
+  /** Quick decision hint for card chips. */
+  actionability?: 'avoid' | 'limit' | 'okay'
+  intelligenceConfidence?: 'high' | 'medium'
+  /** Optional evidence trace fields for transparency UI. */
+  evidenceRuleMatched?: string
+  evidenceSource?: string
+  evidenceConfidence?: 'high' | 'medium' | 'low'
+  evidenceLastVerifiedAt?: string
 }
 
 export type ProductIngredientAnalysisResponse = {

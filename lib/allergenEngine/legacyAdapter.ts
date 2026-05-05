@@ -51,7 +51,7 @@ export function toLegacyAllergenCheckResult(
   if (overall_status === 'UNKNOWN') {
     message = 'Ingredients unavailable; cannot verify allergens.'
     if (fallback_ctas?.scan_label_photo || fallback_ctas?.paste_ingredients_manually) {
-      message += ' Scan label photo or paste ingredients manually to check.'
+      message += ' Scan label photo to check.'
     }
   } else if (overall_status === 'CONTAINS') {
     message = `Contains: ${detectedAllergens.join(', ')}`

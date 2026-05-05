@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native'
+import { View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { FillrFitSnapshot } from '../types'
 import { theme } from '../constants/theme'
@@ -16,30 +16,70 @@ function isUnsafeVerdict(verdict: string): boolean {
   return /unsafe/i.test(verdict.trim())
 }
 
+/** Must match `scoreNumberColor` tiers so the bar reads as the same “temperature” as the digits. */
 function progressGradient(score: number, verdict: string): readonly [string, string] {
   if (score < 20 || isUnsafeVerdict(verdict)) {
     return ['#ef4444', '#dc2626'] as const
   }
   if (score < 40) {
-    return ['#f59e0b', '#d97706'] as const
+    return [theme.additive.accent, theme.additive.text] as const
   }
-  return [theme.green700, theme.green500] as const
+  if (score < 60) {
+    return [theme.processed.accent, theme.processed.text] as const
+  }
+  if (score < 80) {
+    return [theme.green700, theme.green500] as const
+  }
+  return [theme.green500, '#4ade80'] as const
 }
 
 function ScoreSkeleton() {
   const o = useRef(new Animated.Value(0.4)).current
+  const sweep = useRef(new Animated.Value(0)).current
   useEffect(() => {
-    const loop = Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(o, { toValue: 0.75, duration: 700, useNativeDriver: true }),
         Animated.timing(o, { toValue: 0.4, duration: 700, useNativeDriver: true }),
       ])
     )
-    loop.start()
-    return () => loop.stop()
-  }, [o])
+    const sweepLoop = Animated.loop(
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      })
+    )
+    pulseLoop.start()
+    sweepLoop.start()
+    return () => {
+      pulseLoop.stop()
+      sweepLoop.stop()
+    }
+  }, [o, sweep])
+
+  const sweepTranslate = sweep.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-220, 220],
+  })
   return (
     <View style={styles.scoreLoadingContainer} accessibilityLabel="Analyzing ingredients score">
+      <View style={styles.scoreLoadingTopRow}>
+        <Animated.View style={[styles.scoreLoadingNumber, { opacity: o }]} />
+        <Animated.View style={[styles.scoreLoadingVerdict, { opacity: o }]} />
+      </View>
+      <View style={styles.scoreLoadingTrack}>
+        <Animated.View
+          style={[
+            styles.scoreLoadingSweep,
+            {
+              opacity: o,
+              transform: [{ translateX: sweepTranslate }],
+            },
+          ]}
+        />
+      </View>
       <Animated.View style={[styles.scoreLoadingPulse, { opacity: o }]} />
       <Text style={styles.scoreLoadingText}>Analysing ingredients...</Text>
     </View>
@@ -62,9 +102,16 @@ export function ScoreDisplay({ fillrFit, isLoading }: ScoreDisplayProps) {
       progressAnim.setValue(0)
       return
     }
+    const target = Math.min(100, Math.max(0, fillrFit.score))
     progressAnim.setValue(0)
+    // iOS: layout-driven width animation (`useNativeDriver: false`) during a full product re-render
+    // (e.g. OCR decode landing) can freeze the UI long enough for SpringBoard to kill the app.
+    if (Platform.OS === 'ios') {
+      progressAnim.setValue(target)
+      return
+    }
     Animated.timing(progressAnim, {
-      toValue: Math.min(100, Math.max(0, fillrFit.score)),
+      toValue: target,
       duration: 600,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
@@ -128,10 +175,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
   },
+  scoreLoadingTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  scoreLoadingNumber: {
+    width: 96,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#e5e7eb',
+  },
+  scoreLoadingVerdict: {
+    width: 126,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: '#e5e7eb',
+  },
+  scoreLoadingTrack: {
+    height: 8,
+    borderRadius: 100,
+    backgroundColor: '#e5e7eb',
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  scoreLoadingSweep: {
+    width: '35%',
+    height: 8,
+    borderRadius: 100,
+    backgroundColor: '#cbd5e1',
+  },
   scoreLoadingPulse: {
-    width: '100%',
-    height: 58,
-    borderRadius: 12,
+    width: '92%',
+    height: 14,
+    borderRadius: 8,
     backgroundColor: '#e5e7eb',
   },
   scoreLoadingText: {
@@ -182,7 +260,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     height: 8,
-    backgroundColor: theme.greenTrack,
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
     borderRadius: 100,
     marginBottom: 8,
     overflow: 'hidden',
@@ -197,9 +275,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: theme.textFaint,
     lineHeight: 15,
-  },
-  skel: {
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
   },
 })

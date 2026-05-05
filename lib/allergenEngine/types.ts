@@ -11,6 +11,7 @@ export type CeliacSignalType =
   | 'EXPLICIT_GRAIN'
   | 'BARLEY_MALT'
   | 'AMBIGUOUS_MALT'
+  | 'BREWERS_YEAST'
   | 'ALLERGEN_SECTION'
   | 'MAY_CONTAIN'
   | 'OATS'

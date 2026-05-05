@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   View,
   Text,
@@ -10,8 +10,8 @@ import {
   UIManager,
 } from 'react-native'
 import type { CeliacSignal, IngredientExplanation, IngredientRating } from '../types'
-import { isIngredientCopyBoilerplate } from '../lib/fillrAdapter'
 import { resolveIngredientDisplayRating } from '../lib/resolveIngredientDisplayRating'
+import { buildIngredientCardViewModel } from '../lib/buildIngredientCardViewModel'
 import { theme } from '../constants/theme'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -61,64 +61,28 @@ function capitalizeFirstOnly(s: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()
 }
 
-function firstSentence(s: string): string {
-  const t = s.trim()
-  if (!t) return ''
-  const cut = t.split(/(?<=[.!?])\s+/)[0] ?? t
-  return cut.trim()
-}
-
-function buildTranslationLine(ingredient: IngredientExplanation): string {
-  const whatItIs = firstSentence(ingredient.whatItIs || '')
-  const whatItDoes = firstSentence(
-    (ingredient.whatItDoes ?? ingredient.whyItsUsed ?? '').trim() || ingredient.whatItIs || ''
-  )
-  const decode = (ingredient.labelDecoder || '').trim()
-  if (decode && decode.includes('—') && !isIngredientCopyBoilerplate(decode)) return decode
-  if (whatItIs && whatItDoes && whatItIs !== whatItDoes) {
-    return `${whatItIs} — ${whatItDoes}`
-  }
-  if (whatItIs) return whatItIs
-  return (
-    ingredient.headline?.trim() ||
-    ingredient.quickSummary?.trim() ||
-    (ingredient.explanation || '').trim().split('.').slice(0, 2).join('. ') ||
-    ''
-  )
-}
-
-function buildExpandedDescription(ingredient: IngredientExplanation): string {
-  const parts: string[] = []
-  const main = buildTranslationLine(ingredient).trim()
-  if (main) parts.push(main)
-  const body = (ingredient.bodyEffect || '').trim()
-  if (body) parts.push(body)
-  const note = (ingredient.personalizedNote || '').trim()
-  if (note) parts.push(note)
-  const amb = ingredient.sourceAmbiguity?.message?.trim()
-  if (amb) parts.push(amb)
-  const out = parts.join('\n\n').trim()
-  return out || 'No extra detail for this ingredient yet.'
-}
-
 export interface IngredientCardProps {
   ingredient: IngredientExplanation
   expanded?: boolean
   onToggleExpanded?: () => void
+  onUncertaintyAction?: (action: 'verify_label' | 'retake_photo') => void
   allergyMatch?: boolean
   sensitivityMatch?: boolean
   celiacMatch?: CeliacSignal | null
   compactPreview?: boolean
+  reasonChipLabel?: string | null
 }
 
 export function IngredientCard({
   ingredient,
   expanded: expandedProp,
   onToggleExpanded,
+  onUncertaintyAction,
   allergyMatch = false,
   sensitivityMatch = false,
   celiacMatch = null,
   compactPreview = false,
+  reasonChipLabel = null,
 }: IngredientCardProps) {
   const expanded = Boolean(expandedProp)
   const rotate = useRef(new Animated.Value(expanded ? 1 : 0)).current
@@ -126,12 +90,16 @@ export function IngredientCard({
   const rating = resolveIngredientDisplayRating(ingredient, allergyMatch, sensitivityMatch)
   const ui = RATING_UI[rating]
 
-  const accentColor =
-    celiacMatch?.severity === 'AVOID'
-      ? theme.flagged.accent
-      : celiacMatch?.severity === 'CAUTION'
-        ? theme.additive.accent
-        : ui.accent
+  const vm = useMemo(
+    () =>
+      buildIngredientCardViewModel(ingredient, {
+        displayRating: rating,
+        allergyMatch,
+        sensitivityMatch,
+        celiacMatch: Boolean(celiacMatch),
+      }),
+    [ingredient, rating, allergyMatch, sensitivityMatch, celiacMatch]
+  )
 
   useEffect(() => {
     Animated.timing(rotate, {
@@ -146,10 +114,24 @@ export function IngredientCard({
     outputRange: ['0deg', '180deg'],
   })
 
+  /** Traceability lines exist for every row; only show when something is actually flagged or called out. */
+  const showFlagReasoning =
+    vm.evidence.length > 0 &&
+    (rating === 'avoid' ||
+      rating === 'concerning' ||
+      allergyMatch ||
+      sensitivityMatch ||
+      Boolean(celiacMatch) ||
+      Boolean(reasonChipLabel))
+
   const toggle = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    if (Platform.OS === 'android') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    }
     onToggleExpanded?.()
   }
+
+  const showCollapsedSubtitle = Boolean(vm.shortLabel)
 
   return (
     <Pressable
@@ -158,12 +140,28 @@ export function IngredientCard({
       style={({ pressed }) => [pressed && !compactPreview && { opacity: 0.96 }]}
     >
       <View style={[styles.outer, expanded ? styles.outerOpen : styles.outerCollapsed]}>
-        <View style={[styles.accent, { backgroundColor: accentColor }]} />
         <View style={styles.body}>
           <View style={styles.headerRow}>
-            <Text style={styles.name} numberOfLines={4}>
-              {capitalizeFirstOnly(ingredient.name)}
-            </Text>
+            <View style={styles.titleCol}>
+              <Text style={styles.name} numberOfLines={4}>
+                {capitalizeFirstOnly(vm.title)}
+              </Text>
+              {showCollapsedSubtitle ? (
+                <Text style={styles.collapsedSubtitle} numberOfLines={8}>
+                  {vm.shortLabel}
+                </Text>
+              ) : null}
+              {reasonChipLabel ? (
+                <View style={styles.reasonChip}>
+                  <Text style={styles.reasonChipText}>{reasonChipLabel}</Text>
+                </View>
+              ) : null}
+              {vm.uncertaintyLabel ? (
+                <View style={styles.uncertaintyChip}>
+                  <Text style={styles.uncertaintyChipText}>{vm.uncertaintyLabel}</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.headerRight}>
               <View style={[styles.badge, { backgroundColor: ui.badgeBg }]}>
                 <Text style={[styles.badgeText, { color: ui.badgeText }]}>{ui.badgeLabel}</Text>
@@ -179,7 +177,79 @@ export function IngredientCard({
             ingredient.aiDecodePending ? (
               <Text style={styles.decodePlaceholder}>Decoding...</Text>
             ) : (
-              <Text style={styles.description}>{buildExpandedDescription(ingredient)}</Text>
+              <View style={styles.expandedBlock}>
+                {vm.bullets.length > 0 ? (
+                  <View style={styles.bulletList}>
+                    {vm.bullets.map((line, i) => (
+                      <View key={`b-${i}`} style={styles.bulletRow}>
+                        <Text style={styles.bulletGlyph} accessibilityElementsHidden>
+                          {'\u2022'}
+                        </Text>
+                        <Text style={styles.bulletText}>{line}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {vm.systemJudgment && rating === 'avoid' ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Why Fillr flagged this</Text>
+                    <Text style={styles.sectionBody}>{vm.systemJudgment}</Text>
+                  </View>
+                ) : null}
+
+                {vm.impactForYou ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Impact for you</Text>
+                    <Text style={styles.sectionBody}>{vm.impactForYou}</Text>
+                  </View>
+                ) : null}
+
+                {vm.fallbackBody ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>About this ingredient</Text>
+                    <Text style={styles.fallbackBody}>{vm.fallbackBody}</Text>
+                  </View>
+                ) : null}
+
+                {vm.confidence === 'medium' ? (
+                  <Text style={styles.confidenceHint}>Model confidence: medium</Text>
+                ) : null}
+                {showFlagReasoning ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Why this was flagged</Text>
+                    {vm.evidence.map((item) => (
+                      <Text key={`${item.label}-${item.value}`} style={styles.evidenceLine}>
+                        <Text style={styles.evidenceLabel}>{item.label}: </Text>
+                        {item.value}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {vm.uncertaintyLabel && onUncertaintyAction ? (
+                  <View style={styles.uncertaintyActionsRow}>
+                    <Pressable
+                      onPress={() => onUncertaintyAction('verify_label')}
+                      style={({ pressed }) => [styles.uncertaintyGhostBtn, pressed && { opacity: 0.88 }]}
+                    >
+                      <Text style={styles.uncertaintyGhostBtnText}>Verify label</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onUncertaintyAction('retake_photo')}
+                      style={({ pressed }) => [styles.uncertaintyPrimaryBtn, pressed && { opacity: 0.9 }]}
+                    >
+                      <Text style={styles.uncertaintyPrimaryBtnText}>Retake photo</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                {vm.footnote ? (
+                  <Text style={styles.footnote} numberOfLines={6}>
+                    {vm.footnote}
+                  </Text>
+                ) : null}
+              </View>
             )
           ) : null}
         </View>
@@ -190,7 +260,6 @@ export function IngredientCard({
 
 const styles = StyleSheet.create({
   outer: {
-    flexDirection: 'row',
     backgroundColor: theme.cardBg,
     borderRadius: theme.cardRadius,
     marginBottom: 8,
@@ -212,10 +281,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  accent: {
-    width: 4,
-    alignSelf: 'stretch',
-  },
   body: {
     flex: 1,
     paddingVertical: 13,
@@ -224,20 +289,64 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
-  name: {
+  titleCol: {
     flex: 1,
+    minWidth: 0,
+  },
+  name: {
     fontSize: 13.5,
     fontWeight: '600',
     color: theme.textPrimary,
     letterSpacing: -0.1,
   },
+  collapsedSubtitle: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.textMuted,
+    letterSpacing: -0.05,
+    lineHeight: 17,
+  },
+  reasonChip: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: '#fff2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  reasonChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.flagged.text,
+    letterSpacing: 0.2,
+  },
+  uncertaintyChip: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
+  uncertaintyChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400e',
+    letterSpacing: 0.2,
+  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
+    paddingTop: 1,
   },
   badge: {
     paddingVertical: 3,
@@ -254,14 +363,113 @@ const styles = StyleSheet.create({
     color: theme.textDisabled,
     fontSize: 10,
   },
-  description: {
-    marginTop: 8,
-    fontSize: 12,
+  expandedBlock: {
+    marginTop: 12,
+    paddingTop: 2,
+    gap: 0,
+  },
+  bulletList: {
+    marginBottom: 12,
+    gap: 8,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  bulletGlyph: {
+    fontSize: 13,
     color: theme.textMuted,
     lineHeight: 19,
+    marginTop: 0,
+    width: 14,
+    textAlign: 'center',
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: theme.textSecondary,
+    lineHeight: 19,
+  },
+  section: {
+    marginBottom: 14,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.85,
+    textTransform: 'uppercase',
+    color: theme.textFaint,
+    marginBottom: 5,
+  },
+  sectionBody: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.textSecondary,
+    lineHeight: 20,
+  },
+  fallbackBody: {
+    fontSize: 12.5,
+    color: theme.textMuted,
+    lineHeight: 20,
+  },
+  confidenceHint: {
+    marginTop: -4,
+    marginBottom: 10,
+    fontSize: 11,
+    color: theme.textFaint,
+    fontStyle: 'italic',
+  },
+  evidenceLine: {
+    color: theme.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
+  evidenceLabel: {
+    fontWeight: '700',
+    color: theme.textPrimary,
+  },
+  uncertaintyActionsRow: {
+    marginTop: -2,
+    marginBottom: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  uncertaintyGhostBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.cardBorderOpen,
+    backgroundColor: '#f8fafc',
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  uncertaintyGhostBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.textSecondary,
+  },
+  uncertaintyPrimaryBtn: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: '#1f9f63',
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  uncertaintyPrimaryBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#f6fffa',
+  },
+  footnote: {
+    fontSize: 11.5,
+    color: theme.textFaint,
+    lineHeight: 17,
+    marginTop: -4,
   },
   decodePlaceholder: {
-    marginTop: 8,
+    marginTop: 10,
     minHeight: 76,
     fontSize: 12,
     color: '#9ca3af',

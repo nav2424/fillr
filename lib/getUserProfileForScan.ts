@@ -5,6 +5,7 @@
 import { useUserStore } from '../store/userStore'
 import { PRESET_ALLERGIES } from '../constants/dietProfilePresets'
 import type { DietaryProfile } from '../types'
+import { PREFERENCE_OPTIONS, SENSITIVITY_OPTIONS } from '../types'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { getUserProfile } = require('../store/userProfileStore.js') as {
@@ -58,6 +59,82 @@ export function sensitivityKeyToSlug(key: string): string {
 
 export function preferenceKeyToSlug(key: string): string {
   return ZUSTAND_PREF_TO_DIET_SLUG[key] ?? key.toLowerCase().replace(/_/g, ' ')
+}
+
+/** Normalize diet preset slugs from `edit-preferences` / AsyncStorage for comparisons. */
+function normDietSlug(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Map a diet-preset slug (e.g. from `PRESET_SENSITIVITIES`) to a `useUserStore` sensitivity key.
+ * The old partial map dropped most selections so the home watchlist stayed empty.
+ */
+export function dietSlugToSensitivityKey(slug: string): string | undefined {
+  const n = normDietSlug(slug)
+  const legacy: Record<string, string> = {
+    lactose: 'lactose',
+    msg: 'msg',
+    gluten: 'gluten_sensitivity',
+    'artificial sweeteners': 'artificial_sweeteners',
+    sulfites: 'sulfites',
+  }
+  if (legacy[n]) return legacy[n]
+  for (const o of SENSITIVITY_OPTIONS) {
+    if (normDietSlug(sensitivityKeyToSlug(o.key)) === n) return o.key
+  }
+  const asKey = n.replace(/\s+/g, '_').replace(/-/g, '_')
+  if (SENSITIVITY_OPTIONS.some((o) => o.key === asKey)) return asKey
+  return undefined
+}
+
+/**
+ * Map a diet-preset slug (e.g. from `PRESET_PREFERENCES`) to a `useUserStore` preference key.
+ */
+export function dietSlugToPreferenceKey(slug: string): string | undefined {
+  const n = normDietSlug(slug)
+  for (const o of PREFERENCE_OPTIONS) {
+    if (normDietSlug(preferenceKeyToSlug(o.key)) === n) return o.key
+  }
+  const asKey = n.replace(/\s+/g, '_').replace(/-/g, '_')
+  if (PREFERENCE_OPTIONS.some((o) => o.key === asKey)) return asKey
+  return undefined
+}
+
+/**
+ * Older saves wrote preset slugs to disk but `handleDone` dropped most keys when syncing Zustand.
+ * If the store is still empty while disk has selections, hydrate once so the home watchlist can render.
+ */
+export async function repairUserStoreSensitivitiesPreferencesFromDisk(): Promise<void> {
+  try {
+    const stored = await getUserProfile()
+    const z = useUserStore.getState()
+    const zSens = [
+      ...new Set(
+        stored.sensitivities
+          .map((s) => dietSlugToSensitivityKey(String(s)))
+          .filter((x): x is string => Boolean(x))
+      ),
+    ]
+    const zPrefs = [
+      ...new Set(
+        stored.preferences
+          .map((s) => dietSlugToPreferenceKey(String(s)))
+          .filter((x): x is string => Boolean(x))
+      ),
+    ]
+    if (zSens.length > 0 && z.sensitivities.length === 0) {
+      useUserStore.getState().setSensitivities(zSens)
+    }
+    if (zPrefs.length > 0 && z.preferences.length === 0) {
+      useUserStore.getState().setPreferences(zPrefs)
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function getUserProfileForScan(): Promise<DietaryProfile> {

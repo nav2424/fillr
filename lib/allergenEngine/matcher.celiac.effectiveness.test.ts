@@ -21,7 +21,14 @@ type Scenario = {
   expect: ExpectedSeverity
   /** Expect at least one of these signal types among matches (when expect !== SAFE) */
   expectAnySignal?: Array<
-    'EXPLICIT_GRAIN' | 'BARLEY_MALT' | 'AMBIGUOUS_MALT' | 'ALLERGEN_SECTION' | 'MAY_CONTAIN' | 'OATS' | 'CERTIFIED_GF'
+    | 'EXPLICIT_GRAIN'
+    | 'BARLEY_MALT'
+    | 'AMBIGUOUS_MALT'
+    | 'BREWERS_YEAST'
+    | 'ALLERGEN_SECTION'
+    | 'MAY_CONTAIN'
+    | 'OATS'
+    | 'CERTIFIED_GF'
   >
 }
 
@@ -94,6 +101,19 @@ const SHOULD_FLAG_AVOID: Scenario[] = [
     expect: 'AVOID',
     expectAnySignal: ['ALLERGEN_SECTION'],
   },
+  {
+    id: 'soy-sauce-typical-wheat',
+    ingredients: ['soy sauce (water, wheat, soybeans, salt)', 'sugar'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
+    id: 'french-contient-gluten-ancillary',
+    ingredients: ['sugar', 'cocoa'],
+    fullText: 'contient du gluten',
+    expect: 'AVOID',
+    expectAnySignal: ['ALLERGEN_SECTION'],
+  },
 ]
 
 /** Should stay clear — common non-gluten staples (specificity). */
@@ -128,6 +148,11 @@ const SHOULD_STAY_SAFE: Scenario[] = [
     ingredients: ['quinoa', 'millet', 'sunflower oil'],
     expect: 'SAFE',
   },
+  {
+    id: 'gluten-free-brewers-yeast-supplement',
+    ingredients: ['gluten free brewers yeast', 'rice flour'],
+    expect: 'SAFE',
+  },
 ]
 
 /** Ambiguous or cross-contact — expect CAUTION. */
@@ -159,6 +184,19 @@ const SHOULD_CAUTION: Scenario[] = [
     expectAnySignal: ['MAY_CONTAIN'],
   },
   {
+    id: 'french-peut-contenir-ble',
+    ingredients: ['chocolate', 'sugar'],
+    fullText: 'peut contenir des traces de ble',
+    expect: 'CAUTION',
+    expectAnySignal: ['MAY_CONTAIN'],
+  },
+  {
+    id: 'brewers-yeast-alone-caution',
+    ingredients: ['brewers yeast'],
+    expect: 'CAUTION',
+    expectAnySignal: ['BREWERS_YEAST'],
+  },
+  {
     id: 'oat-milk-not-gf-certified-line',
     ingredients: ['oat base (water, oats)', 'salt'],
     expect: 'CAUTION',
@@ -182,12 +220,6 @@ const KNOWN_LIMITATIONS: Scenario[] = [
     ingredients: ['brewers yeast', 'barley malt'],
     expect: 'AVOID',
     expectAnySignal: ['BARLEY_MALT'],
-  },
-  {
-    id: 'brewers-yeast-alone',
-    ingredients: ['brewers yeast'],
-    expect: 'SAFE',
-    // Not modeled; user should read label / brand.
   },
 ]
 
@@ -223,9 +255,9 @@ for (const s of ALL_SCENARIOS) {
 }
 
 test('celiac effectiveness: suite size (recall + specificity + caution + limits)', () => {
-  assert.ok(SHOULD_FLAG_AVOID.length >= 8, 'enough AVOID coverage')
-  assert.ok(SHOULD_STAY_SAFE.length >= 5, 'enough SAFE / specificity coverage')
-  assert.ok(SHOULD_CAUTION.length >= 4, 'enough CAUTION coverage')
+  assert.ok(SHOULD_FLAG_AVOID.length >= 10, 'enough AVOID coverage')
+  assert.ok(SHOULD_STAY_SAFE.length >= 6, 'enough SAFE / specificity coverage')
+  assert.ok(SHOULD_CAUTION.length >= 6, 'enough CAUTION coverage')
   assert.equal(
     ALL_SCENARIOS.length,
     SHOULD_FLAG_AVOID.length + SHOULD_STAY_SAFE.length + SHOULD_CAUTION.length + KNOWN_LIMITATIONS.length

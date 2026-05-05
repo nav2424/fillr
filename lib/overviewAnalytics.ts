@@ -2,7 +2,9 @@
  * Weekly + cumulative overview metrics from scan results (local or Supabase `result_json`).
  */
 
-import type { IngredientExplanation, IngredientRating, ScanResult } from '../types'
+import type { IngredientExplanation, IngredientRating, PersonalFlag, ScanResult } from '../types'
+import { buildIngredientTranslationLine, firstSentencePlain } from './ingredientOneLiner'
+import { getIngredientCardCollapsedSubtitle } from './buildIngredientCardViewModel'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -113,11 +115,190 @@ function countsFromScoringData(result: ScanResult): {
   }
 }
 
+const SUBTITLE_MAX = 118
+
+const GENERIC_SUBTITLE = new Set([
+  'Worth a second look',
+  'Flagged for your profile',
+  'Often highly processed or unclear on the label — tap the product for the full breakdown',
+  'Additive or unclear label wording — open the product card for specifics',
+])
+
+function normalizeOneLine(s: string): string {
+  return s.replace(/\s+/g, ' ').replace(/,\s*$/, '').trim()
+}
+
+function isGenericSubtitleLine(s: string): boolean {
+  const t = normalizeOneLine(s).replace(/…$/u, '').trim()
+  if (GENERIC_SUBTITLE.has(t)) return true
+  if (t.startsWith('Often highly processed')) return true
+  return false
+}
+
+/** When structured fields are empty, give distinct, useful one-liners by ingredient name. */
+function nameHintSubtitle(rawName: string): string | null {
+  const n = rawName.trim()
+  if (!n) return null
+  const hints: { re: RegExp; text: string }[] = [
+    {
+      re: /natural\s*flavor/i,
+      text:
+        'Catch-all label term—the exact chemicals aren’t listed; fine for most unless your allergens sometimes hide here.',
+    },
+    {
+      re: /^soy\s*lecithin$/i,
+      text:
+        'Emulsifier from soy, usually in tiny amounts—most soy-allergic people tolerate it; skip if you avoid all soy.',
+    },
+    {
+      re: /lecithin/i,
+      text: 'Fat-based emulsifier (often soy or sunflower); amounts are usually small on labels.',
+    },
+    {
+      re: /partially\s*hydrogenated/i,
+      text: 'Industrial oils hardened for texture; trans fat concern has made this rare but still shows up on some labels.',
+    },
+    {
+      re: /yellow\s*5|tartrazine/i,
+      text: 'Synthetic dye (tartrazine); some people avoid artificial colors for sensitivity or preference.',
+    },
+    {
+      re: /red\s*40|allura\s*red/i,
+      text: 'Common synthetic color; a frequent “avoid artificial dyes” watch item.',
+    },
+    {
+      re: /high[\s-]*fructose\s*corn\s*syrup/i,
+      text: 'Sweetener from corn starch—often flagged when you’re limiting refined sugar.',
+    },
+  ]
+  for (const { re, text } of hints) {
+    if (re.test(n)) return text
+  }
+  return null
+}
+
+function truncateSmart(s: string, max: number): string {
+  const t = normalizeOneLine(s)
+  if (t.length <= max) return t
+  const slice = t.slice(0, max - 1)
+  const lastSpace = slice.lastIndexOf(' ')
+  if (lastSpace > max * 0.45) {
+    return `${slice.slice(0, lastSpace).trim()}…`
+  }
+  return `${slice.trim()}…`
+}
+
+function firstNonEmpty(...parts: (string | undefined | null)[]): string {
+  for (const p of parts) {
+    const x = typeof p === 'string' ? normalizeOneLine(p) : ''
+    if (x.length > 0) return x
+  }
+  return ''
+}
+
+function avoidFallbackLine(pf: PersonalFlag | undefined): string {
+  switch (pf) {
+    case 'allergy':
+      return 'Conflicts with an allergen you listed — check the label if you’re unsure'
+    case 'sensitivity':
+      return 'Matches a sensitivity you asked us to watch for'
+    case 'celiac':
+      return 'Not aligned with your gluten-related settings'
+    case 'avoiding':
+      return 'Matches an ingredient you chose to avoid'
+    case 'preference_conflict':
+      return 'Doesn’t match a dietary preference you set'
+    default:
+      return 'Flagged for your profile based on your settings — open the product for details'
+  }
+}
+
+function pickRicherSubtitle(prev: string, next: string): string {
+  const pG = isGenericSubtitleLine(prev)
+  const nG = isGenericSubtitleLine(next)
+  if (pG && !nG) return next
+  if (!pG && nG) return prev
+  if (next.length > prev.length + 20) return next
+  if (prev.length > next.length + 20) return prev
+  return prev
+}
+
 function ingredientSubtitle(ing: IngredientExplanation, rating: IngredientRating): string {
-  if (rating === 'avoid') return 'Flagged for your profile'
-  const h = (ing.headline ?? ing.labelDecoder ?? ing.whatItIs ?? '').trim()
-  if (h.length > 0) return h.length > 80 ? `${h.slice(0, 77)}…` : h
-  return 'Worth a second look'
+  const intelSubtitle = getIngredientCardCollapsedSubtitle(ing)
+  if (intelSubtitle) return truncateSmart(intelSubtitle, SUBTITLE_MAX)
+
+  const cardLine = buildIngredientTranslationLine(ing).trim()
+
+  if (rating === 'avoid') {
+    const personal = firstNonEmpty(
+      ing.personalMessage,
+      ing.personalizedNote,
+      ing.whyItMatters
+    )
+    if (personal) return truncateSmart(personal, SUBTITLE_MAX)
+
+    if (cardLine.length > 0 && !isGenericSubtitleLine(cardLine)) {
+      return truncateSmart(cardLine, SUBTITLE_MAX)
+    }
+
+    const line = firstNonEmpty(
+      ing.ratingReason,
+      ing.whatToKnow,
+      ing.quickSummary,
+      ing.headline,
+      ing.labelDecoder,
+      firstSentencePlain(ing.explanation ?? '')
+    )
+    if (line) return truncateSmart(line, SUBTITLE_MAX)
+
+    const hinted = nameHintSubtitle(ing.name ?? '')
+    if (hinted) return truncateSmart(hinted, SUBTITLE_MAX)
+
+    return truncateSmart(avoidFallbackLine(ing.personalFlag), SUBTITLE_MAX)
+  }
+
+  if (cardLine.length > 0 && !isGenericSubtitleLine(cardLine)) {
+    return truncateSmart(cardLine, SUBTITLE_MAX)
+  }
+
+  const line = firstNonEmpty(
+    ing.ratingReason,
+    ing.whatToKnow,
+    ing.quickSummary,
+    ing.headline,
+    firstSentencePlain(ing.explanation ?? ''),
+    firstSentencePlain(ing.whatItIs),
+    ing.labelDecoder
+  )
+  if (line && !isGenericSubtitleLine(line)) {
+    return truncateSmart(line, SUBTITLE_MAX)
+  }
+
+  const hinted = nameHintSubtitle(ing.name ?? '')
+  if (hinted) return truncateSmart(hinted, SUBTITLE_MAX)
+
+  return truncateSmart(
+    'Additive or unclear label wording — open the product card for specifics',
+    SUBTITLE_MAX
+  )
+}
+
+function mergeSubtitlesAcrossWeek(
+  weekScans: OverviewScanRow[],
+  nameKey: string,
+  seed: string
+): string {
+  let best = seed
+  for (const s of weekScans) {
+    for (const ing of s.result.ingredientBreakdown ?? []) {
+      if ((ing.name ?? '').trim().toLowerCase() !== nameKey) continue
+      const r = (ing.ingredientRating ?? 'okay') as IngredientRating
+      if (r !== 'avoid' && r !== 'concerning') continue
+      const sub = ingredientSubtitle(ing, r)
+      best = pickRicherSubtitle(best, sub)
+    }
+  }
+  return best
 }
 
 export type TopFlaggedRow = {
@@ -178,7 +359,7 @@ export function computeOverviewMetrics(
         freq.set(key, {
           count: prev.count + 1,
           rating: prev.rating === 'avoid' || rating === 'avoid' ? 'avoid' : 'concerning',
-          subtitle: prev.subtitle,
+          subtitle: pickRicherSubtitle(prev.subtitle, subtitle),
         })
       }
     }
@@ -191,12 +372,13 @@ export function computeOverviewMetrics(
       .flatMap((x) => x.result.ingredientBreakdown ?? [])
       .find((i) => (i.name ?? '').trim().toLowerCase() === key)
     const displayName = (original?.name ?? original?.commonName ?? key).trim()
+    const subtitle = mergeSubtitlesAcrossWeek(weekScans, key, v.subtitle)
     return {
       name: displayName,
       count: v.count,
       rating: v.rating,
       dotColor: v.rating === 'avoid' ? '#ef4444' : '#fb923c',
-      subtitle: v.subtitle,
+      subtitle,
     }
   })
 

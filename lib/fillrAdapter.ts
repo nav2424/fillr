@@ -14,6 +14,7 @@ import type {
 } from '../types'
 import { getIngredientExplanation } from '../services/ingredientExplanations'
 import { GOAL_OPTIONS, PREFERENCE_OPTIONS, SENSITIVITY_OPTIONS } from '../types'
+import { migrateGoalKey } from './goalKeyMigration'
 import { getCeliacInsight } from './smartInsights'
 import { englishPrimarySegment } from './bilingualDisplay'
 import { dedupeBilingualIngredientNames } from './bilingualIngredients'
@@ -136,7 +137,13 @@ export function isIngredientCopyBoilerplate(text: string | undefined): boolean {
     /how this manufacturer lists this component/i.test(t) ||
     /its role here depends on the recipe/i.test(t) ||
     /manufacturer lists this component on the ingredient panel/i.test(t) ||
-    /texture, sweetness, shelf life, color, or how the line runs/i.test(t)
+    /texture, sweetness, shelf life, color, or how the line runs/i.test(t) ||
+    /appears on this label, but its exact type is not clear/i.test(t) ||
+    /In packaged bars, mixes, and long-shelf-life items it usually fine-tunes/i.test(t) ||
+    /Impact depends on the exact compound and the amount in the serving/i.test(t) ||
+    /listed on this product;\s*we could\b/i.test(t) ||
+    /many labels use a short or trade name/i.test(t) ||
+    /exact compound or source is not obvious from this line alone/i.test(t)
   )
 }
 
@@ -159,6 +166,129 @@ function genericPackagedFoodIngredientFallback(
         'Digested like other proteins into amino acids; the important story is the source species if you have allergy or avoidance rules.',
       whatToKnow:
         'The label phrase does not always spell out animal vs plant source—use the Contains line and brand FAQs when that distinction matters.',
+    }
+  }
+  if (/maple syrup|maple sugar/.test(lower)) {
+    return {
+      whatItIs:
+        'Boiled-down maple tree sap—mostly sucrose with caramel notes from cooking, not a mystery sweetener code.',
+      inProduct:
+        'Sweetens bars and baked goods while adding moisture and a distinct maple aroma that reads clearly on the label.',
+      bodyEffect:
+        'Digested like other added sugars; portion and total sugars on Nutrition Facts matter more than the word “maple” alone.',
+      whatToKnow:
+        '“Pure maple syrup” is a single-ingredient sweetener; “maple flavor” can be a different story—this line is the real syrup.',
+    }
+  }
+  if (/agave|brown rice syrup/.test(lower) && !/high fructose corn syrup|hfcs/.test(lower)) {
+    return {
+      whatItIs:
+        'A plant-based liquid sweetener (agave nectar or rice syrup) used where brands want a pourable sugar that is not table sugar by name.',
+      inProduct:
+        'Adds sweetness and can help bind water in bars, sauces, and coatings without listing “sucrose” first.',
+      bodyEffect:
+        'Still metabolized as added sugar; blood-sugar impact depends on serving size and what else you eat in the meal.',
+      whatToKnow:
+        'Labels often split sweeteners across several lines—compare total sugars on Nutrition Facts, not just one syrup word.',
+    }
+  }
+  if (/\bmolasses\b/.test(lower)) {
+    return {
+      whatItIs:
+        'A thick by-product of sugar refining—rich brown color, bittersweet flavor, and small amounts of minerals from the cane.',
+      inProduct:
+        'Adds depth to chocolate, cookies, and bars; also helps moisture and browning compared with plain white sugar alone.',
+      bodyEffect:
+        'Mostly sugar by calories; the mineral contribution is small at typical recipe amounts.',
+      whatToKnow:
+        'Unsulphured vs sulphured molasses is a processing taste difference, not a safety claim—still counts as added sugar.',
+    }
+  }
+  if (/\bdate\b|dates|date paste|date syrup/.test(lower)) {
+    return {
+      whatItIs:
+        'Whole dates or date paste—fruit sugar and fiber from the date palm, often used as a “whole food” sweetener in bars.',
+      inProduct:
+        'Binds texture, adds chew, and sweetens while keeping a shorter-looking sweetener list than multiple syrups.',
+      bodyEffect:
+        'Fruit sugar plus fiber digests more slowly than a shot of refined syrup alone, but calories still add up by serving.',
+      whatToKnow:
+        'If you track carbs for diabetes goals, treat date-heavy bars like other sweet snacks and read total sugars.',
+    }
+  }
+  if (/apple cider vinegar|cider vinegar|white vinegar|wine vinegar|distilled vinegar/.test(lower)) {
+    return {
+      whatItIs:
+        'Acetic acid from fermented juice or diluted alcohol—sharp taste, low pH, classic pantry vinegar (here as a named type).',
+      inProduct:
+        'Brightens flavor, balances sweetness, or helps control pH so other ingredients (gums, colors, preservatives) behave predictably.',
+      bodyEffect:
+        'Tiny label amounts contribute negligible calories; stomach-sensitive people sometimes notice vinegar-heavy foods.',
+      whatToKnow:
+        '“Apple cider vinegar” on a bar is usually a small flavor note, not the same as drinking vinegar as a supplement.',
+    }
+  }
+  if (/\b(cherry|cranberry|pomegranate|apple|grape|orange|lemon|lime|pear|peach)\s+juice\b/.test(lower)) {
+    return {
+      whatItIs:
+        'Fruit juice concentrate or single-strength juice—natural sugar plus fruit acids and flavor compounds from that fruit.',
+      inProduct:
+        'Sweetens while adding fruit flavor and color; concentrates also help texture and shelf life in packaged snacks.',
+      bodyEffect:
+        'Contributes fructose and glucose like other fruit sugars; fiber is usually low unless whole fruit pieces are also listed.',
+      whatToKnow:
+        '“Juice” on a bar label is still an added sugar source—check total sugars even when the name sounds wholesome.',
+    }
+  }
+  if (/coconut sugar|palm sugar|turbinado|demerara|muscovado/.test(lower)) {
+    return {
+      whatItIs:
+        'Crystallized sugar from coconut palm sap or less-refined cane—brown color and caramel notes, still sucrose-heavy.',
+      inProduct:
+        'Replaces part of white sugar for flavor depth in cookies, bars, and coatings.',
+      bodyEffect:
+        'Metabolized like cane sugar; any mineral “extras” are tiny compared with the sugar calories.',
+      whatToKnow:
+        'Marketing often sounds healthier than white sugar—your body still counts it as added sugar on Nutrition Facts.',
+    }
+  }
+  if (/^\s*sugars?\s*$/i.test(clean)) {
+    return {
+      whatItIs:
+        'A grouped declaration some labels use for added sugars—your Nutrition Facts panel still lists total and added sugars for the serving.',
+      inProduct:
+        'Manufacturers may split sweeteners across several lines; this line tells shoppers to look at the sugar section as a whole.',
+      bodyEffect:
+        'All listed sweeteners contribute to the same sugar load once you eat the serving.',
+      whatToKnow:
+        'If you are cutting sugar, use total sugars per serving and compare similar products rather than reading one line in isolation.',
+    }
+  }
+  if (/gluten[-\s]?free\s+oat|oat\s+flour|oat flour/.test(lower)) {
+    return {
+      whatItIs:
+        'Finely milled oats (often certified gluten-free) used as flour for structure in bars, cookies, and gluten-free baked goods.',
+      inProduct:
+        'Adds chew, mild oat flavor, and some fiber compared with refined white flour blends.',
+      bodyEffect:
+        'Mostly starch and fiber; contains avenin (the oat protein) rather than gluten—still an issue only if you avoid oats personally.',
+      whatToKnow:
+        'Celiac-safe oats depend on sourcing and certification; if you react to oats, treat this like any other oat ingredient.',
+    }
+  }
+  if (
+    (/\b(dark|milk|white)\s+chocolate\b|\bchocolate\b/.test(lower)) &&
+    !/\bcocoa butter\b/.test(lower)
+  ) {
+    return {
+      whatItIs:
+        'Chocolate combines cocoa solids and sugar with cocoa butter (and sometimes milk solids for milk chocolate)—a named confection, not a vague flavor.',
+      inProduct:
+        'Carries chocolate flavor, color, and fat that set texture in coatings, chunks, and brownie-style bars.',
+      bodyEffect:
+        'Adds saturated fat and sugar calories; small caffeine/theobromine from cocoa, usually far less than a coffee.',
+      whatToKnow:
+        'Darker chocolate usually means more cocoa and less sugar than milk chocolate—still read sugar and saturated fat for your goals.',
     }
   }
   if (/\bsyrup\b/.test(lower) && !/high fructose|maple|agave|rice syrup solids/.test(lower)) {
@@ -223,13 +353,13 @@ function genericPackagedFoodIngredientFallback(
   }
 
   return {
-    whatItIs: `${head} appears on this label, but its exact type is not clear from the name alone.`,
+    whatItIs: `Many labels use a short or trade name for “${head}”, so the exact compound or source is not obvious from this line alone.`,
     inProduct:
-      'In packaged bars, mixes, and long-shelf-life items it usually fine-tunes texture, rise, shelf stability, or how flavors stay even from batch to batch.',
+      'Use Nutrition Facts for sugar, sodium, and calories, and the bold Contains / may-contain lines for allergens.',
     bodyEffect:
-      'Impact depends on the exact compound and the amount in the serving; most are intentional at low percentages by weight.',
+      'Earlier on the ingredient list usually means a larger share by weight before processing.',
     whatToKnow:
-      'When the jargon repeats across brands, it is usually doing a standard factory job—compare Nutrition Facts and the Contains line, not only the ingredient name spelling.',
+      'If this looks like a blend, flavor system, or trade name, the package may not list every sub-ingredient beyond allergens.',
   }
 }
 
@@ -509,6 +639,33 @@ export function buildFallbackIngredientExplanation(name: string): IngredientExpl
       'Still cocoa—caffeine and theobromine are present in smaller amounts than in a bar of dark chocolate.',
       'Alkalizing slightly changes antioxidant profile versus natural cocoa; for baking, recipes may not be 1:1 interchangeable with natural cocoa unless adjusted.'
     )
+  } else if (/\bcocoa butter\b/.test(lower)) {
+    commonName = clean
+    set(
+      'The natural fat from cocoa beans—creamy, shelf-stable fat that is not dairy; it gives chocolate coatings their melt and snap.',
+      'Carries chocolate flavor and smooth texture in bars and confections; often listed next to cocoa mass or chocolate.',
+      'Mostly saturated fat calories; only trace protein despite the word “butter.”',
+      'Vegan bars can still list cocoa butter; check separately for milk powder or “may contain milk” if dairy is your concern.'
+    )
+  } else if (/\bcocoa\b/.test(lower) && !/\bcocoa butter\b/.test(lower)) {
+    commonName = clean
+    set(
+      'Cocoa powder from roasted cacao beans—chocolate flavor and brown color without adding most of the cocoa butter you would get in a chocolate bar.',
+      'Common in brownies, bars, and baked goods; often paired with sugar and fat elsewhere on the list.',
+      'Contains a little caffeine and theobromine—usually far less than coffee; not a dairy ingredient unless a dairy line also appears.',
+      'Natural vs Dutched cocoa behave differently in baking—if the label says “processed with alkali,” that is Dutched cocoa.'
+    )
+  } else if (
+    /^\s*milk\s*$/i.test(clean) ||
+    /^\s*(whole|skim|low[\s-]?fat|2%)\s+milk\s*$/i.test(clean)
+  ) {
+    commonName = 'Milk'
+    set(
+      'Fluid dairy milk—water, milk fat, lactose, and milk proteins (casein and whey).',
+      'Adds moisture, tenderness, protein, and browning in baked goods and bars.',
+      'Not suitable for milk allergy; lactose content matters for intolerance—varies with skim vs whole and serving size.',
+      'Plant “milks” are labeled explicitly (oat, soy, almond, etc.); the single word “milk” on U.S./EU labels is cow’s milk unless stated otherwise.'
+    )
   } else if (/baking soda|sodium bicarbonate/.test(lower)) {
     commonName = 'Baking soda'
     set(
@@ -719,13 +876,27 @@ function buildHeadlineFunFactRatingReason(
           : 'Generally recognized as safe at typical use levels.',
     }
   }
+  const genericAmbiguityIntro =
+    /many labels use a short or trade name/i.test(whatItIs || '') ||
+    /exact compound or source is not obvious from this line alone/i.test(whatItIs || '')
   const words = (whatItIs || inProduct || clean).replace(/\./g, '').split(/\s+/).filter(Boolean)
-  const headline = (words.slice(0, 8).join(' ') || clean).trim()
+  const headlineFromWords = (words.slice(0, 8).join(' ') || clean).trim()
+  const headline = genericAmbiguityIntro
+    ? ((clean.split(/[,;]/)[0] ?? clean).trim().split(/\s+/).slice(0, 10).join(' ') || clean).trim()
+    : headlineFromWords
+  const ratingReason =
+    ingredientRating === 'avoid'
+      ? 'Fillr treats this line as one to limit or verify—check how it fits your allergies, goals, and the full label.'
+      : ingredientRating === 'concerning'
+        ? 'Common in packaged foods; worth a closer look if you are cutting additives, dyes, or ultra-processed ingredients.'
+        : ingredientRating === 'okay'
+          ? 'Typical processed-food input—usually about texture or shelf life rather than nutrition.'
+          : 'Whole-food or simple input on many labels—still check serving size and what else is in the product.'
   return {
     headline: headline.length > 0 ? headline : `About “${clean}” in this product`,
     funFact:
       'Ingredient order is by weight—what shows up first is what you are mostly eating.',
-    ratingReason: `Rated ${ingredientRating} based on typical use and how this ingredient behaves in food.`,
+    ratingReason,
   }
 }
 
@@ -758,7 +929,8 @@ function getPreferenceLabel(key: string): string {
 }
 
 function getGoalLabel(goal: string): string {
-  return GOAL_OPTIONS.find((o) => o.key === goal)?.label ?? goal
+  const k = migrateGoalKey(goal)
+  return GOAL_OPTIONS.find((o) => o.key === k)?.label ?? goal
 }
 
 function getSensitivityLabel(key: string): string {
@@ -824,7 +996,19 @@ export function mapDetectionToFillrResult(
     params.preferences.includes('vegan') || params.preferences.includes('plant_based') || params.preferences.includes('vegetarian')
 
   const goalLower = params.goal.toLowerCase()
-  const goalIsCleanEating = /clean|understand|improve/.test(goalLower) || params.goal === 'eat_cleaner' || params.goal === 'improve_health'
+  const goalKey = migrateGoalKey(params.goal)
+  const goalIsCleanEating =
+    /clean|understand|improve|balanced|reduce_upf|lower_sodium|gut_health|less_sugar|lose_weight/.test(goalLower) ||
+    [
+      'eat_cleaner',
+      'improve_health',
+      'balanced_diet',
+      'reduce_upf',
+      'gut_health',
+      'lower_sodium',
+      'less_sugar',
+      'lose_weight',
+    ].includes(goalKey)
 
   const lowSugarPrefKey =
     params.preferences.find((k) => k === 'low_sugar' || k === 'low_calorie' || k === 'low_carb') ?? null

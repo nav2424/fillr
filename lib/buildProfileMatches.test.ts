@@ -8,6 +8,7 @@ import {
   GOAL_SIGNALS,
 } from './profileSignals'
 import { calculateFillrFit } from './fillrScoring'
+import { formatGoalConflictExplanation } from './goalConflictCopy'
 
 const BASE_PROFILE = {
   allergies: [],
@@ -24,6 +25,11 @@ const SENSITIVITY_POSITIVE_INGREDIENT: Record<string, string> = {
   high_sodium: 'soy sauce',
   msg: 'yeast extract',
   sulfites: 'sulfur dioxide',
+  caffeine: 'caffeine',
+  fructose: 'high fructose corn syrup',
+  histamine: 'fermented soy sauce',
+  nightshades: 'tomato paste',
+  fodmaps: 'chicory root inulin',
 }
 
 const PREFERENCE_MATCH_INGREDIENT: Record<string, string> = {
@@ -39,21 +45,40 @@ const PREFERENCE_CONFLICT_INGREDIENT: Record<string, string> = {
   vegetarian: 'anchovies',
   plant_based: 'whey',
   less_processed: 'E452',
+  kosher: 'pork gelatin',
+  halal: 'pork fat',
+  paleo: 'wheat flour',
+  whole30: 'cane sugar',
+  diabetic_friendly: 'corn syrup',
 }
 
 const GOAL_ALIGN_INGREDIENT: Record<string, string> = {
-  lose_weight: 'none',
+  more_protein: 'whey protein isolate',
   build_muscle: 'whey protein isolate',
+  less_sugar: 'none',
+  lose_weight: 'none',
+  gain_weight: 'almond butter',
+  gut_health: 'yogurt cultures',
   eat_cleaner: 'organic oats',
+  balanced_diet: 'none',
   improve_health: 'none',
+  reduce_upf: 'none',
+  lower_sodium: 'none',
   understand: 'none',
 }
 
 const GOAL_CONFLICT_INGREDIENT: Record<string, string> = {
-  lose_weight: 'corn syrup',
+  more_protein: 'hydrogenated oil',
   build_muscle: 'hydrogenated oil',
+  less_sugar: 'sucrose',
+  lose_weight: 'corn syrup',
+  gain_weight: 'maltodextrin',
+  gut_health: 'carrageenan',
   eat_cleaner: 'maltodextrin',
+  balanced_diet: 'artificial flavor',
   improve_health: 'artificial flavor',
+  reduce_upf: 'maltodextrin',
+  lower_sodium: 'monosodium glutamate',
   understand: 'none',
 }
 
@@ -226,6 +251,33 @@ test('edge: punctuation artifacts still match expected patterns', () => {
   )
   assert.ok(result.sensitivityMatches.includes('Artificial sweeteners'))
   assert.ok(result.goalConflicts.includes('Eat cleaner / less processed'))
+})
+
+test('goalConflictDetails lists ingredient lines that matched each conflict', () => {
+  const result = buildProfileMatches(
+    { ...BASE_PROFILE, preferences: ['less_processed'], goal: 'build_muscle' },
+    ['partially hydrogenated soybean oil', 'glucose syrup', 'whey protein isolate']
+  )
+  assert.ok(result.goalConflicts.includes('Eat cleaner / less processed'))
+  assert.ok(result.goalConflicts.includes('Eat more protein'))
+  const less = result.goalConflictDetails.find((d) => d.label === 'Eat cleaner / less processed')
+  const muscle = result.goalConflictDetails.find((d) => d.label === 'Eat more protein')
+  assert.ok(less?.ingredients.includes('partially hydrogenated soybean oil'))
+  assert.ok(less?.ingredients.includes('glucose syrup'))
+  assert.ok(muscle?.ingredients.includes('partially hydrogenated soybean oil'))
+  assert.ok(muscle?.ingredients.includes('glucose syrup'))
+  const copy = formatGoalConflictExplanation(result.goalConflictDetails)
+  assert.match(copy, /Eat cleaner/)
+  assert.match(copy, /glucose syrup/)
+})
+
+test('goalConflictDetails merges duplicate labels from preference + goal', () => {
+  const result = buildProfileMatches(
+    { ...BASE_PROFILE, goal: 'eat_cleaner' },
+    ['maltodextrin', 'modified starch']
+  )
+  const eat = result.goalConflictDetails.find((d) => d.label === 'Eat cleaner')
+  assert.ok(eat && eat.ingredients.length >= 1)
 })
 
 test('edge: all profile options set simultaneously is stable and bounded through scoring', () => {

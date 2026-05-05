@@ -6,19 +6,24 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  TextInput,
   useWindowDimensions,
   Animated,
   Platform,
   Alert,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { CameraView, useCameraPermissions } from 'expo-camera'
 import { storage } from '../lib/storage'
 import { extractIngredientsFromPhoto, isOcrSupportedOnDevice } from '../lib/ocrScanner'
 import { parseIngredients } from '../lib/fillrAdapter'
-import { createScanResultFromIngredientText } from '../services/productService'
+import {
+  backfillBarcodeIngredientData,
+  createScanResultFromIngredientText,
+  enrichScanResultWithAI,
+} from '../services/productService'
 import { useUserStore } from '../store/userStore'
 import { useAuthStore } from '../store/authStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
@@ -26,10 +31,50 @@ import { useCurrentScanStore } from '../store/currentScanStore'
 import { canUserScan, incrementScanCount } from '../store/scanStore'
 import { showPaywall } from '../services/paywallService'
 import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../lib/authService'
+import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '../lib/scheduleUIWork'
+import { trackScanResultMetric } from '../lib/scanResultMetrics'
+import type { OcrTelemetrySummary } from '../lib/ocrScanner'
 
 const OCR_TIPS_KEY = 'fillr_ocr_tips_shown'
+const LIVE_CAPTURE_HINTS = [
+  'Move closer to the ingredients panel',
+  'Reduce glare by tilting the package slightly',
+  'Hold still to avoid blur',
+] as const
+
+function ocrTelemetryPayload(telemetry?: OcrTelemetrySummary): Record<string, unknown> {
+  if (!telemetry) return {}
+  return {
+    ocr_candidate_count: telemetry.candidateCount,
+    ocr_selected_resize_width: telemetry.selectedResizeWidth,
+    ocr_selected_roi_pad: telemetry.selectedRoiPad,
+    ocr_selected_base_score: telemetry.selectedBaseScore,
+    ocr_selected_quality_penalty: telemetry.selectedQualityPenalty,
+    ocr_selected_final_score: telemetry.selectedFinalScore,
+    ocr_used_cropped_second_pass: telemetry.usedCroppedSecondPass,
+  }
+}
+
+function devTimeLog(label: string, ...args: unknown[]) {
+  if (!__DEV__) return
+  try {
+    console.timeLog(label, ...args)
+  } catch {
+    // React Native can throw if the timer was ended by an earlier async branch.
+  }
+}
+
+function devTimeEnd(label: string) {
+  if (!__DEV__) return
+  try {
+    console.timeEnd(label)
+  } catch {
+    // Keep debug instrumentation from crashing the camera flow.
+  }
+}
 
 export default function OcrScannerScreen() {
+  const { barcode: fallbackBarcode } = useLocalSearchParams<{ barcode?: string }>()
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
   const [permission, requestPermission] = useCameraPermissions()
@@ -38,6 +83,10 @@ export default function OcrScannerScreen() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [tipsVisible, setTipsVisible] = useState(false)
+  const [nameModalVisible, setNameModalVisible] = useState(false)
+  const [pendingIngredientsBlob, setPendingIngredientsBlob] = useState('')
+  const [productNameDraft, setProductNameDraft] = useState('')
+  const [liveCaptureHint, setLiveCaptureHint] = useState<string>(LIVE_CAPTURE_HINTS[0])
   const scanLineAnim = useRef(new Animated.Value(0)).current
 
   const allergies = useUserStore((s) => s.allergies)
@@ -51,7 +100,7 @@ export default function OcrScannerScreen() {
   const setCurrentScan = useCurrentScanStore((s) => s.setResult)
 
   const frameW = width * 0.85
-  const frameH = height * 0.4
+  const frameH = height * 0.45
 
   useEffect(() => {
     if (Platform.OS === 'web') return
@@ -80,42 +129,170 @@ export default function OcrScannerScreen() {
     return () => loop.stop()
   }, [scanLineAnim])
 
+  useEffect(() => {
+    if (busy) return
+    let idx = 0
+    const timer = setInterval(() => {
+      idx = (idx + 1) % LIVE_CAPTURE_HINTS.length
+      setLiveCaptureHint(LIVE_CAPTURE_HINTS[idx]!)
+    }, 2600)
+    return () => clearInterval(timer)
+  }, [busy])
+
   const dismissTips = useCallback(async () => {
     setTipsVisible(false)
     await storage.setItem(OCR_TIPS_KEY, 'true')
   }, [])
 
   const finalizeOcrScan = useCallback(
-    async (ingredientsBlob: string) => {
+    async (ingredientsBlob: string, productDisplayName: string) => {
+      void trackScanResultMetric({
+        name: 'scan_started',
+        payload: { source: 'ocr' },
+      })
       const allowed = await canUserScan()
       if (!allowed) {
         const purchased = await showPaywall()
         if (!purchased) {
+          void trackScanResultMetric({
+            name: 'scan_failed',
+            payload: { source: 'ocr', reason: 'paywall_not_purchased' },
+          })
           Alert.alert('Scans', 'You need an available scan or Premium to analyze ingredients.')
           return
         }
       }
-      const result = await createScanResultFromIngredientText({
+      const { result, dietaryProfile } = await createScanResultFromIngredientText({
         allergies,
         sensitivities,
         preferences,
         goal,
         celiacStrictGluten,
         ingredientsList: ingredientsBlob,
+        productDisplayName,
         scanSource: 'ocr',
       })
+      const shouldConsumeCredit = Boolean(result.product.id?.trim()) && result.ingredientBreakdown.length > 0
+      if (!shouldConsumeCredit) {
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: { source: 'ocr', reason: 'insufficient_ingredient_data' },
+        })
+        Alert.alert('Scan incomplete', 'We could not build a reliable ingredient result from this photo.')
+        return
+      }
+      if (typeof fallbackBarcode === 'string' && fallbackBarcode.trim()) {
+        void backfillBarcodeIngredientData({
+          barcode: fallbackBarcode.trim(),
+          ingredientText: ingredientsBlob,
+          productDisplayName,
+          source: 'photo_ocr',
+        }).then((ok) => {
+          if (!ok) return
+          void trackScanResultMetric({
+            name: 'barcode_backfilled_from_ocr',
+            barcode: fallbackBarcode.trim(),
+            payload: {
+              source: 'ocr',
+              ingredient_chars: ingredientsBlob.length,
+            },
+          })
+        })
+      }
+      const productId = result.product.id
       setCurrentScan(result)
+      if (Platform.OS === 'ios') {
+        // iOS stability path: navigate immediately, then enrich in background.
+        const productRouteId = result.product.id
+        try {
+          router.replace({ pathname: '/product/[id]', params: { id: productRouteId } })
+        } catch (e) {
+          console.warn('[Fillr] OCR navigate to product failed', e)
+        }
+        void enrichScanResultWithAI(result, dietaryProfile, {
+          fromOcr: true,
+          ingredientParseSource: 'ocr',
+        })
+          .then((enriched) => {
+            try {
+              const cur = useCurrentScanStore.getState().result
+              if (cur?.product.id === productId) {
+                setCurrentScan(enriched)
+              }
+            } catch (e) {
+              console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+            }
+          })
+          .catch((err) => {
+            console.warn('AI enrichment failed:', err)
+          })
+        void incrementScanCount()
+        if (userId) {
+          void (async () => {
+            await incrementScanUsageOnServer(userId)
+            await finalizeReferralBonusIfEligible(userId).catch(() => {
+              // Retry flag is handled inside finalizeReferralBonusIfEligible.
+            })
+            const latest = await fetchProfile(userId)
+            if (latest) {
+              setReferralData({
+                bonusScansEarned: latest.bonus_scans_earned ?? 0,
+                totalScansUsed: latest.total_scans_used ?? 0,
+                referredBy: latest.referred_by ?? null,
+                referralCode: latest.referral_code ?? '',
+              })
+            }
+          })()
+        }
+        return
+      }
       const scanId = `scan_ocr_${Date.now()}`
       addScan({
         id: scanId,
-        productId: result.product.id,
+        productId,
         productName: result.product.name,
         barcode: result.product.barcode,
         safetyStatus: result.safetyStatus,
-        date: new Date().toLocaleDateString(),
+        date: new Date().toISOString(),
         result,
         source: 'ocr',
       })
+      void trackScanResultMetric({
+        name: 'scan_succeeded',
+        productId: result.product.id,
+        barcode: result.product.barcode,
+        payload: { source: 'ocr', ingredient_count: result.ingredientBreakdown.length },
+      })
+      void enrichScanResultWithAI(result, dietaryProfile, {
+        fromOcr: true,
+        ingredientParseSource: 'ocr',
+      })
+        .then((enriched) => {
+          runAfterInteractionsAndNextFrame(() => {
+            try {
+              const cur = useCurrentScanStore.getState().result
+              if (cur?.product.id === productId) {
+                if (__DEV__) console.log('[Fillr][decode] decode_merged_to_store', { productId })
+                setCurrentScan(enriched)
+              } else if (__DEV__) {
+                console.log('[Fillr][decode] decode_store_mismatch', {
+                  expectedProductId: productId,
+                  currentProductId: cur?.product.id ?? null,
+                })
+              }
+              runOnNextFrameInTransition(() => {
+                try {
+                  useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+                } catch (e) {
+                  console.warn('[Fillr][decode] history update after enrich failed', e)
+                }
+              })
+            } catch (e) {
+              console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+            }
+          })
+        })
+        .catch(() => {})
       await incrementScanCount()
       if (userId) {
         void (async () => {
@@ -134,8 +311,16 @@ export default function OcrScannerScreen() {
           }
         })()
       }
-      if (__DEV__) console.timeLog('ocr-total', 'navigated to result')
-      router.replace({ pathname: '/product/[id]', params: { id: result.product.id } })
+      const productRouteId = result.product.id
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            router.replace({ pathname: '/product/[id]', params: { id: productRouteId } })
+          } catch (e) {
+            console.warn('[Fillr] OCR navigate to product failed', e)
+          }
+        })
+      })
     },
     [
       allergies,
@@ -143,12 +328,42 @@ export default function OcrScannerScreen() {
       preferences,
       goal,
       celiacStrictGluten,
+      fallbackBarcode,
       userId,
       addScan,
       setCurrentScan,
       setReferralData,
     ]
   )
+
+  const submitOcrName = useCallback(async () => {
+    const productName = productNameDraft.trim()
+    const blob = pendingIngredientsBlob.trim()
+    if (!productName || !blob) return
+    setNameModalVisible(false)
+    if (Platform.OS === 'ios') {
+      // iOS emergency mode: never block touches with the loading modal.
+      setPendingIngredientsBlob('')
+      setProductNameDraft('')
+      setBusy(false)
+      void finalizeOcrScan(blob, productName).catch((err) => {
+        console.warn('[Fillr] OCR scan finalization failed:', err)
+        setToast('Could not create scan result. Please try again.')
+      })
+      return
+    }
+    setBusy(true)
+    try {
+      await finalizeOcrScan(blob, productName)
+    } catch (err) {
+      console.warn('[Fillr] OCR scan finalization failed:', err)
+      setToast('Could not create scan result. Please try again.')
+    } finally {
+      setPendingIngredientsBlob('')
+      setProductNameDraft('')
+      setBusy(false)
+    }
+  }, [finalizeOcrScan, pendingIngredientsBlob, productNameDraft])
 
   const onCapture = useCallback(async () => {
     if (!cameraRef.current || !cameraReady || busy) return
@@ -157,7 +372,7 @@ export default function OcrScannerScreen() {
     setBusy(true)
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 })
-      if (__DEV__) console.timeLog('ocr-total', 'photo captured')
+      devTimeLog('ocr-total', 'photo captured')
       if (!photo?.uri) {
         setToast("Couldn't read the label. Try better lighting or hold still.")
         return
@@ -165,42 +380,97 @@ export default function OcrScannerScreen() {
       const ocr = await extractIngredientsFromPhoto(photo.uri)
 
       if (!ocr.success) {
+        const hints = ocr.confidence?.guidance ?? []
+        if (hints.length > 0) setLiveCaptureHint(hints[0]!)
+        const guidanceLine = hints.length ? ` ${hints.join(' ')}` : ''
+        const telemetryPayload = ocrTelemetryPayload(ocr.telemetry)
         if (ocr.error === 'no_ingredients_found') {
+          void trackScanResultMetric({
+            name: 'scan_failed',
+            payload: { source: 'ocr', reason: 'ocr_no_ingredients_found', ...telemetryPayload },
+          })
           setToast(
-            "Couldn't find the ingredients list. Make sure 'INGREDIENTS:' is visible in frame."
+            `Couldn't find the ingredients list.${guidanceLine || " Make sure 'INGREDIENTS:' is visible in frame."}`
           )
           return
         }
-        setToast("Couldn't read the label. Try better lighting or hold still.")
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: { source: 'ocr', reason: 'ocr_read_failed', error: ocr.error, ...telemetryPayload },
+        })
+        setToast(`Couldn't read the label.${guidanceLine || ' Try better lighting or hold still.'}`)
+        return
+      }
+
+      if (ocr.confidence.level === 'low') {
+        if (ocr.confidence.guidance.length > 0) setLiveCaptureHint(ocr.confidence.guidance[0]!)
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: {
+            source: 'ocr',
+            reason: 'ocr_low_confidence',
+            ocr_confidence_score: ocr.confidence.score,
+            ...ocrTelemetryPayload(ocr.telemetry),
+          },
+        })
+        const lowGuidance = ocr.confidence.guidance.length
+          ? ocr.confidence.guidance.join(' ')
+          : 'Move closer to the label. Reduce glare.'
+        setToast(`Low confidence scan. Please retake. ${lowGuidance}`)
         return
       }
 
       const blob = ocr.ingredientsText.trim()
       if (__DEV__) {
-        console.timeLog('ocr-total', 'ocr extraction complete')
+        devTimeLog('ocr-total', 'ocr extraction complete')
         console.log('OCR extracted text length:', blob.length)
         console.log('OCR extracted text preview:', blob.slice(0, 200))
       }
       const parsedIngredients = parseIngredients(blob, 'ocr')
       const parsedCount = parsedIngredients.length
       if (__DEV__) {
-        console.timeLog('ocr-total', 'ingredients parsed')
+        devTimeLog('ocr-total', 'ingredients parsed')
         console.log('Parsed ingredient count:', parsedCount)
       }
       if (parsedCount < 2) {
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: {
+            source: 'ocr',
+            reason: 'ocr_low_parsed_ingredient_count',
+            parsed_count: parsedCount,
+            ocr_confidence_score: ocr.confidence.score,
+            ...ocrTelemetryPayload(ocr.telemetry),
+          },
+        })
+        const guidanceLine = ocr.confidence.guidance.length
+          ? ` ${ocr.confidence.guidance.join(' ')}`
+          : ' Try moving closer or improving lighting.'
         setToast(
           parsedCount === 0
-            ? "We didn't find ingredients. Try moving closer or improving lighting."
-            : `We only found ${parsedCount} ingredient(s). Try moving closer or improving lighting.`
+            ? `We didn't find ingredients.${guidanceLine}`
+            : `We only found ${parsedCount} ingredient(s).${guidanceLine}`
         )
         return
       }
 
-      await finalizeOcrScan(blob)
+      void trackScanResultMetric({
+        name: 'scan_succeeded',
+        payload: {
+          source: 'ocr',
+          reason: 'ocr_capture_accepted',
+          parsed_count: parsedCount,
+          ocr_confidence_score: ocr.confidence.score,
+          ...ocrTelemetryPayload(ocr.telemetry),
+        },
+      })
+      setPendingIngredientsBlob(blob)
+      setProductNameDraft('')
+      setNameModalVisible(true)
     } catch {
       setToast("Couldn't read the label. Try better lighting or hold still.")
     } finally {
-      if (__DEV__) console.timeEnd('ocr-total')
+      devTimeEnd('ocr-total')
       setBusy(false)
     }
   }, [cameraReady, busy, finalizeOcrScan])
@@ -246,6 +516,10 @@ export default function OcrScannerScreen() {
 
       <View style={styles.frameWrap} pointerEvents="none">
         <View style={[styles.frameBox, { width: frameW, height: frameH }]}>
+          <View style={styles.frameGuideFill} />
+          <Text style={styles.frameGuideLabel} pointerEvents="none">
+            Align ingredients list inside the box
+          </Text>
           <View style={[styles.corner, styles.cTL]} />
           <View style={[styles.corner, styles.cTR]} />
           <View style={[styles.corner, styles.cBL]} />
@@ -279,7 +553,7 @@ export default function OcrScannerScreen() {
             </>
           ) : (
             <>
-              <Text style={styles.bottomHint}>Fill the frame with the ingredients text</Text>
+              <Text style={styles.bottomHint}>{liveCaptureHint}</Text>
               <Pressable
                 onPress={() => void onCapture()}
                 disabled={!cameraReady || busy}
@@ -297,7 +571,7 @@ export default function OcrScannerScreen() {
         </View>
       </SafeAreaView>
 
-      <Modal visible={busy} transparent animationType="fade">
+      <Modal visible={Platform.OS !== 'ios' && busy} transparent animationType="fade">
         <View style={styles.loadingRoot}>
           <ActivityIndicator size="large" color="#22c55e" />
           <Text style={styles.loadingText}>Reading ingredients…</Text>
@@ -314,6 +588,62 @@ export default function OcrScannerScreen() {
             <Pressable onPress={() => void dismissTips()} style={styles.tipsCta}>
               <Text style={styles.tipsCtaText}>Got it →</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={nameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (busy) return
+          setNameModalVisible(false)
+          setPendingIngredientsBlob('')
+          setProductNameDraft('')
+        }}
+      >
+        <View style={styles.nameBackdrop}>
+          <View style={styles.nameCard}>
+            <Text style={styles.nameTitle}>Name this product</Text>
+            <Text style={styles.nameBody}>
+              Add a product name so you can easily recognize this OCR scan later.
+            </Text>
+            <TextInput
+              value={productNameDraft}
+              onChangeText={setProductNameDraft}
+              placeholder="e.g. Protein granola bar"
+              placeholderTextColor="rgba(255,255,255,0.45)"
+              style={styles.nameInput}
+              editable={!busy}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => void submitOcrName()}
+            />
+            <View style={styles.nameActions}>
+              <Pressable
+                onPress={() => {
+                  if (busy) return
+                  setNameModalVisible(false)
+                  setPendingIngredientsBlob('')
+                  setProductNameDraft('')
+                }}
+                style={({ pressed }) => [styles.nameCancelBtn, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.nameCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void submitOcrName()}
+                disabled={!productNameDraft.trim() || busy}
+                style={({ pressed }) => [
+                  styles.nameSaveBtn,
+                  pressed && { opacity: 0.92 },
+                  (!productNameDraft.trim() || busy) && { opacity: 0.55 },
+                ]}
+              >
+                <Text style={styles.nameSaveText}>Continue</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -363,6 +693,28 @@ const styles = StyleSheet.create({
   frameBox: {
     position: 'relative',
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  frameGuideFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  frameGuideLabel: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    zIndex: 2,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.95)',
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   corner: {
     position: 'absolute',
@@ -458,6 +810,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '500',
+  },
+  nameBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  nameCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    padding: 16,
+  },
+  nameTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  nameBody: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  nameInput: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 10,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  nameActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  nameCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  nameCancelText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  nameSaveBtn: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  nameSaveText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   permBtn: {
     backgroundColor: '#22c55e',

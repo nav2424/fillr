@@ -7,8 +7,38 @@
 /** Canonical key -> display label. Includes builtin + common food allergens. */
 const KNOWN_ALLERGENS: Array<{ key: string; label: string; searchTerms: string[] }> = [
   // Builtin allergens (FDA 9 + EU additions)
-  { key: 'milk', label: 'Milk', searchTerms: ['milk', 'dairy', 'lactose'] },
-  { key: 'eggs', label: 'Eggs', searchTerms: ['eggs', 'egg'] },
+  {
+    key: 'milk',
+    label: 'Milk',
+    searchTerms: [
+      'milk',
+      'dairy',
+      'lactose',
+      'casein',
+      'caseinate',
+      'caseinates',
+      'whey',
+      'whey protein',
+      'lactalbumin',
+      'butter',
+      'cream',
+      'ghee',
+      'yogurt',
+      'yoghurt',
+      'curd',
+      'half and half',
+      'heavy cream',
+      'sour cream',
+      'milk powder',
+      'skim milk',
+      'nonfat milk',
+    ],
+  },
+  {
+    key: 'eggs',
+    label: 'Eggs',
+    searchTerms: ['eggs', 'egg', 'albumin', 'ovalbumin', 'mayonnaise', 'mayo', 'meringue', 'egg white', 'egg yolk'],
+  },
   { key: 'peanuts', label: 'Peanuts', searchTerms: ['peanuts', 'peanut', 'groundnut'] },
   { key: 'tree_nuts', label: 'Tree Nuts', searchTerms: ['tree nuts', 'tree nut', 'nuts', 'almond', 'almonds', 'cashew', 'cashews', 'walnut', 'walnuts', 'pecan', 'pecans', 'pistachio', 'pistachios', 'hazelnut', 'hazelnuts', 'macadamia', 'brazil nut'] },
   { key: 'soy', label: 'Soy', searchTerms: ['soy', 'soya', 'soybean', 'soybeans'] },
@@ -170,4 +200,140 @@ export function getAllergyLabel(key: string): string {
 /** All known allergen keys for autocomplete/suggestions */
 export function getKnownAllergenKeys(): string[] {
   return [...new Set(KNOWN_ALLERGENS.map((a) => a.key))]
+}
+
+/** One row in the add-allergen picker — multiple rows may share the same `key` (synonyms). */
+export type AllergenPickRow = {
+  /** Canonical key stored in profile / user store */
+  key: string
+  /** Primary line, e.g. "Milk (dairy)" */
+  title: string
+  /** How we normalize / merge synonyms */
+  subtitle: string
+  /** Lowercase fragments used to rank suggestions */
+  matchTerms: string[]
+}
+
+const MILK_PICK_ROWS: AllergenPickRow[] = [
+  {
+    key: 'milk',
+    title: 'Milk (dairy)',
+    subtitle: 'One saved allergen — dairy foods & ingredients map here',
+    matchTerms: [
+      'milk',
+      'dairy',
+      'butter',
+      'cream',
+      'ghee',
+      'yogurt',
+      'yoghurt',
+      'curd',
+      'half and half',
+      'heavy cream',
+      'sour cream',
+      'milk powder',
+      'skim milk',
+      'nonfat milk',
+    ],
+  },
+  {
+    key: 'milk',
+    title: 'Casein (milk protein)',
+    subtitle: 'Stored as Milk',
+    matchTerms: ['casein', 'caseinate', 'caseinates', 'rennet casein'],
+  },
+  {
+    key: 'milk',
+    title: 'Whey (milk protein)',
+    subtitle: 'Stored as Milk',
+    matchTerms: ['whey', 'whey protein', 'whey powder', 'lactalbumin', 'lactoglobulin'],
+  },
+  {
+    key: 'milk',
+    title: 'Lactose (milk sugar)',
+    subtitle: 'Stored as Milk',
+    matchTerms: ['lactose', 'milk sugar'],
+  },
+]
+
+const EGG_PICK_ROWS: AllergenPickRow[] = [
+  {
+    key: 'eggs',
+    title: 'Eggs (egg ingredients)',
+    subtitle: 'Albumin, mayo, etc. → stored as Eggs',
+    matchTerms: [
+      'egg',
+      'eggs',
+      'albumin',
+      'ovalbumin',
+      'mayonnaise',
+      'mayo',
+      'meringue',
+      'egg white',
+      'egg yolk',
+    ],
+  },
+]
+
+function buildGenericPickRows(excludeKeys: Set<string>): AllergenPickRow[] {
+  return KNOWN_ALLERGENS.filter((a) => !excludeKeys.has(a.key)).map((a) => ({
+    key: a.key,
+    title: `${a.label} (allergen)`,
+    subtitle: 'Matches common label names for this food',
+    matchTerms: [...a.searchTerms, a.label.toLowerCase()],
+  }))
+}
+
+const ALLERGEN_PICK_ROWS: AllergenPickRow[] = [
+  ...MILK_PICK_ROWS,
+  ...EGG_PICK_ROWS,
+  ...buildGenericPickRows(new Set(['milk', 'eggs'])),
+]
+
+function scoreAllergenPick(normQuery: string, row: AllergenPickRow): number {
+  if (!normQuery) return 0
+  let best = 0
+  for (const raw of row.matchTerms) {
+    const t = normalize(raw)
+    if (!t) continue
+    if (normQuery === t) best = Math.max(best, 100)
+    else if (t.startsWith(normQuery) || normQuery.startsWith(t)) best = Math.max(best, 84)
+    else if (t.includes(normQuery) || normQuery.includes(t)) best = Math.max(best, 70)
+    else {
+      const head = normQuery.split(/\s+/)[0] ?? ''
+      if (head.length >= 2 && t.startsWith(head)) best = Math.max(best, 55)
+    }
+  }
+  return best
+}
+
+export type ScoredAllergenPick = { row: AllergenPickRow; score: number }
+
+/**
+ * Ranked picker rows for free-typed allergen input (controlled vocabulary behind the scenes).
+ */
+export function suggestAllergenPickRows(query: string, limit = 10): ScoredAllergenPick[] {
+  const normQuery = normalize(query)
+  if (normQuery.length < 1) return []
+
+  const scored = ALLERGEN_PICK_ROWS.map((row) => ({
+    row,
+    score: scoreAllergenPick(normQuery, row),
+  })).filter((x) => x.score > 0)
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return a.row.title.localeCompare(b.row.title)
+  })
+
+  const out: ScoredAllergenPick[] = []
+  const seen = new Set<string>()
+  for (const x of scored) {
+    const dedupe = `${x.row.key}::${x.row.title}`
+    if (seen.has(dedupe)) continue
+    seen.add(dedupe)
+    out.push(x)
+    if (out.length >= limit) break
+  }
+  return out
 }

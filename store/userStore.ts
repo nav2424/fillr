@@ -19,6 +19,12 @@ interface UserState {
   referralCode: string
   referredBy: string | null
   referralsConverted: number
+  /** Email / future push: alerts when a scan flags your allergens. */
+  notifyAllergenAlerts: boolean
+  /** Weekly scan summary (when available). */
+  notifyWeeklyDigest: boolean
+  /** Tips and product updates from Fillr. */
+  notifyProductTips: boolean
   setAllergies: (allergies: string[]) => void
   setSensitivities: (sensitivities: string[]) => void
   setPreferences: (preferences: string[]) => void
@@ -48,6 +54,11 @@ interface UserState {
     preferences: string[]
     goal: string
   }) => void
+  setNotificationPrefs: (patch: {
+    notifyAllergenAlerts?: boolean
+    notifyWeeklyDigest?: boolean
+    notifyProductTips?: boolean
+  }) => void
 }
 
 export const useUserStore = create<UserState>()(
@@ -65,6 +76,9 @@ export const useUserStore = create<UserState>()(
       referralCode: '',
       referredBy: null,
       referralsConverted: 0,
+      notifyAllergenAlerts: true,
+      notifyWeeklyDigest: true,
+      notifyProductTips: false,
       setAllergies: (allergies) => set({ allergies }),
       setSensitivities: (sensitivities) => set({ sensitivities }),
       setPreferences: (preferences) => set({ preferences }),
@@ -120,6 +134,9 @@ export const useUserStore = create<UserState>()(
           referralCode: '',
           referredBy: null,
           referralsConverted: 0,
+          notifyAllergenAlerts: true,
+          notifyWeeklyDigest: true,
+          notifyProductTips: false,
         }),
       clearOnboardingDraft: () =>
         set({
@@ -130,6 +147,7 @@ export const useUserStore = create<UserState>()(
           celiacStrictGluten: false,
         }),
       setFromOnboarding: (data) => set(data),
+      setNotificationPrefs: (patch) => set((s) => ({ ...s, ...patch })),
     }),
     {
       name: 'fillr-user',

@@ -8,6 +8,7 @@ import { colors, spacing, typography, radius } from '../constants/theme'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
 import type { ScanRecord } from '../store/scanHistoryStore'
 import { formatProductTitle } from '../lib/formatProductTitle'
+import { parseScanHistoryDate } from '../lib/parseScanHistoryDate'
 import type { SafetyStatus } from '../types'
 
 const LIGHT_GREEN = colors.backgroundLightGreen
@@ -34,8 +35,8 @@ const STATUS: Record<
 }
 
 function formatSavedDate(raw: string): string {
-  const d = new Date(raw)
-  if (Number.isNaN(d.getTime())) return raw
+  const d = parseScanHistoryDate(raw)
+  if (!d) return raw
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 

@@ -15,6 +15,7 @@ create index if not exists scan_ingredient_results_scan_id_idx
 alter table public.scan_ingredient_results enable row level security;
 
 -- Authenticated: insert only when linking to own scan_history row
+drop policy if exists "scan_ingredient_results_insert_own_scan" on public.scan_ingredient_results;
 create policy "scan_ingredient_results_insert_own_scan"
   on public.scan_ingredient_results
   for insert

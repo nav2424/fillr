@@ -1,6 +1,6 @@
 /**
- * One-tap presets for onboarding allergies step.
- * Most map to allergy keys; lactose intolerance maps to sensitivity (digestive) vs milk allergy.
+ * Quick presets — each toggles a focused bundle of `ALLERGY_OPTIONS` keys.
+ * (Lactose lives under Sensitivities, not here.)
  */
 
 export interface OnboardingAllergyPreset {
@@ -10,57 +10,73 @@ export interface OnboardingAllergyPreset {
   emoji: string
   /** Keys from ALLERGY_OPTIONS / known allergens */
   allergyKeys: readonly string[]
-  /** Keys from SENSITIVITY_OPTIONS (e.g. lactose) */
+  /** Keys from SENSITIVITY_OPTIONS (usually empty here) */
   sensitivityKeys: readonly string[]
 }
 
 export const ONBOARDING_ALLERGY_PRESETS: readonly OnboardingAllergyPreset[] = [
   {
-    id: 'peanut',
-    title: 'Peanut allergy',
-    subtitle: 'Peanuts & typical cross-contact wording',
+    id: 'peanuts',
+    title: 'Peanuts',
+    subtitle: 'Peanuts & typical label wording',
     emoji: '🥜',
     allergyKeys: ['peanuts'],
     sensitivityKeys: [],
   },
   {
     id: 'tree_nuts',
-    title: 'Tree nut allergy',
-    subtitle: 'Almonds, cashews, walnuts, etc.',
+    title: 'Tree nuts',
+    subtitle: 'Almonds, cashews, walnuts…',
     emoji: '🌰',
     allergyKeys: ['tree_nuts'],
     sensitivityKeys: [],
   },
   {
-    id: 'milk_eggs',
-    title: 'Milk & eggs',
-    subtitle: 'Allergy-level dairy & eggs (not lactose)',
+    id: 'milk_dairy',
+    title: 'Milk & dairy',
+    subtitle: 'Cow’s milk protein allergy',
     emoji: '🥛',
-    allergyKeys: ['milk', 'eggs'],
+    allergyKeys: ['milk'],
     sensitivityKeys: [],
   },
   {
-    id: 'lactose',
-    title: 'Lactose intolerance',
-    subtitle: 'Digestive — heads-up, not an allergy flag',
-    emoji: '🧈',
-    allergyKeys: [],
-    sensitivityKeys: ['lactose'],
-  },
-  {
-    id: 'seafood',
-    title: 'Fish & shellfish',
-    subtitle: 'Fin fish plus crustaceans / mollusks',
-    emoji: '🐟',
-    allergyKeys: ['fish', 'shellfish'],
+    id: 'eggs',
+    title: 'Eggs',
+    subtitle: 'Egg white & yolk sources',
+    emoji: '🥚',
+    allergyKeys: ['eggs'],
     sensitivityKeys: [],
   },
   {
-    id: 'soy_sesame',
-    title: 'Soy & sesame',
-    subtitle: 'Common label pairings',
+    id: 'wheat_gluten',
+    title: 'Wheat / gluten',
+    subtitle: 'Wheat as an allergen',
+    emoji: '🌾',
+    allergyKeys: ['wheat'],
+    sensitivityKeys: [],
+  },
+  {
+    id: 'soy',
+    title: 'Soy',
+    subtitle: 'Soybeans & derivatives',
     emoji: '🫘',
-    allergyKeys: ['soy', 'sesame'],
+    allergyKeys: ['soy'],
+    sensitivityKeys: [],
+  },
+  {
+    id: 'fish',
+    title: 'Fish',
+    subtitle: 'Fin fish & derivatives',
+    emoji: '🐟',
+    allergyKeys: ['fish'],
+    sensitivityKeys: [],
+  },
+  {
+    id: 'shellfish',
+    title: 'Shellfish',
+    subtitle: 'Crustaceans & mollusks',
+    emoji: '🦐',
+    allergyKeys: ['shellfish'],
     sensitivityKeys: [],
   },
 ]

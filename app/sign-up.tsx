@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -7,8 +7,9 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import * as Linking from 'expo-linking'
 import { Link, router, useGlobalSearchParams, useLocalSearchParams } from 'expo-router'
@@ -40,6 +41,8 @@ const { getUserProfileOrNull } = require('../store/userProfileStore.js') as {
 export default function SignUpScreen() {
   const params = useLocalSearchParams<{ ref?: string }>()
   const globalParams = useGlobalSearchParams<{ ref?: string }>()
+  const insets = useSafeAreaInsets()
+  const scrollRef = useRef<ScrollView>(null)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -181,13 +184,32 @@ export default function SignUpScreen() {
     }
   }
 
+  const scrollReferralIntoView = () => {
+    const run = () => scrollRef.current?.scrollToEnd({ animated: true })
+    requestAnimationFrame(run)
+    setTimeout(run, 120)
+    setTimeout(run, 400)
+  }
+
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboard}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 4 : 0}
       >
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: 280 + insets.bottom },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
         <Text style={styles.logo}>fillr</Text>
         {referralLocked && (
           <View style={styles.invitedBanner}>
@@ -266,6 +288,9 @@ export default function SignUpScreen() {
                   setReferralCode(t.toUpperCase())
                   setReferralError(null)
                 }}
+                onFocus={() => {
+                  if (!referralLocked) scrollReferralIntoView()
+                }}
                 onBlur={() => setReferralTouched(true)}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -304,6 +329,7 @@ export default function SignUpScreen() {
             </Pressable>
           </Link>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
@@ -321,6 +347,12 @@ const styles = StyleSheet.create({
   },
   keyboard: {
     flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   header: {
     marginBottom: spacing.xl,

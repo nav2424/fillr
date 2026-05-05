@@ -1,9 +1,9 @@
 {
   "name": "fillr",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "expo-router/entry",
   "scripts": {
-    "test": "node --test lib/ingredientMatcher.test.js && tsx --test lib/ingredientAmbiguity.test.ts && tsx --test lib/allergenEngine/matcher.celiac.test.ts && tsx --test lib/allergenEngine/matcher.celiac.effectiveness.test.ts && tsx --test lib/fillrScoring.test.ts && tsx --test lib/ingredientOcrParse.test.ts && tsx --test lib/buildProfileMatches.test.ts",
+    "test": "node --test lib/ingredientMatcher.test.js && tsx --test lib/ingredientAmbiguity.test.ts && tsx --test lib/allergenEngine/matcher.celiac.test.ts && tsx --test lib/allergenEngine/matcher.celiac.effectiveness.test.ts && tsx --test lib/fillrScoring.test.ts && tsx --test lib/processedRating.test.ts && tsx --test lib/buildScoringData.test.ts && tsx --test lib/buildScoreExplainability.test.ts && tsx --test lib/buildIngredientCardViewModel.test.ts && tsx --test lib/ingredientCopyQuality.test.ts && tsx --test lib/ingredientDecodePlaceholder.test.ts && tsx --test lib/ingredientLabelAiMerge.test.ts && tsx --test lib/ingredientNameNormalization.test.ts && tsx --test lib/productPatternDetection.test.ts && tsx --test lib/ingredientAnalysisValidation.test.ts && tsx --test lib/profileReasoningPipeline.test.ts && tsx --test lib/processingSummarySplit.test.ts && tsx --test lib/offNormalizer.flattenIngredients.test.ts && tsx --test lib/ingredientOcrParse.test.ts && tsx --test lib/buildProfileMatches.test.ts",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -16,40 +16,60 @@
     "run:dev:android": "expo run:android"
   },
   "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/dm-serif-display": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-ml-kit/text-recognition": "^2.0.0",
-    "@supabase/supabase-js": "^2.99.2",
+    "@supabase/supabase-js": "^2.105.1",
     "@tanstack/react-query": "^5.90.21",
     "dotenv": "^17.3.1",
-    "expo": "~55.0.7",
-    "expo-application": "^55.0.10",
-    "expo-blur": "^55.0.10",
-    "expo-build-properties": "~55.0.12",
-    "expo-camera": "~55.0.10",
-    "expo-clipboard": "^55.0.9",
-    "expo-constants": "^55.0.8",
-    "expo-dev-client": "~55.0.17",
-    "expo-image-manipulator": "~55.0.13",
-    "expo-linear-gradient": "^55.0.9",
-    "expo-linking": "^55.0.7",
-    "expo-router": "^55.0.6",
-    "expo-sharing": "~55.0.14",
-    "expo-status-bar": "~55.0.4",
+    "expo": "~55.0.19",
+    "expo-application": "~55.0.14",
+    "expo-av": "^16.0.8",
+    "expo-blur": "~55.0.14",
+    "expo-build-properties": "~55.0.13",
+    "expo-camera": "~55.0.16",
+    "expo-clipboard": "~55.0.13",
+    "expo-constants": "~55.0.15",
+    "expo-dev-client": "~55.0.30",
+    "expo-font": "~55.0.6",
+    "expo-image-manipulator": "~55.0.15",
+    "expo-linear-gradient": "~55.0.13",
+    "expo-linking": "~55.0.14",
+    "expo-router": "~55.0.13",
+    "expo-sharing": "~55.0.18",
+    "expo-status-bar": "~55.0.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "react-native": "0.83.2",
+    "react-native": "0.83.6",
     "react-native-purchases": "^9.15.0",
     "react-native-purchases-ui": "^9.15.0",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
+    "react-native-svg": "15.15.3",
     "react-native-view-shot": "4.0.3",
     "react-native-web": "^0.21.0",
+    "recharts": "^3.8.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
     "tsx": "^4.21.0",
     "typescript": "~5.9.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "dotenv"
+      ]
+    },
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@react-native-ml-kit/text-recognition"
+        ]
+      }
+    }
   },
   "private": true
 }

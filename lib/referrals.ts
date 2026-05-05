@@ -1,5 +1,6 @@
 import { Share } from 'react-native'
 import * as Linking from 'expo-linking'
+import { IOS_APP_STORE_URL } from './appStoreLinks'
 
 export const REFERRAL_CODE_RE = /^FLR-[A-Z2-9]{4}$/
 
@@ -12,7 +13,8 @@ export function looksLikeReferralCode(raw: string): boolean {
 }
 
 export function getReferralHttpLink(referralCode: string): string {
-  return `https://usefillr.com/join?ref=${encodeURIComponent(normalizeReferralCode(referralCode))}`
+  void referralCode
+  return IOS_APP_STORE_URL
 }
 
 export function getReferralDeepLink(referralCode: string): string {
@@ -30,18 +32,18 @@ export async function copyReferralLink(referralCode: string): Promise<string> {
 
 export async function shareReferralLink(referralCode: string): Promise<void> {
   const link = getReferralHttpLink(referralCode)
+  const normalizedCode = normalizeReferralCode(referralCode)
   const message = `I've been using Fillr to decode food labels 🌿
 
 It tells you what every ingredient actually is, what it does to your body, and flags anything concerning.
 
 Some of what it found in my snacks was wild.
 
-Get 3 free bonus scans when you sign up:
+Get 3 free bonus scans when you sign up with my code ${normalizedCode}:
 ${link}`
   await Share.share({
     title: "I've been using this app to decode food labels",
     message,
-    url: link,
   })
 }
 

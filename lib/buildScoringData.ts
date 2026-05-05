@@ -14,10 +14,113 @@ function ratingOf(i: IngredientExplanation): IngredientRating {
 function normName(name: string): string {
   return String(name || '')
     .toLowerCase()
+    .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[#'"().]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+const ARTIFICIAL_SWEETENER_RE =
+  /\b(sucralose|aspartame|acesulfame(?:\s+potassium)?|acesulfame k|saccharin|neotame|advantame|splenda|sodium cyclamate|cyclamate)\b/i
+
+const SUGAR_SIGNAL_RE =
+  /\b(sugar|sucrose|fructose|dextrose|glucose|maltose|lactose|honey|molasses|agave|corn syrup|hfcs|high[\s-]*fructose|malt syrup|brown rice syrup|evaporated cane|invert sugar|maltodextrin)\b/i
+
+const SEED_OIL_RE =
+  /\b(canola oil|rapeseed oil|soybean oil|corn oil|cottonseed oil|sunflower oil|safflower oil|grapeseed oil|vegetable oil|palm oil|palm kernel oil)\b/i
+
+const EMULSIFIER_RE =
+  /\b(carrageenan|polysorbate|mono[\s-]?and[\s-]?diglycerides|diglyceride|monoglyceride|xanthan gum|guar gum|carboxymethylcellulose|cellulose gum|soy lecithin|sunflower lecithin|\blecithin\b)\b/i
+
+const PRO_INFLAMMATORY_RE =
+  /\b(high fructose corn syrup|\bhfcs\b|partially hydrogenated|hydrogenated oil|carrageenan|tbhq|bht|bha|sodium nitrite|sodium nitrate|artificial color|artificial colour|red\s*40|yellow\s*5|yellow\s*6|soybean oil|corn oil|sunflower oil|canola oil)\b/i
+
+export function detectProductCategoryFromSignals(
+  sourceText: string,
+  normalizedNames: string[]
+): FillrScoringInput['productCategory'] {
+  const hay = `${sourceText} ${normalizedNames.join(' ')}`
+    .toLowerCase()
+    .trim()
+  if (/\b(chewing\s+gum|gum base|bubble\s+gum|pur gum)\b/.test(hay)) return 'gum'
+  if (/\b(protein bar|protein brownie|protein cookie|whey protein|pea protein|protein isolate|protein concentrate)\b/.test(hay)) {
+    return 'protein_bar'
+  }
+  if (
+    /\b(cream|coffee cream|creamer|creamers|half[\s-]and[\s-]half|table cream|coffee whitener|whitener|whole milk|milk|skim milk|yogurt|yoghurt|kefir|fromage|lait|creme|cr[eè]me fraiche)\b/.test(
+      hay
+    )
+  ) {
+    return 'dairy'
+  }
+  if (/\b(candy|chocolate bar|gummy|gummies|caramel|lollipop|sour candy|hard candy)\b/.test(hay)) return 'candy'
+  if (/\b(soda|soft drink|energy drink|sports drink|juice drink|sparkling water|beverage)\b/.test(hay)) return 'drink'
+  if (/\b(ketchup|mustard|mayonnaise|mayo|dressing|sauce|dip|spread|salsa|condiment)\b/.test(hay)) return 'condiment'
+  if (
+    normalizedNames.length > 0 &&
+    normalizedNames.length <= 3 &&
+    normalizedNames.every((n) => !INDUSTRIAL_STRONG_NAME.test(n) && !INDUSTRIAL_MEDIUM_NAME.test(n))
+  ) {
+    return 'whole_food'
+  }
+  if (
+    normalizedNames.length > 0 &&
+    normalizedNames.length <= 8 &&
+    !normalizedNames.some((n) => INDUSTRIAL_STRONG_NAME.test(n)) &&
+    normalizedNames.filter((n) => INDUSTRIAL_MEDIUM_NAME.test(n)).length <= 1
+  ) {
+    return 'clean_snack'
+  }
+  return undefined
+}
+
+function detectProductCategory(scan: ScanResult, normalizedNames: string[]): FillrScoringInput['productCategory'] {
+  const sourceText = `${scan.product.name ?? ''} ${scan.product.ingredientText ?? ''}`
+  return detectProductCategoryFromSignals(sourceText, normalizedNames)
+}
+
+function estimateCaffeineMgForScoring(scan: ScanResult): number {
+  const n = scan.product.nutritionJson
+  if (n && typeof n === 'object') {
+    const o = n as Record<string, unknown>
+    const tryNum = (v: unknown): number => {
+      const x = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN
+      return Number.isFinite(x) ? x : 0
+    }
+    for (const k of ['caffeine_serving', 'caffeine', 'caffeine_value']) {
+      const v = tryNum(o[k])
+      if (v > 0) return v
+    }
+  }
+  const text = `${scan.product.ingredientText || ''} ${scan.product.name || ''}`.toLowerCase()
+  if (/\bdecaffeinated\b|\bdecaf\b/.test(text)) return 0
+  if (/\bcaffeine\b/.test(text) || /\bguarana\b/.test(text)) {
+    return 120
+  }
+  return 0
+}
+
+/**
+ * Strong industrial / UPF signals. If the model still has the line as `clean`, we bump the tier
+ * for **scoring only** so Fillr Fit + processing slider aren’t fooled (e.g. Doritos-like lists).
+ */
+const INDUSTRIAL_STRONG_NAME =
+  /\b(monosodium\s+glutamate|\bmsg\b|m[o]?altodextrin|modextrin|dextrose\b|disodium\s+inosinate|disodium\s+guanylate|disodium\s+phosphate|artificial\s+(color|colour|flavor|flavour)|natural\s+and\s+artificial|red\s*40|yellow\s*5|yellow\s*6|caramel\s+color|caramel\s+colour|tbhq|bht|bha|polysorbate|calcium\s+silicate|silicon\s+dioxide|sodium\s+nitrite|sodium\s+benzoate|potassium\s+sorbate|sorbic\s+acid|calcium\s+disodium\s+edta|disodium\s+calcium\s+edta|disodium\s+edta|trisodium\s+edta|yeast\s+extract|high[\s-]*fructose|\bhfcs\b|partially\s+hydrogenated)\b/i
+
+const INDUSTRIAL_MEDIUM_NAME =
+  /\b(citric\s+acid|lactic\s+acid|lactose\b|corn\s+syrup|glucose\s+syrup|modified\s+(?:corn|potato|tapioca|rice)\s+starch|modified\s+starch\b|xanthan\s+gum|carrageenan|hydrolyzed|hydrolysed|whey\s+protein|lecithin|natural\s+flavor|natural\s+flavour|enzymes?\b|malt\s+extract)\b/i
+
+/**
+ * Effective tier for deterministic scores when barcode/AI mis-labels obvious industrial lines as `clean`.
+ */
+export function effectiveTierForScoringCounts(i: IngredientExplanation): IngredientRating {
+  const r = ratingOf(i)
+  if (r === 'avoid' || r === 'concerning' || r === 'okay') return r
+  const name = normName(i.name)
+  if (INDUSTRIAL_STRONG_NAME.test(name)) return 'concerning'
+  if (INDUSTRIAL_MEDIUM_NAME.test(name)) return 'okay'
+  return 'clean'
 }
 
 export function buildScoringData(
@@ -25,29 +128,20 @@ export function buildScoringData(
   ingredients: IngredientExplanation[],
   profile: DietaryProfile
 ): FillrScoringInput {
-  const ingredientCounts = {
-    natural: ingredients.filter((i) => ratingOf(i) === 'clean').length,
-    processed: ingredients.filter((i) => ratingOf(i) === 'okay').length,
-    additive: ingredients.filter((i) => ratingOf(i) === 'concerning').length,
-    flagged: ingredients.filter((i) => ratingOf(i) === 'avoid').length,
+  const ingredientCounts = { natural: 0, processed: 0, additive: 0, flagged: 0 }
+  for (const ing of ingredients) {
+    const t = effectiveTierForScoringCounts(ing)
+    if (t === 'clean') ingredientCounts.natural++
+    else if (t === 'okay') ingredientCounts.processed++
+    else if (t === 'concerning') ingredientCounts.additive++
+    else ingredientCounts.flagged++
   }
 
   const totalIngredients = ingredients.length
 
-  const allergyFromFlags = ingredients
-    .filter((i) => i.personalFlag === 'allergy')
-    .map((i) => {
-      const msg = i.personalMessage
-      if (msg) {
-        const stripped = msg.replace(/^⚠️\s*Contains\s+/i, '').split(/\s—/)[0]?.trim()
-        if (stripped) return stripped
-      }
-      return i.name
-    })
-
   const allergyFromScan = scanResult.matchedAllergens.map((m) => m.allergenName).filter(Boolean)
 
-  const allergyMatches = [...new Set([...allergyFromScan, ...allergyFromFlags])]
+  const allergyMatches = [...new Set([...allergyFromScan])]
 
   let celiacSeverity: 'SAFE' | 'CAUTION' | 'AVOID' = 'SAFE'
   if (profile.celiacStrictGluten) {
@@ -63,17 +157,16 @@ export function buildScoringData(
     }
   }
 
-  const sensitivityFromIngredients = ingredients
-    .filter((i) => i.personalFlag === 'sensitivity')
-    .map((i) => i.name)
-
   const sensitivityFromScan = scanResult.matchedSensitivities.map((m) => m.sensitivityName)
+  const sensitivityFromIngredientFlags = ingredients
+    .filter((ing) => ing.personalFlag === 'sensitivity' || ing.flagDriver === 'sensitivity')
+    .map((ing) => ing.name)
+    .filter((name): name is string => Boolean(String(name ?? '').trim()))
 
-  const sensitivityMatches = [
-    ...new Set([...sensitivityFromIngredients, ...sensitivityFromScan]),
-  ]
+  const sensitivityMatches = [...new Set([...sensitivityFromScan, ...sensitivityFromIngredientFlags])]
 
   const normalizedNames = ingredients.map((i) => normName(i.name))
+  const productCategory = detectProductCategory(scanResult, normalizedNames)
   const eNumberCount = normalizedNames.filter((n) => /\be\d{3}[a-z]{0,3}\b/i.test(n)).length
   const genericFunctionalTermCount = normalizedNames.filter((n) =>
     /\bstabiliser(s)?\b|\bemulsifier(s)?\b|\bacidity regulator(s)?\b|\banticaking agent\b|\bflavouring(s)?\b|\bflavoring(s)?\b/.test(
@@ -88,6 +181,23 @@ export function buildScoringData(
   const hydrogenatedOilCount = normalizedNames.filter((n) =>
     /\bhydrogenated\b|\bpartially hydrogenated\b/.test(n)
   ).length
+
+  let celiacAmbiguousCount = 0
+  for (const ing of ingredients) {
+    if (ing.personalFlag !== 'celiac') continue
+    if (ratingOf(ing) === 'avoid') continue
+    celiacAmbiguousCount++
+  }
+
+  const sweetenerCount = normalizedNames.filter((n) => ARTIFICIAL_SWEETENER_RE.test(n)).length
+  let sugarScore = industrialSweetenerCount * 5
+  for (const n of normalizedNames) {
+    if (SUGAR_SIGNAL_RE.test(n)) sugarScore += 3
+  }
+  const hasSeedOils = normalizedNames.some((n) => SEED_OIL_RE.test(n))
+  const emulsifierCount = normalizedNames.filter((n) => EMULSIFIER_RE.test(n)).length
+  const proInflammatoryCount = normalizedNames.filter((n) => PRO_INFLAMMATORY_RE.test(n)).length
+  const caffeineMg = estimateCaffeineMgForScoring(scanResult)
 
   const profileHaystack =
     scanResult.product.ingredientTextSafetyHaystack?.trim() ||
@@ -106,19 +216,34 @@ export function buildScoringData(
   )
 
   return {
+    labelHaystack: profileHaystack,
     allergyMatches,
     celiacSeverity,
-    sensitivityMatches: profileMatches.sensitivityMatches.length
-      ? profileMatches.sensitivityMatches
-      : sensitivityMatches,
+    celiacStrictGluten: !!profile.celiacStrictGluten,
+    celiacAmbiguousCount,
+    sensitivityMatches: [
+      ...new Set([
+        ...profileMatches.sensitivityMatches,
+        ...sensitivityMatches,
+      ]),
+    ],
     avoidingMatches: profileMatches.avoidingMatches,
     goalMatches: profileMatches.goalMatches,
     goalConflicts: profileMatches.goalConflicts,
+    goalConflictDetails: profileMatches.goalConflictDetails,
     ingredientCounts,
     totalIngredients,
     eNumberCount,
     genericFunctionalTermCount,
     industrialSweetenerCount,
     hydrogenatedOilCount,
+    scoringPreferenceKeys: profile.scoringPreferenceKeys ?? [],
+    sweetenerCount,
+    sugarScore,
+    hasSeedOils,
+    emulsifierCount,
+    caffeineMg,
+    proInflammatoryCount,
+    productCategory,
   }
 }

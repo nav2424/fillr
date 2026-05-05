@@ -12,6 +12,7 @@ const includeDevClient = easProfile !== 'production'
 
 const plugins = [
   'expo-router',
+  'expo-font',
   ...(includeDevClient ? ['expo-dev-client'] : []),
   [
     'expo-build-properties',
@@ -36,9 +37,10 @@ module.exports = {
   expo: {
     name: 'Fillr',
     slug: 'fillr',
-    version: '1.0.0',
+    version: '1.1.0',
     orientation: 'portrait',
-    icon: './assets/icon.png',
+    /** Store / home-screen launcher icon. */
+    icon: './assets/icon-ios.png',
     userInterfaceStyle: 'light',
     scheme: 'fillr',
     splash: {
@@ -48,8 +50,9 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      buildNumber: '3',
+      buildNumber: '4',
       bundleIdentifier: 'com.nav004.fillr',
+      icon: './assets/icon-ios.png',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
@@ -57,11 +60,11 @@ module.exports = {
     android: {
       adaptiveIcon: {
         backgroundColor: '#f0fdf4',
-        foregroundImage: './assets/android-icon-foreground.png',
-        backgroundImage: './assets/android-icon-background.png',
+        foregroundImage: './assets/icon.png',
         monochromeImage: './assets/android-icon-monochrome.png',
       },
       package: 'com.nav004.fillr',
+      softwareKeyboardLayoutMode: 'resize',
     },
     web: {
       favicon: './assets/favicon.png',

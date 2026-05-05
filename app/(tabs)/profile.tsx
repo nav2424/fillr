@@ -11,11 +11,12 @@ import {
   Linking,
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
-import { GradientBackground, FillrButton } from '../../components'
+import { FillrButton } from '../../components'
 import { router } from 'expo-router'
-import { colors, spacing, typography } from '../../constants/theme'
+import { colors, homeWordmarkLayout, radius, spacing, typography } from '../../constants/theme'
 import { FREE_SCAN_LIMIT } from '../../constants/subscription'
 import { HEALTH_DISCLAIMER_RATINGS_MODAL_CLOSE } from '../../constants/healthDisclaimer'
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../../constants/legalUrls'
@@ -23,12 +24,15 @@ import { clearDisclaimerKeysOnSignOut } from '../../lib/disclaimerStorage'
 import { clearPendingSignupAfterOnboarding } from '../../lib/pendingSignup'
 import { useAuthStore } from '../../store/authStore'
 import { useUserStore } from '../../store/userStore'
+import { useScanHistoryStore } from '../../store/scanHistoryStore'
+import { logOutOfRevenueCat } from '../../services/revenuecatService'
 import {
   SENSITIVITY_OPTIONS,
   PREFERENCE_OPTIONS,
   GOAL_OPTIONS,
 } from '../../types'
 import { getAllergyLabel } from '../../lib/knownAllergens'
+import { migrateGoalKey } from '../../lib/goalKeyMigration'
 import { copyReferralLink, shareReferralLink } from '../../lib/referrals'
 import {
   ensureReferralCodeForUser,
@@ -58,8 +62,20 @@ function openPreferencesSection(section: 'allergies' | 'sensitivities' | 'prefer
   router.push({ pathname: '/edit-preferences', params: { section } })
 }
 
+const SCREEN_BG = '#ffffff'
+/** Soft rim + lift for cards on a white canvas. */
+const CARD_BORDER = 'rgba(15, 23, 42, 0.07)'
+const CARD_SHADOW = {
+  shadowColor: '#0f172a',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.05,
+  shadowRadius: 10,
+  elevation: 2,
+} as const
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
   const { userId, email, fullName, signOut } = useAuthStore()
   const {
     allergies,
@@ -99,7 +115,7 @@ export default function ProfileScreen() {
   const preferenceLabels = preferences
     .map((k) => PREFERENCE_OPTIONS.find((o) => o.key === k)?.label)
     .filter(Boolean)
-  const goalLabel = GOAL_OPTIONS.find((o) => o.key === goal)?.label
+  const goalLabel = GOAL_OPTIONS.find((o) => o.key === migrateGoalKey(goal))?.label
 
   useFocusEffect(
     useCallback(() => {
@@ -156,7 +172,7 @@ export default function ProfileScreen() {
 
   const goalSummaryLabel =
     asyncGoalKey != null
-      ? GOAL_OPTIONS.find((o) => o.key === asyncGoalKey)?.label ?? goalLabel
+      ? GOAL_OPTIONS.find((o) => o.key === migrateGoalKey(asyncGoalKey))?.label ?? goalLabel
       : goalLabel
 
   useEffect(() => {
@@ -200,8 +216,10 @@ export default function ProfileScreen() {
     void (async () => {
       await clearDisclaimerKeysOnSignOut()
       await clearPendingSignupAfterOnboarding()
+      await logOutOfRevenueCat()
       void signOutSupabase()
       useUserStore.getState().resetForAccountDeletion()
+      useScanHistoryStore.getState().clearAll()
       signOut()
       router.replace('/welcome')
     })()
@@ -252,14 +270,17 @@ export default function ProfileScreen() {
     }
   }
 
+  const padX = Math.max(homeWordmarkLayout.horizontalPad, insets.left, insets.right)
+  const bottomPad = tabBarHeight + insets.bottom + spacing.xxxl * 1.5
+
   return (
-    <GradientBackground variant="home">
+    <View style={styles.screenRoot}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: insets.bottom + spacing.xxxl * 2.5 },
+            { paddingHorizontal: padX, paddingBottom: bottomPad },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -268,8 +289,8 @@ export default function ProfileScreen() {
             onPress={() => router.push('/manage-subscription')}
           >
             <View style={styles.sectionHeader}>
-              <View style={[styles.sectionIconWrap, { backgroundColor: 'rgba(14,165,233,0.15)' }]}>
-                <Ionicons name="diamond-outline" size={18} color="#0ea5e9" />
+              <View style={[styles.sectionIconWrap, { backgroundColor: colors.accentMuted }]}>
+                <Ionicons name="diamond-outline" size={19} color={colors.accent} />
               </View>
               <View style={styles.sectionTitleWrap}>
                 <Text style={styles.sectionTitle}>Plan & scans</Text>
@@ -285,7 +306,7 @@ export default function ProfileScreen() {
             {isPro ? (
               <Text style={styles.cardValue}>You have unlimited scans and premium features.</Text>
             ) : (
-              <>
+              <View style={styles.planQuotaPanel}>
                 <Text style={styles.scanCountLine}>
                   <Text style={styles.scanCountEm}>{freeRemaining}</Text> free scans left
                 </Text>
@@ -295,7 +316,7 @@ export default function ProfileScreen() {
                 <View style={styles.usageTrack}>
                   <View style={[styles.usageFill, { width: `${usagePct}%` }]} />
                 </View>
-              </>
+              </View>
             )}
             <Text style={styles.tapHint}>Tap to manage subscription</Text>
           </Pressable>
@@ -303,7 +324,7 @@ export default function ProfileScreen() {
           <View style={styles.referralCard}>
             <View style={styles.refTopRow}>
               <View style={styles.refTitleRow}>
-                <Ionicons name="link" size={18} color={colors.text} />
+                <Ionicons name="link" size={19} color={colors.accent} />
                 <Text style={styles.refTitle}>Invite friends</Text>
               </View>
               <View style={styles.refPill}>
@@ -324,8 +345,10 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            <Text style={styles.refCodeLabel}>YOUR CODE</Text>
-            <Text style={styles.refCode}>{referralCode || '—'}</Text>
+            <Text style={styles.refCodeLabel}>Your code</Text>
+            <View style={styles.refCodePanel}>
+              <Text style={styles.refCode}>{referralCode || '—'}</Text>
+            </View>
 
             <View style={styles.refActionRow}>
               <Pressable
@@ -334,7 +357,7 @@ export default function ProfileScreen() {
                 onPress={handleCopyReferralLink}
               >
                 <Text style={styles.refBtnGhostText}>
-                  {isCopyingReferralLink ? 'Copying...' : 'Copy link'}
+                  {isCopyingReferralLink ? 'Copying...' : 'Copy code'}
                 </Text>
               </Pressable>
               <Pressable
@@ -370,15 +393,6 @@ export default function ProfileScreen() {
               </View>
               <Text style={styles.cardValue}>{fullName || 'User'}</Text>
               <Text style={styles.cardValueSecondary}>{email || '—'}</Text>
-            </Pressable>
-            <View style={styles.divider} />
-            <Pressable
-              style={({ pressed }) => [styles.dangerRow, pressed && styles.linkRowPressed]}
-              onPress={() => router.push('/delete-account')}
-            >
-              <Ionicons name="trash-outline" size={20} color={colors.danger} />
-              <Text style={styles.dangerRowText}>Delete account</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
           </View>
 
@@ -483,7 +497,7 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          <FillrButton title="Sign out" onPress={handleSignOut} variant="danger" fullWidth />
+          <FillrButton title="Sign out" onPress={handleSignOut} variant="dangerLiquid" fullWidth />
         </ScrollView>
 
         <Modal
@@ -528,108 +542,140 @@ export default function ProfileScreen() {
           </View>
         </Modal>
       </SafeAreaView>
-    </GradientBackground>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    flex: 1,
+    backgroundColor: SCREEN_BG,
+  },
   container: {
     flex: 1,
+    backgroundColor: SCREEN_BG,
   },
   scroll: {
     flex: 1,
+    backgroundColor: SCREEN_BG,
   },
   scrollContent: {
-    paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
   },
   sectionCard: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radius.lg,
     padding: spacing.xl,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 3,
+    borderColor: CARD_BORDER,
+    ...CARD_SHADOW,
   },
   referralCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    marginBottom: 8,
+    borderColor: CARD_BORDER,
+    marginBottom: spacing.sm,
+    ...CARD_SHADOW,
   },
   refTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  refTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  refTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
+  refTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  refTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.35,
+  },
   refPill: {
-    backgroundColor: '#ecfdf3',
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    backgroundColor: colors.backgroundLightGreen,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.2)',
   },
-  refPillText: { fontSize: 11, fontWeight: '700', color: '#16a34a' },
-  refStatsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  refPillText: { fontSize: 11, fontWeight: '700', color: '#15803d' },
+  refStatsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   refStatBox: {
     flex: 1,
-    backgroundColor: '#f8fdf9',
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: colors.backgroundLightGreen,
+    borderRadius: radius.md,
+    padding: spacing.md,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.16)',
   },
-  refStatValue: { fontSize: 21, fontWeight: '800', color: colors.text },
-  refStatLabel: { fontSize: 12, color: colors.textSecondary },
+  refStatValue: { fontSize: 21, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  refStatLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   refCodeLabel: {
-    fontSize: 11,
-    color: '#9ca3af',
-    letterSpacing: 1,
-    fontWeight: '700',
-    marginTop: 2,
+    fontSize: 12,
+    color: colors.textMuted,
+    letterSpacing: 0.4,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
+  refCodePanel: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'stretch',
   },
   refCode: {
     fontSize: 22,
-    letterSpacing: 2,
+    letterSpacing: 3,
     fontWeight: '800',
-    color: '#0a0a0a',
-    marginTop: 6,
-    marginBottom: 14,
+    color: colors.text,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  refActionRow: { flexDirection: 'row', gap: 10 },
+  refActionRow: { flexDirection: 'row', gap: spacing.md },
   refBtnGhost: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 100,
-    height: 44,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radius.full,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  refBtnGhostText: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  refBtnGhostText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
   refBtnPrimary: {
     flex: 1,
-    backgroundColor: '#22c55e',
-    borderRadius: 100,
-    height: 44,
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 3,
   },
   refBtnPrimaryText: { fontSize: 14, fontWeight: '600', color: '#fff' },
   refFooterHint: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#9ca3af',
+    color: colors.textMuted,
     marginBottom: spacing.lg,
-    marginTop: 8,
+    marginTop: spacing.xs,
   },
   cardPressed: {
     opacity: 0.92,
@@ -640,9 +686,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   sectionIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
@@ -655,6 +701,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: colors.text,
     marginBottom: 2,
+    letterSpacing: -0.35,
   },
   sectionHelper: {
     ...typography.bodySmall,
@@ -674,6 +721,14 @@ const styles = StyleSheet.create({
   },
   planRow: {
     marginBottom: spacing.sm,
+  },
+  planQuotaPanel: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.backgroundLightGreen,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.14)',
   },
   planBadge: {
     alignSelf: 'flex-start',
@@ -702,14 +757,16 @@ const styles = StyleSheet.create({
   },
   usageTrack: {
     height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(15,23,42,0.08)',
+    borderRadius: radius.full,
+    backgroundColor: 'rgba(255,255,255,0.65)',
     marginTop: spacing.md,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.12)',
   },
   usageFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: radius.full,
     backgroundColor: colors.accent,
     minWidth: 4,
   },
@@ -724,7 +781,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15,23,42,0.1)',
+    backgroundColor: colors.border,
     marginTop: spacing.lg,
   },
   dangerRow: {
@@ -742,19 +799,20 @@ const styles = StyleSheet.create({
   },
   legalSectionLabel: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: colors.textMuted,
     letterSpacing: 0.8,
     fontWeight: '700',
     marginBottom: spacing.sm,
     marginTop: spacing.md,
   },
   legalCard: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20,
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radius.lg,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.04)',
+    borderColor: CARD_BORDER,
     overflow: 'hidden',
+    ...CARD_SHADOW,
   },
   legalRow: {
     flexDirection: 'row',
@@ -772,7 +830,7 @@ const styles = StyleSheet.create({
   },
   legalDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15,23,42,0.08)',
+    backgroundColor: colors.border,
     marginLeft: spacing.xl,
   },
   ratingsModalRoot: {
@@ -806,6 +864,6 @@ const styles = StyleSheet.create({
   ratingsModalBody: {
     fontSize: 14,
     lineHeight: 22,
-    color: '#4b5563',
+    color: colors.textSecondary,
   },
 })

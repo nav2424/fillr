@@ -12,11 +12,50 @@ interface GlassChipProps {
   onPress?: () => void
 }
 
-const VARIANT_COLORS: Record<ChipVariant, { bg: string; bgSelected: string; text: string }> = {
-  danger: { bg: 'rgba(255,255,255,0.9)', bgSelected: colors.dangerMuted, text: colors.danger },
-  caution: { bg: 'rgba(255,255,255,0.9)', bgSelected: colors.cautionMuted, text: colors.caution },
-  safe: { bg: 'rgba(255,255,255,0.9)', bgSelected: colors.safeMuted, text: colors.safe },
-  default: { bg: 'rgba(255,255,255,0.9)', bgSelected: colors.accentMuted, text: colors.accent },
+/** Idle + selected — keeps allergies / sensitivities / preferences visually distinct at a glance. */
+const VARIANT_COLORS: Record<
+  ChipVariant,
+  {
+    bgIdle: string
+    borderIdle: string
+    textIdle: string
+    bgSelected: string
+    borderSelected: string
+    textSelected: string
+  }
+> = {
+  danger: {
+    bgIdle: 'rgba(255, 69, 58, 0.1)',
+    borderIdle: 'rgba(255, 69, 58, 0.32)',
+    textIdle: '#b91c1c',
+    bgSelected: colors.dangerMuted,
+    borderSelected: colors.danger,
+    textSelected: '#991b1b',
+  },
+  caution: {
+    bgIdle: 'rgba(255, 159, 10, 0.12)',
+    borderIdle: 'rgba(255, 159, 10, 0.38)',
+    textIdle: '#c2410c',
+    bgSelected: colors.cautionMuted,
+    borderSelected: colors.caution,
+    textSelected: '#9a3412',
+  },
+  safe: {
+    bgIdle: 'rgba(48, 209, 88, 0.11)',
+    borderIdle: 'rgba(22, 163, 74, 0.35)',
+    textIdle: '#166534',
+    bgSelected: colors.safeMuted,
+    borderSelected: colors.safe,
+    textSelected: '#14532d',
+  },
+  default: {
+    bgIdle: 'rgba(255,255,255,0.92)',
+    borderIdle: 'rgba(10, 40, 24, 0.1)',
+    textIdle: colors.textSecondary,
+    bgSelected: colors.accentMuted,
+    borderSelected: colors.accent,
+    textSelected: colors.accent,
+  },
 }
 
 export function GlassChip({
@@ -25,16 +64,17 @@ export function GlassChip({
   variant = 'default',
   onPress,
 }: GlassChipProps) {
-  const { bg, bgSelected, text } = VARIANT_COLORS[variant]
+  const v = VARIANT_COLORS[variant]
 
   const chipContent = (
     <>
-      {selected && <Ionicons name="checkmark-circle" size={16} color={text} style={styles.checkIcon} />}
+      {selected && (
+        <Ionicons name="checkmark-circle" size={16} color={v.textSelected} style={styles.checkIcon} />
+      )}
       <Text
         style={[
           styles.text,
-          selected ? styles.textSelected : styles.textDefault,
-          selected && { color: text },
+          { color: selected ? v.textSelected : v.textIdle, fontWeight: selected ? '700' : '600' },
         ]}
       >
         {label}
@@ -44,8 +84,11 @@ export function GlassChip({
 
   const chipStyle = [
     styles.chip,
-    { backgroundColor: selected ? bgSelected : bg },
-    selected && { borderColor: text, borderWidth: 2 },
+    {
+      backgroundColor: selected ? v.bgSelected : v.bgIdle,
+      borderColor: selected ? v.borderSelected : v.borderIdle,
+      borderWidth: selected ? 2 : 1,
+    },
   ]
 
   if (Platform.OS === 'web') {
@@ -83,8 +126,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
   },
   blur: {
@@ -100,11 +141,5 @@ const styles = StyleSheet.create({
   text: {
     ...typography.labelSmall,
     fontSize: 13,
-  },
-  textDefault: {
-    color: colors.textSecondary,
-  },
-  textSelected: {
-    fontWeight: '700',
   },
 })

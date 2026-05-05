@@ -10,6 +10,46 @@ import {
 import { englishPrimarySegment } from '../bilingualDisplay'
 import { buildProductName } from '../buildProductName'
 
+/** OFF `product.ingredients` tree node (nested sub-ingredients). */
+export type OFFIngredientNode = {
+  text?: string
+  ingredients?: OFFIngredientNode[]
+}
+
+/**
+ * Depth-first pre-order: each node's `text` then its children.
+ * Matches OFF's analyzed ingredient count when the flat `ingredients_text` bundles
+ * sub-ingredients in parentheses (which we strip elsewhere).
+ */
+export function flattenOffIngredientsPreorder(structured: OFFIngredientNode[] | undefined): string[] {
+  if (!structured?.length) return []
+  const out: string[] = []
+  const visit = (nodes: OFFIngredientNode[] | undefined) => {
+    if (!nodes?.length) return
+    for (const node of nodes) {
+      const line = formatOffStructuredIngredientText(node?.text)
+      if (line) out.push(line)
+      if (Array.isArray(node.ingredients) && node.ingredients.length > 0) {
+        visit(node.ingredients)
+      }
+    }
+  }
+  visit(structured)
+  return out
+}
+
+function formatOffStructuredIngredientText(raw?: string): string {
+  let s = String(raw ?? '').trim()
+  if (!s) return ''
+  let prev = ''
+  while (s !== prev) {
+    prev = s
+    s = s.replace(/_([^_]+)_/g, '$1')
+  }
+  s = englishPrimarySegment(s) || s
+  return s.trim()
+}
+
 function stripBilingualSlashes(s: string): string {
   if (!s.includes('/')) return s.trim()
   return s.replace(/\/[^,\)]+/g, '').replace(/\s+/g, ' ').trim()
@@ -23,7 +63,7 @@ export interface OFFProductLike {
   ingredients_text_en?: string
   ingredients_text_fr?: string
   ingredients_text_with_allergens?: string
-  ingredients?: Array<{ text?: string }>
+  ingredients?: OFFIngredientNode[]
   ingredients_tags?: string[]
   allergens?: string
   allergens_tags?: string[]
@@ -47,7 +87,7 @@ export interface NormalizedOFFData {
   allergens_tags: string[]
   traces_tags: string[]
   ingredients_tags: string[] | undefined
-  ingredients: Array<{ text?: string }> | undefined
+  ingredients: OFFIngredientNode[] | undefined
   product_name: string | undefined
   product_code: string | undefined
   brands: string | undefined
@@ -87,6 +127,11 @@ export function normalizeOFFProduct(
     return null
   }
 
+  const structured =
+    Array.isArray(offProduct.ingredients) && offProduct.ingredients.length > 0
+      ? (offProduct.ingredients as OFFIngredientNode[])
+      : undefined
+
   // 1) Ingredients: English-first pipeline (bilingual junk stripped — not raw with_allergens blob)
   let ingredients_list = cleanIngredientText(
     extractEnglishIngredients({
@@ -95,6 +140,14 @@ export function normalizeOFFProduct(
       ingredients_text_fr: offProduct.ingredients_text_fr,
     })
   )
+
+  if (structured?.length) {
+    const fromTree = flattenOffIngredientsPreorder(structured)
+    if (fromTree.length > ingredients_list.length) {
+      ingredients_list = cleanIngredientText(fromTree.join(', '), { ingredientDedupe: 'exact' })
+    }
+  }
+
   let ingredients_text = ingredients_list.join(', ')
 
   const ingredients_text_safety = extractEnglishIngredientHaystackForSafety(
@@ -105,19 +158,6 @@ export function normalizeOFFProduct(
     },
     'barcode'
   )
-
-  const structured =
-    Array.isArray(offProduct.ingredients) && offProduct.ingredients.length > 0
-      ? offProduct.ingredients
-      : undefined
-  if (!ingredients_text.trim() && structured?.length) {
-    const blob = structured
-      .map((i) => englishPrimarySegment(String(i?.text ?? '').trim()))
-      .filter(Boolean)
-      .join(', ')
-    ingredients_list = cleanIngredientText(blob)
-    ingredients_text = ingredients_list.join(', ')
-  }
   if (!ingredients_text.trim() && Array.isArray(offProduct.ingredients_tags) && offProduct.ingredients_tags.length) {
     const blob = offProduct.ingredients_tags
       .map((t) => englishPrimarySegment(t.replace(/^[a-z]{2}:/, '')))

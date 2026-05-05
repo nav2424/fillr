@@ -11,7 +11,7 @@ import type {
   CeliacResult,
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
-import { SENSITIVITY_SIGNALS } from './profileSignals'
+import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
 
 export interface UserProfile {
   allergies: string[]
@@ -71,6 +71,11 @@ function getSensitivityExplanation(key: string, ingredient: string): string {
     high_sodium: 'Contains sodium. If you\'re watching sodium intake, check the nutrition label.',
     msg: 'Contains MSG or glutamate. Some people are sensitive to these.',
     sulfites: 'Contains sulfites. Some people are sensitive to sulfites.',
+    caffeine: 'Contains caffeine or common caffeine sources. Consider if you limit stimulants.',
+    fructose: 'Contains fructose or high-fructose inputs. Relevant if you malabsorb fructose.',
+    histamine: 'May be histamine-relevant (fermented / aged / preserved cues on the label).',
+    nightshades: 'Contains nightshade-family ingredients (e.g. tomato, potato, pepper).',
+    fodmaps: 'Contains ingredients often flagged on low-FODMAP diets (check tolerance).',
   }
   return explanations[key] ?? `Relevant for your ${key} sensitivity.`
 }
@@ -115,13 +120,40 @@ function dedupeMatchedAllergensForProfile(rows: MatchedAllergen[]): MatchedAller
 /** Determine safety status based on user-specific matches */
 function computeSafetyStatus(
   hasMatchedAllergens: boolean,
+  hasHardPreferenceConflict: boolean,
+  hasSoftPreferenceConflict: boolean,
   hasMatchedSensitivities: boolean,
   hasIngredientData: boolean
 ): SafetyStatus {
   if (hasMatchedAllergens) return 'UNSAFE'
+  if (hasHardPreferenceConflict) return 'UNSAFE'
+  if (hasSoftPreferenceConflict) return 'CAUTION'
   if (hasMatchedSensitivities) return 'CAUTION'
   if (!hasIngredientData) return 'UNKNOWN'
   return 'SAFE'
+}
+
+function normalizePreferenceKey(raw: string): string {
+  return String(raw || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
+}
+
+function classifyPreferenceConflicts(
+  profile: UserProfile,
+  ingredientText: string
+): { hasHardConflict: boolean; hasSoftConflict: boolean } {
+  const hardSafetyPreferences = new Set(['vegan', 'vegetarian', 'plant_based', 'halal', 'kosher'])
+  let hasHardConflict = false
+  let hasSoftConflict = false
+  for (const rawKey of profile.preferences ?? []) {
+    const key = normalizePreferenceKey(rawKey)
+    const signal = PREFERENCE_SIGNALS[key]
+    if (!signal?.conflictPattern) continue
+    if (!signal.conflictPattern.test(ingredientText)) continue
+    if (hardSafetyPreferences.has(key)) hasHardConflict = true
+    else hasSoftConflict = true
+    if (hasHardConflict && hasSoftConflict) break
+  }
+  return { hasHardConflict, hasSoftConflict }
 }
 
 /** Celiac mode can flag gluten without IgE allergens — fold into stored/list safety. */
@@ -210,18 +242,23 @@ export function personalizeScanResult(
   base: ScanResult,
   profile: UserProfile
 ): ScanResult {
+  const ingredientText =
+    base.product.ingredientTextSafetyHaystack?.trim() || base.product.ingredientText || ''
   const filteredAllergens = dedupeMatchedAllergensForProfile(
     filterAllergensForUser(base.matchedAllergens, profile.allergies)
   )
   const matchedSensitivities = matchSensitivities(
-    base.product.ingredientText,
+    ingredientText,
     profile.sensitivities
   )
+  const preferenceConflict = classifyPreferenceConflicts(profile, ingredientText)
 
   let safetyStatus = computeSafetyStatus(
     filteredAllergens.length > 0,
+    preferenceConflict.hasHardConflict,
+    preferenceConflict.hasSoftConflict,
     matchedSensitivities.length > 0,
-    base.product.ingredientText.length > 0
+    ingredientText.length > 0
   )
   safetyStatus = resolveSafetyStatusWithCeliac(safetyStatus, profile, base.celiac)
 
@@ -273,5 +310,21 @@ export function applyAllergenPersonalizedProductCopy(result: ScanResult): ScanRe
       ...pa,
       ...patch,
     },
+  }
+}
+
+/** When only sensitivities match (no profile allergens), force stable second-person copy. Allergen hits win if present. */
+export function applySensitivityPersonalizedProductCopy(result: ScanResult): ScanResult {
+  if (result.matchedAllergens.length > 0) return result
+  if (!result.matchedSensitivities?.length) return result
+  const pa = result.productAnalysis
+  const names = result.matchedSensitivities.map((m) => m.sensitivityName).join(', ')
+  const patch = {
+    whoShouldAvoid: `Based on your profile, this product contains ingredients you're sensitive to (${names}).`,
+    bottomLine: `This product conflicts with your sensitivity profile. Proceed with caution.`,
+  }
+  return {
+    ...result,
+    productAnalysis: pa ? { ...pa, ...patch } : patch,
   }
 }

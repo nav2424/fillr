@@ -6,7 +6,7 @@
  * and avoidingMatches arrays that feed into calculateFillrFit.
  */
 
-import type { DietaryProfile } from '../types'
+import type { DietaryProfile, GoalConflictDetail } from '../types'
 import {
   SENSITIVITY_SIGNALS,
   PREFERENCE_SIGNALS,
@@ -14,11 +14,14 @@ import {
   AVOIDING_SIGNALS,
   UNDETECTABLE_AVOIDING_KEYS,
 } from './profileSignals'
+import { migrateGoalKey } from './goalKeyMigration'
 
 export interface ProfileMatchResult {
   sensitivityMatches: string[]
   goalMatches: string[]
   goalConflicts: string[]
+  /** Per conflict label, ingredient lines that matched the conflict regex. */
+  goalConflictDetails: GoalConflictDetail[]
   avoidingMatches: string[]
   undetectableAvoiding: string[]
   sensitivityPenalty: number
@@ -35,7 +38,6 @@ function normalizePreferenceKey(raw: string): string {
   if (PREFERENCE_SIGNALS[k]) return k
   const aliases: Record<string, string> = {
     keto: 'low_carb',
-    'diabetic_friendly': 'low_sugar',
     less_processed: 'less_processed',
     eat_cleaner: 'less_processed',
     eat_cleaner_less_processed: 'less_processed',
@@ -44,13 +46,11 @@ function normalizePreferenceKey(raw: string): string {
 }
 
 function normalizeGoalKey(raw: string): string {
-  const k = normalizeKey(raw)
+  const k0 = normalizeKey(raw)
+  const k = normalizeKey(migrateGoalKey(k0))
   if (GOAL_SIGNALS[k]) return k
-  const aliases: Record<string, string> = {
-    eat_cleaner: 'eat_cleaner',
-    'eat_cleaner_': 'eat_cleaner',
-  }
-  return aliases[k] ?? k
+  if (GOAL_SIGNALS[k0]) return k0
+  return k
 }
 
 /** Tokens inside parentheses (e.g. whey in "cheese (whey, salt)") for safety-style profile matching. */
@@ -66,6 +66,22 @@ export function extractSubIngredientsFromParentheticals(rawText: string): string
     })
   }
   return subIngredients
+}
+
+function mergeConflictIngredients(
+  map: Map<string, Set<string>>,
+  label: string,
+  names: string[]
+): void {
+  let set = map.get(label)
+  if (!set) {
+    set = new Set<string>()
+    map.set(label, set)
+  }
+  for (const n of names) {
+    const t = String(n || '').trim()
+    if (t) set.add(t)
+  }
 }
 
 function mergeIngredientNamesForSignals(
@@ -97,6 +113,7 @@ export function buildProfileMatches(
   const sensitivityMatches: string[] = []
   const goalMatches: string[] = []
   const goalConflicts: string[] = []
+  const goalConflictIngredientMap = new Map<string, Set<string>>()
   const avoidingMatches: string[] = []
   const undetectableAvoiding: string[] = []
   let sensitivityPenalty = 0
@@ -135,10 +152,11 @@ export function buildProfileMatches(
     }
 
     if (signal.conflictPattern && signal.conflictPenalty) {
-      const conflictCount = allNames.filter((name) => signal.conflictPattern!.test(name)).length
-      if (conflictCount > 0) {
+      const hits = allNames.filter((name) => signal.conflictPattern!.test(name))
+      if (hits.length > 0) {
         goalConflicts.push(signal.label)
-        preferencePenalty += conflictCount * signal.conflictPenalty
+        mergeConflictIngredients(goalConflictIngredientMap, signal.label, hits)
+        preferencePenalty += hits.length * signal.conflictPenalty
       }
     }
   }
@@ -157,10 +175,11 @@ export function buildProfileMatches(
       }
 
       if (signal.conflictPattern && signal.conflictPenalty) {
-        const conflictCount = allNames.filter((name) => signal.conflictPattern!.test(name)).length
-        if (conflictCount > 0) {
+        const hits = allNames.filter((name) => signal.conflictPattern!.test(name))
+        if (hits.length > 0) {
           goalConflicts.push(signal.label)
-          preferencePenalty += conflictCount * signal.conflictPenalty
+          mergeConflictIngredients(goalConflictIngredientMap, signal.label, hits)
+          preferencePenalty += hits.length * signal.conflictPenalty
         }
       }
     }
@@ -179,10 +198,19 @@ export function buildProfileMatches(
     if (triggered) avoidingMatches.push(avoidKey)
   }
 
+  const goalConflictDetails: GoalConflictDetail[] = [...new Set(goalConflicts)].map((label) => {
+    const set = goalConflictIngredientMap.get(label)
+    const ingredients = set
+      ? [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      : []
+    return { label, ingredients }
+  })
+
   return {
     sensitivityMatches: [...new Set(sensitivityMatches)],
     goalMatches: [...new Set(goalMatches)],
     goalConflicts: [...new Set(goalConflicts)],
+    goalConflictDetails,
     avoidingMatches: [...new Set(avoidingMatches)],
     undetectableAvoiding: [...new Set(undetectableAvoiding)],
     sensitivityPenalty,

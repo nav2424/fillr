@@ -349,20 +349,23 @@ export default function EditPreferencesScreen() {
               ))}
             </View>
             <View style={styles.customRow}>
-              <TextInput
-                style={[styles.input, customAllergenError && styles.inputError]}
-                placeholder="Add allergen (e.g. Mustard, Apple)"
-                placeholderTextColor={colors.textMuted}
-                value={customAllergenInput}
-                onChangeText={(t) => {
-                  setCustomAllergenInput(t)
-                  setCustomAllergenError(null)
-                }}
-                onSubmitEditing={addCustomAllergen}
-                returnKeyType="done"
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
+              <View style={[styles.searchInputWrap, customAllergenError && styles.inputError]}>
+                <Ionicons name="search" size={18} color={colors.textMuted} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search allergens"
+                  placeholderTextColor={colors.textMuted}
+                  value={customAllergenInput}
+                  onChangeText={(t) => {
+                    setCustomAllergenInput(t)
+                    setCustomAllergenError(null)
+                  }}
+                  onSubmitEditing={addCustomAllergen}
+                  returnKeyType="search"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+              </View>
               <Pressable
                 style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
                 onPress={addCustomAllergen}
@@ -517,6 +520,7 @@ export default function EditPreferencesScreen() {
             onPress={() => {
               void handleDone()
             }}
+            variant="liquid"
             fullWidth
             style={styles.doneBtn}
           />
@@ -620,31 +624,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.xs,
   },
-  input: {
+  searchInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
+    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    height: 48,
+  },
+  searchInput: {
     flex: 1,
     ...typography.body,
     color: colors.text,
-    backgroundColor: colors.backgroundLightGreen,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: 0,
   },
   inputError: {
     borderColor: colors.danger,
   },
   addBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(35, 186, 108, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
+    shadowColor: '#1a9d61',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
     elevation: 4,
   },
   addBtnPressed: {
@@ -714,10 +727,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   doneBtn: {
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+    shadowColor: '#1a9d61',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
     elevation: 6,
   },
 })

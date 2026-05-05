@@ -10,6 +10,8 @@ import { useUserStore } from '../store/userStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
 import { clearDisclaimerKeysOnSignOut } from '../lib/disclaimerStorage'
 import { clearPendingSignupAfterOnboarding } from '../lib/pendingSignup'
+import { signOutSupabase } from '../lib/authService'
+import { logOutOfRevenueCat } from '../services/revenuecatService'
 
 const LIGHT_GREEN = colors.backgroundLightGreen
 
@@ -37,6 +39,8 @@ export default function DeleteAccountScreen() {
     void (async () => {
       await clearDisclaimerKeysOnSignOut()
       await clearPendingSignupAfterOnboarding()
+      await logOutOfRevenueCat()
+      void signOutSupabase()
       useScanHistoryStore.getState().clearAll()
       useUserStore.getState().resetForAccountDeletion()
       signOut()

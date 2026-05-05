@@ -8,6 +8,8 @@ import {
   signOutSupabase,
 } from './authService'
 import { clearPendingSignupAfterOnboarding } from './pendingSignup'
+import { logInToRevenueCat, logOutOfRevenueCat } from '../services/revenuecatService'
+import { useUserStore } from '../store/userStore'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -38,8 +40,10 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
 
   if (state.isAuthenticated) {
     if (!supaUid || !state.userId || state.userId !== supaUid) {
+      await logOutOfRevenueCat()
       await signOutSupabase()
       await clearPendingSignupAfterOnboarding()
+      useUserStore.getState().resetForAccountDeletion()
       state.signOut()
     }
     return
@@ -59,5 +63,6 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
       void setOnboardingCompletedOnServer(supaUid)
     }
     state.setOnboardingFromServer(onboardingDone)
+    void logInToRevenueCat(supaUid)
   }
 }

@@ -7,7 +7,7 @@ import { colors, spacing, typography } from '../constants/theme'
 import { sendEmailVerificationCode, setOnboardingCompletedOnServer, verifyEmailWithCode } from '../lib/authService'
 import { useAuthStore } from '../store/authStore'
 import { useUserStore } from '../store/userStore'
-import { syncPremiumStatusFromRevenueCat } from '../services/revenuecatService'
+import { logInToRevenueCat } from '../services/revenuecatService'
 
 export default function VerifyEmailScreen() {
   const params = useLocalSearchParams<{ email?: string }>()
@@ -56,7 +56,7 @@ export default function VerifyEmailScreen() {
         isPro: profile?.is_pro ?? false,
         lifetimePro: profile?.lifetime_pro ?? false,
       })
-      void syncPremiumStatusFromRevenueCat()
+      void logInToRevenueCat(userId)
       await setOnboardingCompletedOnServer(userId)
       setOnboardingComplete(true)
       useUserStore.getState().clearOnboardingDraft()

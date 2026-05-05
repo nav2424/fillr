@@ -20,7 +20,7 @@ import {
   signOutSupabase,
 } from '../lib/authService'
 import { useUserStore } from '../store/userStore'
-import { syncPremiumStatusFromRevenueCat } from '../services/revenuecatService'
+import { logInToRevenueCat } from '../services/revenuecatService'
 
 /** Same shell as `sign-up.tsx` (plain View + KAV). Blur/card/ScrollView stacks broke TextInput on iOS Simulator. */
 export default function LoginScreen() {
@@ -88,7 +88,7 @@ export default function LoginScreen() {
         isPro: profile.is_pro ?? false,
         lifetimePro: profile.lifetime_pro ?? false,
       })
-      void syncPremiumStatusFromRevenueCat()
+      void logInToRevenueCat(userId)
       if (!onboardingDone) {
         useUserStore.getState().clearOnboardingDraft()
       }

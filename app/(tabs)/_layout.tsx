@@ -1,15 +1,20 @@
 import { View, StyleSheet, Pressable } from 'react-native'
 import { Tabs, router } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { colors, spacing, typography } from '../../constants/theme'
+import { colors, homeWordmarkLayout } from '../../constants/theme'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
-import { FillrHeaderLogo } from '../../components'
+import { FillrHeaderLogo, ScanTabBarIcon } from '../../components'
+import {
+  DEFAULT_TAB_BAR_ITEM_STYLE,
+  DEFAULT_TAB_BAR_LABEL_STYLE,
+  DEFAULT_TAB_BAR_STYLE,
+} from '../../constants/tabBarOptions'
 
 const LIGHT_GREEN = colors.backgroundLightGreen
 
 const tabIcons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
   index: { active: 'home', inactive: 'home-outline' },
-  scan: { active: 'camera', inactive: 'camera-outline' },
   history: { active: 'time', inactive: 'time-outline' },
   overview: { active: 'bar-chart', inactive: 'bar-chart-outline' },
   profile: { active: 'person', inactive: 'person-outline' },
@@ -28,7 +33,7 @@ function HistorySavedHeaderButton() {
       <Ionicons
         name={savedCount > 0 ? 'heart' : 'heart-outline'}
         size={24}
-        color={savedCount > 0 ? colors.accent : colors.text}
+        color={savedCount > 0 ? colors.accent : '#0f172a'}
       />
     </Pressable>
   )
@@ -36,47 +41,67 @@ function HistorySavedHeaderButton() {
 
 const historyHeaderBtn = StyleSheet.create({
   wrap: {
-    marginRight: spacing.md,
     paddingVertical: 4,
     paddingHorizontal: 4,
   },
 })
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets()
+
   return (
     <Tabs
-      screenOptions={{
-        headerShown: true,
-        headerTitle: () => <FillrHeaderLogo />,
+      screenOptions={({ route }) => {
+        const isScan = route.name === 'scan'
+        const whiteHeader = route.name === 'history' || route.name === 'overview' || route.name === 'profile'
+        return {
+        headerShown: route.name !== 'index',
+        headerShadowVisible: false,
+        headerBackVisible: false,
+        headerTitle: '',
         headerTitleAlign: 'left',
+        headerTransparent: isScan,
         headerStyle: {
-          backgroundColor: LIGHT_GREEN,
+          backgroundColor: isScan ? 'transparent' : whiteHeader ? '#ffffff' : LIGHT_GREEN,
           shadowColor: 'transparent',
           elevation: 0,
         },
-        headerTransparent: false,
-        headerShadowVisible: false,
+        headerTintColor: isScan ? '#ffffff' : '#0f172a',
+        headerLeftContainerStyle: {
+          paddingLeft: homeWordmarkLayout.horizontalPad,
+        },
+        headerRightContainerStyle: {
+          paddingRight: homeWordmarkLayout.horizontalPad,
+        },
+        headerLeft: () => <FillrHeaderLogo variant={isScan ? 'onDark' : 'default'} />,
+        sceneStyle: {
+          backgroundColor:
+            route.name === 'scan'
+              ? '#000000'
+              : route.name === 'index' ||
+                  route.name === 'history' ||
+                  route.name === 'profile' ||
+                  route.name === 'overview'
+                ? '#ffffff'
+                : LIGHT_GREEN,
+        },
         tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: LIGHT_GREEN,
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowColor: 'transparent',
+          ...DEFAULT_TAB_BAR_STYLE,
+          marginHorizontal: Math.max(20, insets.left, insets.right),
+          marginBottom: 4 + insets.bottom,
         },
         tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: {
-          ...typography.labelSmall,
-          fontSize: 11,
-          fontWeight: '600',
-        },
-        tabBarItemStyle: { paddingTop: 10 },
+        tabBarInactiveTintColor: '#64748b',
+        tabBarLabelStyle: DEFAULT_TAB_BAR_LABEL_STYLE,
+        tabBarItemStyle: DEFAULT_TAB_BAR_ITEM_STYLE,
+        }
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
+          headerShown: false,
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? tabIcons.index.active : tabIcons.index.inactive}
@@ -104,6 +129,8 @@ export default function TabLayout() {
         name="scan"
         options={{
           title: 'Scan',
+          tabBarLabel: () => null,
+          tabBarAccessibilityLabel: 'Scan',
           headerTransparent: true,
           headerStyle: { backgroundColor: 'transparent', shadowColor: 'transparent', elevation: 0 },
           headerTitleStyle: {
@@ -112,20 +139,13 @@ export default function TabLayout() {
             color: '#ffffff',
             letterSpacing: -0.5,
           },
-          tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons
-              name={focused ? tabIcons.scan.active : tabIcons.scan.inactive}
-              size={size ?? 24}
-              color={color}
-            />
-          ),
+          tabBarIcon: ({ focused }) => <ScanTabBarIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="overview"
         options={{
           title: 'Overview',
-          headerShown: false,
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? tabIcons.overview.active : tabIcons.overview.inactive}

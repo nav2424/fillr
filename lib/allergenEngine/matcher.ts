@@ -387,6 +387,19 @@ export function runCeliacCheck(
       continue
     }
 
+    const brewersYeast = CELIAC_RULES.BREWERS_YEAST.terms.find((t) =>
+      normalizeText(lower).includes(normalizeText(t))
+    )
+    if (brewersYeast) {
+      pushUniqueCeliac(matches, {
+        ingredient,
+        signalType: CELIAC_RULES.BREWERS_YEAST.signalType,
+        severity: CELIAC_RULES.BREWERS_YEAST.severity,
+        reason: CELIAC_RULES.BREWERS_YEAST.reason,
+      })
+      continue
+    }
+
     const oats = CELIAC_RULES.OATS.terms.find((t) =>
       normalizeText(lower).includes(normalizeText(t))
     )

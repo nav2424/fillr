@@ -1,11 +1,12 @@
 import { formatProductTitle } from './formatProductTitle'
 import type { ScanIngredientSource } from '../types'
+import { parseScanHistoryDate } from './parseScanHistoryDate'
 
 export const DEFAULT_OCR_PRODUCT_NAME = 'Scanned Product'
 
 function formatDateSnippet(raw: string): string {
-  const d = new Date(raw)
-  if (Number.isNaN(d.getTime())) return raw
+  const d = parseScanHistoryDate(raw)
+  if (!d) return raw
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 

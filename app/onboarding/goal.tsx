@@ -1,121 +1,86 @@
 import { useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { StyleSheet, ScrollView } from 'react-native'
 import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
 import {
-  FillrButton,
-  GlassProgressBar,
-  GlassOptionCard,
-  GradientBackground,
-} from '../../components'
-import { colors, spacing, typography } from '../../constants/theme'
+  OnboardingLayout,
+  ProgressHeader,
+  PrimaryButton,
+  OnboardingStepHero,
+  OnboardingStepSection,
+  GoalOptionRow,
+  FooterActionBar,
+} from '../../components/onboarding'
+import { ONBOARDING_STEP } from '../../constants/onboardingFlow'
 import { GOAL_OPTIONS } from '../../types'
 import { useUserStore } from '../../store/userStore'
+import { migrateGoalKey } from '../../lib/goalKeyMigration'
+
+const GOAL_HINT: Record<string, string> = {
+  more_protein: 'Bias scans toward protein-forward picks.',
+  less_sugar: 'Surface syrups and stealth sweeteners.',
+  lose_weight: 'Highlight energy-dense traps and fillers.',
+  gain_weight: 'Favor nutrient-dense calories, not noise.',
+  gut_health: 'Elevate fiber signals; note irritants.',
+  eat_cleaner: 'Reward short formulas vs industrial shortcuts.',
+  balanced_diet: 'Practical variety — no fad language.',
+  reduce_upf: 'Flag additive stacks and modified starches.',
+  lower_sodium: 'Catch salt, concentrates, stealth sodium.',
+  understand: 'Decode jargon on every notable line.',
+}
 
 export default function OnboardingGoal() {
   const [selected, setSelected] = useState<string>(
-    useUserStore.getState().goal || ''
+    migrateGoalKey(useUserStore.getState().goal || '') || ''
   )
 
   const handleNext = () => {
-    useUserStore.getState().setGoal(selected)
+    const canonical = migrateGoalKey(selected) || selected
+    useUserStore.getState().setGoal(canonical)
     router.push('/onboarding/camera')
   }
 
   return (
-    <GradientBackground variant="minimal">
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.navRow}>
-        <Pressable
-          onPress={() => router.push('/onboarding/preferences')}
-          hitSlop={10}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Back to previous question"
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-      </View>
-      <GlassProgressBar total={7} current={5} />
+    <OnboardingLayout>
+      <ProgressHeader
+        stepIndex={ONBOARDING_STEP.goal}
+        onBack={() => router.push('/onboarding/preferences')}
+      />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.inner}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.step}>Step 5 of 7</Text>
-        <Text style={styles.title}>Your goal</Text>
-        <Text style={styles.helper}>
-          What do you want to achieve?
-        </Text>
-        <View style={styles.cards}>
+        <OnboardingStepHero
+          eyebrow="Scoring"
+          title="Your goal"
+          lead="One emphasis per pass — tune it anytime."
+          detail="Goals shape copy and ranking hints. Allergies always override."
+        />
+
+        <OnboardingStepSection
+          showTopRule={false}
+          label="Primary focus"
+          hint="Pick the lane Fillr should lean into alongside safety."
+        >
           {GOAL_OPTIONS.map((opt) => (
-            <GlassOptionCard
+            <GoalOptionRow
               key={opt.key}
               label={opt.label}
+              description={GOAL_HINT[opt.key]}
               selected={selected === opt.key}
               onPress={() => setSelected(opt.key)}
             />
           ))}
-        </View>
+        </OnboardingStepSection>
       </ScrollView>
-      <FillrButton title="Continue" onPress={handleNext} fullWidth />
-      </SafeAreaView>
-    </GradientBackground>
+      <FooterActionBar>
+        <PrimaryButton title="Continue" onPress={handleNext} disabled={!selected} />
+      </FooterActionBar>
+    </OnboardingLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.lg,
-  },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  backBtnPressed: {
-    opacity: 0.9,
-  },
-  backText: {
-    ...typography.bodySmall,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xxl,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  step: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: spacing.sm,
-    fontWeight: '700',
-  },
-  helper: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
-  cards: {
-    gap: 0,
-  },
+  scroll: { flex: 1 },
+  inner: { paddingBottom: 112 },
 })

@@ -161,6 +161,29 @@ export interface IngredientExplanation {
   bodyEffect?: string
   /** 6–8 word hook (model `headline`). */
   headline?: string
+  /** Fillr intelligence: 2–5 word fast identity (model `short_label`). */
+  shortLabel?: string
+  /** Fillr intelligence: two plain-English bullets (model `why_it_matters`). */
+  whyItMattersBullets?: readonly [string, string]
+  /** Fillr intelligence: one-line system judgment. */
+  systemJudgment?: string
+  /** Fillr intelligence: one-line user-specific impact. */
+  impactForYou?: string
+  /** Structured render driver from model/pipeline. */
+  flagDriver?: 'allergy' | 'sensitivity' | 'goal' | 'preference' | 'processing'
+  /** Structured profile anchor (e.g. more_protein, vegan). */
+  profileAnchor?: string
+  /** Structured actionability for quick UX labels. */
+  actionability?: 'avoid' | 'limit' | 'okay'
+  /** Fillr intelligence: model confidence for the intelligence block. */
+  intelligenceConfidence?: 'high' | 'medium'
+  /** Structured evidence trace shown in results transparency UI. */
+  evidenceTrace?: {
+    ruleMatched?: string
+    source?: string
+    confidence?: 'high' | 'medium' | 'low'
+    lastVerifiedAt?: string
+  }
   /** One plain-English sentence decoding label jargon (translator lead). */
   labelDecoder?: string
   funFact?: string
@@ -206,6 +229,8 @@ export interface ScanResult {
   productAnalysis?: ProductAnalysis
   /** Deterministic Fillr Fit (see `lib/fillrScoring.ts`). */
   fillrFit?: FillrFitSnapshot
+  /** How processed the formulation looks (see `lib/processedRating.ts`). */
+  processedRating?: ProcessedRatingSnapshot | null
   /** Inputs passed to `calculateFillrFit` (for rescoring / debug). */
   scoringData?: FillrScoringDataSnapshot
   /** Every ingredient line was served from Supabase `ingredient_knowledge` (no OpenAI call). */
@@ -222,13 +247,35 @@ export interface FillrFitSnapshot {
   tier: 1 | 2 | 3
 }
 
+/**
+ * Whole-food vs industrial formulation (not allergy-specific).
+ * `score` is 0–100 for spectrum position only (UI shows a bar, not this number).
+ */
+export interface ProcessedRatingSnapshot {
+  score: number
+  verdict: string
+  verdictColor: string
+  progressColor: string
+  reason: string
+}
+
+/** Ingredients on the label that triggered a goal/preference conflict pattern. */
+export interface GoalConflictDetail {
+  label: string
+  ingredients: string[]
+}
+
 export interface FillrScoringDataSnapshot {
   allergyMatches?: string[]
   celiacSeverity?: 'SAFE' | 'CAUTION' | 'AVOID'
+  celiacStrictGluten?: boolean
+  celiacAmbiguousCount?: number
   sensitivityMatches?: string[]
   avoidingMatches?: string[]
   goalMatches?: string[]
   goalConflicts?: string[]
+  /** Populated when goalConflicts is non-empty; lists label-specific ingredient hits. */
+  goalConflictDetails?: GoalConflictDetail[]
   ingredientCounts?: {
     natural: number
     processed: number
@@ -236,6 +283,29 @@ export interface FillrScoringDataSnapshot {
     flagged: number
   }
   totalIngredients?: number
+  eNumberCount?: number
+  genericFunctionalTermCount?: number
+  industrialSweetenerCount?: number
+  hydrogenatedOilCount?: number
+  scoringPreferenceKeys?: string[]
+  sweetenerCount?: number
+  sugarScore?: number
+  hasSeedOils?: boolean
+  emulsifierCount?: number
+  caffeineMg?: number
+  proInflammatoryCount?: number
+  productCategory?:
+    | 'whole_food'
+    | 'clean_snack'
+    | 'protein_bar'
+    | 'gum'
+    | 'candy'
+    | 'dairy'
+    | 'drink'
+    | 'condiment'
+    | 'generic_packaged'
+  /** Ingredient blob used for scoring heuristics (mirrors `FillrScoringInput.labelHaystack`). */
+  labelHaystack?: string
 }
 
 export interface MatchedAllergen {
@@ -270,27 +340,42 @@ export const ALLERGY_OPTIONS = [
 export const SENSITIVITY_OPTIONS = [
   { key: 'lactose', label: 'Lactose' },
   { key: 'gluten_sensitivity', label: 'Gluten sensitivity' },
-  { key: 'artificial_sweeteners', label: 'Artificial sweeteners' },
   { key: 'high_sodium', label: 'High sodium' },
   { key: 'msg', label: 'MSG' },
   { key: 'sulfites', label: 'Sulfites' },
+  { key: 'artificial_sweeteners', label: 'Artificial sweeteners' },
+  { key: 'caffeine', label: 'Caffeine' },
+  { key: 'fructose', label: 'Fructose' },
+  { key: 'histamine', label: 'Histamine' },
+  { key: 'nightshades', label: 'Nightshades' },
+  { key: 'fodmaps', label: 'FODMAPs' },
 ] as const
 
 export const PREFERENCE_OPTIONS = [
+  { key: 'vegan', label: 'Vegan' },
+  { key: 'vegetarian', label: 'Vegetarian' },
   { key: 'high_protein', label: 'High protein' },
   { key: 'low_sugar', label: 'Low sugar' },
   { key: 'low_carb', label: 'Low carb' },
   { key: 'low_calorie', label: 'Low calorie' },
-  { key: 'vegan', label: 'Vegan' },
-  { key: 'vegetarian', label: 'Vegetarian' },
   { key: 'plant_based', label: 'Plant-based' },
   { key: 'less_processed', label: 'Eat cleaner / less processed' },
+  { key: 'kosher', label: 'Kosher' },
+  { key: 'halal', label: 'Halal' },
+  { key: 'paleo', label: 'Paleo' },
+  { key: 'whole30', label: 'Whole30' },
+  { key: 'diabetic_friendly', label: 'Diabetic-friendly' },
 ] as const
 
 export const GOAL_OPTIONS = [
-  { key: 'understand', label: 'Understand what I\'m eating' },
+  { key: 'more_protein', label: 'Eat more protein' },
+  { key: 'less_sugar', label: 'Eat less sugar' },
   { key: 'lose_weight', label: 'Lose weight' },
-  { key: 'build_muscle', label: 'Build muscle' },
+  { key: 'gain_weight', label: 'Gain weight' },
+  { key: 'gut_health', label: 'Improve gut health' },
   { key: 'eat_cleaner', label: 'Eat cleaner' },
-  { key: 'improve_health', label: 'Improve overall health' },
+  { key: 'balanced_diet', label: 'Maintain a balanced diet' },
+  { key: 'reduce_upf', label: 'Reduce ultra-processed foods' },
+  { key: 'lower_sodium', label: 'Lower sodium' },
+  { key: 'understand', label: 'Understand what I\'m eating' },
 ] as const

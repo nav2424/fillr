@@ -5,28 +5,25 @@ import { colors, spacing, radius } from '../constants/theme'
 interface GlassProgressBarProps {
   total: number
   current: number
+  /** Progress fill + active dots (defaults to app `colors.accent`). */
+  accentColor?: string
 }
 
-export function GlassProgressBar({ total, current }: GlassProgressBarProps) {
+export function GlassProgressBar({ total, current, accentColor }: GlassProgressBarProps) {
   const progress = ((current + 1) / total) * 100
-
-  const trackContent = (
-    <View style={styles.trackInner}>
-      <View style={[styles.fill, { width: `${progress}%` }]} />
-    </View>
-  )
+  const fill = accentColor ?? colors.accent
 
   return (
     <View style={styles.container}>
       <View style={styles.trackWrapper}>
         {Platform.OS === 'web' ? (
           <View style={[styles.trackInner, styles.trackFallback]}>
-            <View style={[styles.fill, { width: `${progress}%` }]} />
+            <View style={[styles.fill, { width: `${progress}%`, backgroundColor: fill }]} />
           </View>
         ) : (
           <BlurView intensity={50} tint="light" style={styles.trackBlur}>
             <View style={styles.trackInner}>
-              <View style={[styles.fill, { width: `${progress}%` }]} />
+              <View style={[styles.fill, { width: `${progress}%`, backgroundColor: fill }]} />
             </View>
           </BlurView>
         )}
@@ -37,8 +34,8 @@ export function GlassProgressBar({ total, current }: GlassProgressBarProps) {
             key={i}
             style={[
               styles.dot,
-              i === current && styles.dotActive,
-              i < current && styles.dotCompleted,
+              i === current && [styles.dotActive, { backgroundColor: fill, borderColor: fill }],
+              i < current && { backgroundColor: fill },
             ]}
           />
         ))}
@@ -74,7 +71,6 @@ const styles = StyleSheet.create({
   },
   fill: {
     height: '100%',
-    backgroundColor: colors.accent,
     borderRadius: radius.full,
   },
   dots: {
@@ -93,9 +89,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.accent,
-  },
-  dotCompleted: {
-    backgroundColor: colors.accent,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
 })

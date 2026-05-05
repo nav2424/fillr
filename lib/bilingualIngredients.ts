@@ -2,6 +2,7 @@
  * Merge duplicate ingredient lines from bilingual (e.g. Canadian EN/FR) Open Food Facts labels.
  */
 
+import { frenchLikelihood } from './bilingualDisplay'
 import { normalizeText } from './allergenEngine/matcher'
 
 /**
@@ -37,11 +38,60 @@ const EQUIV_GROUPS: string[][] = [
   ['arôme naturel', 'arome naturel', 'natural flavor', 'natural flavour'],
   ['arôme artificiel', 'artificial flavor', 'artificial flavour'],
   ['épices', 'epices', 'spices'],
+  ['mustard seed', 'mustard', 'moutarde', 'graines de moutarde', 'moutarde en poudre'],
   ['extrait de levure', 'yeast extract', 'hefeextrakt'],
   ['orge maltée', 'malted barley', 'barley malt extract', 'gerstenmalzextrakt'],
   ['café', 'coffee'],
   ['thé', 'tea'],
+  ['calcium propionate', 'propionate de calcium'],
+  ['sorbic acid', 'acide sorbique'],
+  ['defatted soy flour', 'farine de soya dégraissée', 'farine de soja dégraissée'],
+  ['vegetable monoglycerides', 'monoglycérides végétaux', 'monoglycerides végétaux'],
+  ['sodium stearoyl-2-lactylate', 'stéaroyl-2-lactylate de sodium', 'sodium stearoyl lactylate'],
 ]
+
+function avg(nums: number[]): number {
+  if (nums.length === 0) return 0
+  return nums.reduce((a, b) => a + b, 0) / nums.length
+}
+
+/**
+ * Some OFF labels concatenate the full English list and then the same list in French without
+ * an `Ingrédients:` header. Drop the trailing French block when scores jump mid-list.
+ */
+export function dropTrailingFrenchDuplicateBlock(names: string[]): string[] {
+  if (names.length < 6) return names
+  const scores = names.map((n) => frenchLikelihood(n))
+
+  let cut = -1
+  for (let i = 2; i < names.length; i++) {
+    const prevRun = avg(scores.slice(Math.max(0, i - 2), i))
+    const here = scores[i]
+    if (prevRun < 3.5 && here >= 5 && i >= Math.floor(names.length * 0.3)) {
+      cut = i
+      break
+    }
+  }
+
+  if (cut === -1 && names.length >= 10) {
+    const mid = Math.floor(names.length / 2)
+    const firstAvg = avg(scores.slice(0, mid))
+    const secondAvg = avg(scores.slice(mid))
+    if (secondAvg >= firstAvg + 3 && secondAvg >= 5) {
+      for (let i = mid; i < names.length; i++) {
+        if (scores[i] >= 4 && scores[i - 1] < 3.5) {
+          cut = i
+          break
+        }
+      }
+    }
+  }
+
+  if (cut > 0 && cut < names.length) {
+    return names.slice(0, cut)
+  }
+  return names
+}
 
 const EN_DISPLAY = new Set(
   [
@@ -77,6 +127,11 @@ const EN_DISPLAY = new Set(
     'barley malt extract',
     'coffee',
     'tea',
+    'calcium propionate',
+    'sorbic acid',
+    'defatted soy flour',
+    'vegetable monoglycerides',
+    'sodium stearoyl-2-lactylate',
   ].map((s) => normalizeText(s))
 )
 
@@ -129,5 +184,5 @@ export function dedupeBilingualIngredientNames(names: string[]): string[] {
     seen.add(key)
     out.push(eq?.display ?? trimmed)
   }
-  return out
+  return dropTrailingFrenchDuplicateBlock(out)
 }

@@ -9,7 +9,8 @@ const FR_LEADING_TOKENS =
 const FR_LIKELY =
   /\b(de|du|des|la|le|les|et|ou|pour|avec|sans|contient|contiennent|épaississant|édulcorant|arôme|arome|huile de|sirop de|extrait de|farine de|poudre de|jus de|lait écrémé|lait ecreme)\b/i
 
-function frenchLikelihood(s: string): number {
+/** Exported for bilingual ingredient list cleanup (drop duplicate FR blocks). */
+export function frenchLikelihood(s: string): number {
   const p = s.trim()
   if (!p) return 0
   let score = 0

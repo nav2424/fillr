@@ -1,5 +1,6 @@
 import { forwardRef, type ReactNode } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
+import { FILLR_WEB_HOST } from '../constants/legalUrls'
 import type { ScanShareCardModel } from '../lib/buildShareScanCardModel'
 import {
   SHARE_SCAN_CAPTURE_WIDTH,
@@ -16,8 +17,7 @@ export {
 } from '../lib/buildShareScanCardModel'
 export type { ScanShareCardModel } from '../lib/buildShareScanCardModel'
 
-export const SHARE_SCAN_MESSAGE =
-  'I use Fillr to read food labels for me — you can try it at usefillr.com'
+export const SHARE_SCAN_MESSAGE = `I use Fillr to read food labels for me — you can try it at ${FILLR_WEB_HOST}`
 
 function capitalizeWord(s: string): string {
   const t = s.trim()
@@ -162,7 +162,7 @@ export const ScanShareCardVisual = forwardRef<View, ScanShareCardModel>(function
         ) : null}
 
         <View style={styles.footerBlock}>
-          <Text style={styles.footerUrl}>usefillr.com</Text>
+          <Text style={styles.footerUrl}>{FILLR_WEB_HOST}</Text>
           <Text style={styles.footerSub}>Get the app and scan any barcode to read the label in plain English.</Text>
         </View>
       </View>

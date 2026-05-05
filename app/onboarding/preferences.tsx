@@ -1,23 +1,24 @@
 import { useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable, Switch } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { View, Text, StyleSheet, ScrollView, Switch } from 'react-native'
 import { router } from 'expo-router'
 import {
-  FillrButton,
-  GlassChip,
-  GlassProgressBar,
-  GradientBackground,
-} from '../../components'
-import { Ionicons } from '@expo/vector-icons'
-import { colors, spacing, typography } from '../../constants/theme'
+  OnboardingLayout,
+  ProgressHeader,
+  PrimaryButton,
+  OnboardingStepHero,
+  OnboardingStepSection,
+  SelectableChip,
+  SectionCard,
+  FooterActionBar,
+} from '../../components/onboarding'
+import { ONBOARDING_STEP } from '../../constants/onboardingFlow'
+import { ob } from '../../constants/onboardingTheme'
 import { PREFERENCE_OPTIONS } from '../../types'
 import { useUserStore } from '../../store/userStore'
 
 export default function OnboardingPreferences() {
   const initialCeliac = useUserStore.getState().celiacStrictGluten
-  const [selected, setSelected] = useState<string[]>(
-    useUserStore.getState().preferences
-  )
+  const [selected, setSelected] = useState<string[]>(useUserStore.getState().preferences)
   const [celiacMode, setCeliacMode] = useState<boolean>(initialCeliac)
 
   const toggle = (key: string) => {
@@ -33,177 +34,106 @@ export default function OnboardingPreferences() {
   }
 
   return (
-    <GradientBackground variant="minimal">
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.navRow}>
-        <Pressable
-          onPress={() => router.push('/onboarding/sensitivities')}
-          hitSlop={10}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Back to previous question"
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-      </View>
-      <GlassProgressBar total={7} current={4} />
+    <OnboardingLayout>
+      <ProgressHeader
+        stepIndex={ONBOARDING_STEP.preferences}
+        onBack={() => router.push('/onboarding/sensitivities')}
+      />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.inner}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.step}>Step 4 of 7</Text>
-        <Text style={styles.title}>Preferences</Text>
-        <Text style={styles.helper}>
-          We'll highlight products that match your diet
-        </Text>
-        <View style={styles.celiacCard}>
-          <View style={styles.celiacHeader}>
-            <View style={styles.celiacIconWrap}>
-              <Text style={styles.celiacIcon}>🌾</Text>
+        <OnboardingStepHero
+          eyebrow="Lifestyle"
+          title="Preferences"
+          lead="We surface conflicts without drowning the safety story."
+          detail="Diet values sit on top of allergies — they never override a true allergen hit."
+        />
+
+        <OnboardingStepSection
+          showTopRule={false}
+          label="Celiac mode"
+          hint="Stricter gluten parsing for ambiguous lines and cross-contact wording."
+        >
+          <SectionCard variant="highlight">
+            <View style={styles.celiacRow}>
+              <View style={styles.celiacCopy}>
+                <Text style={styles.celiacTitle}>Strict gluten detection</Text>
+                <Text style={styles.celiacSub}>
+                  Beyond a basic wheat toggle — flags gluten sources and fuzzy label phrasing.
+                </Text>
+              </View>
+              <Switch
+                value={celiacMode}
+                onValueChange={setCeliacMode}
+                trackColor={{ false: '#d1d5db', true: ob.cta }}
+                thumbColor="#fff"
+              />
             </View>
-            <View style={styles.celiacTextWrap}>
-              <Text style={styles.celiacTitle}>Celiac Mode</Text>
-              <Text style={styles.celiacSubtitle}>
-                Strict gluten detection — flags all gluten sources, ambiguous ingredients, and
-                cross-contact risks
+            {celiacMode ? (
+              <Text style={styles.celiacWarn}>
+                Label intelligence only — follow your clinician for medical decisions.
               </Text>
-            </View>
-            <Switch
-              value={celiacMode}
-              onValueChange={setCeliacMode}
-              trackColor={{ false: '#d1d5db', true: '#22c55e' }}
-            />
+            ) : null}
+          </SectionCard>
+        </OnboardingStepSection>
+
+        <OnboardingStepSection
+          label="Diet preferences"
+          hint="Tap what you want surfaced — allergies still win on safety."
+        >
+          <View style={[styles.chips, { gap: ob.step.chipGap }]}>
+            {PREFERENCE_OPTIONS.map((opt) => (
+              <SelectableChip
+                key={opt.key}
+                label={opt.label}
+                selected={selected.includes(opt.key)}
+                tone="preference"
+                onPress={() => toggle(opt.key)}
+              />
+            ))}
           </View>
-          {celiacMode && (
-            <View style={styles.celiacNote}>
-              <Text style={styles.celiacNoteText}>
-                ⚠ This mode is stricter than a standard gluten allergy. Always follow your
-                clinician&apos;s guidance.
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.chips}>
-          {PREFERENCE_OPTIONS.map((opt) => (
-            <GlassChip
-              key={opt.key}
-              label={opt.label}
-              selected={selected.includes(opt.key)}
-              variant="safe"
-              onPress={() => toggle(opt.key)}
-            />
-          ))}
-        </View>
+        </OnboardingStepSection>
       </ScrollView>
-      <FillrButton title="Continue" onPress={handleNext} fullWidth />
-      </SafeAreaView>
-    </GradientBackground>
+      <FooterActionBar>
+        <PrimaryButton title="Continue" onPress={handleNext} />
+      </FooterActionBar>
+    </OnboardingLayout>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.lg,
-  },
-  navRow: {
+  scroll: { flex: 1 },
+  inner: { paddingBottom: 112 },
+  celiacRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    gap: 12,
   },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  celiacCopy: { flex: 1 },
+  celiacTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: ob.ink,
+    marginBottom: 5,
+    letterSpacing: -0.2,
   },
-  backBtnPressed: {
-    opacity: 0.9,
+  celiacSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 19,
+    color: ob.inkMuted,
   },
-  backText: {
-    ...typography.bodySmall,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xxl,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  step: {
-    ...typography.caption,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: spacing.sm,
-    fontWeight: '700',
-  },
-  helper: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
+  celiacWarn: {
+    marginTop: 12,
+    fontSize: 12,
+    fontWeight: '600',
+    color: ob.sensitivity,
+    lineHeight: 17,
   },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  celiacCard: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1.5,
-    borderColor: '#e5e7eb',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  celiacHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  celiacIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#fef3c7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  celiacIcon: {
-    fontSize: 18,
-  },
-  celiacTextWrap: {
-    flex: 1,
-  },
-  celiacTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  celiacSubtitle: {
-    fontSize: 13,
-    color: '#6b7280',
-    lineHeight: 18,
-  },
-  celiacNote: {
-    marginTop: 10,
-    backgroundColor: '#fffbeb',
-    borderRadius: 8,
-    padding: 8,
-  },
-  celiacNoteText: {
-    fontSize: 12,
-    color: '#92400e',
-    lineHeight: 16,
   },
 })

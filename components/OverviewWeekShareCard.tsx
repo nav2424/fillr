@@ -1,5 +1,6 @@
 import { forwardRef, type ReactNode } from 'react'
 import { View, Text, StyleSheet, Dimensions } from 'react-native'
+import { FILLR_WEB_HOST } from '../constants/legalUrls'
 import type { OverviewWeekShareCardModel } from '../lib/buildOverviewShareCardModel'
 
 export { buildOverviewWeekShareCardModel } from '../lib/buildOverviewShareCardModel'
@@ -8,8 +9,7 @@ export type {
   OverviewWeekShareCardRow,
 } from '../lib/buildOverviewShareCardModel'
 
-export const SHARE_WEEK_MESSAGE =
-  "I'm decoding ingredients with Fillr — scan any barcode. usefillr.com"
+export const SHARE_WEEK_MESSAGE = `I'm decoding ingredients with Fillr — scan any barcode. ${FILLR_WEB_HOST}`
 
 const INK = '#0f172a'
 const LABEL_GRAY = '#9ca3af'
@@ -161,7 +161,7 @@ export const OverviewWeekShareCardVisual = forwardRef<View, OverviewWeekShareCar
               { fontSize: fsFooter, marginTop: mostOften.length > 0 ? gap(28) : gap(26) },
             ]}
           >
-            usefillr.com
+            {FILLR_WEB_HOST}
           </Text>
         </View>
       </View>

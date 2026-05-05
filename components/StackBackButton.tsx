@@ -22,9 +22,11 @@ const styles = StyleSheet.create({
   press: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingRight: 8,
+    paddingVertical: 0,
+    paddingRight: 2,
     marginLeft: Platform.OS === 'ios' ? 4 : 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
   },
   label: {
     fontSize: 17,

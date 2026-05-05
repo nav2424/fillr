@@ -4,6 +4,7 @@
 
 import type { ScanRecord } from '../store/scanHistoryStore'
 import { getAllergyLabel } from './knownAllergens'
+import { parseScanHistoryDate } from './parseScanHistoryDate'
 import type { CeliacSignal } from '../types'
 
 /** Allergy key -> hidden ingredient examples we flag automatically */
@@ -105,8 +106,8 @@ export function getAvoidedCountThisWeek(scans: ScanRecord[]): number {
 
   return scans.filter((s) => {
     if (s.safetyStatus !== 'UNSAFE' && s.safetyStatus !== 'CAUTION') return false
-    const scanDate = new Date(s.date)
-    return scanDate >= weekAgo
+    const scanDate = parseScanHistoryDate(s.date)
+    return scanDate !== null && scanDate >= weekAgo
   }).length
 }
 
@@ -117,8 +118,8 @@ export function getSafeScansThisWeek(scans: ScanRecord[]): number {
 
   return scans.filter((s) => {
     if (s.safetyStatus !== 'SAFE') return false
-    const scanDate = new Date(s.date)
-    return scanDate >= weekAgo
+    const scanDate = parseScanHistoryDate(s.date)
+    return scanDate !== null && scanDate >= weekAgo
   }).length
 }
 
@@ -161,7 +162,7 @@ export function getPersonalizedContext(
 
   const allergyLabels = allergies.map((a) => getAllergyLabel(a)).slice(0, 2)
   return {
-    greetingSubtext: `Protected for ${allergyLabels.join(' & ')}${allergies.length > 2 ? ` +${allergies.length - 2} more` : ''}`,
+    greetingSubtext: '',
     emptyStateTitle: 'Ready for your first scan',
     emptyStateSubtext: `We'll check ingredients for ${allergyLabels.join(', ')}${allergies.length > 2 ? ' and more' : ''}. Point your camera at any barcode.`,
   }

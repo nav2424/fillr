@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { createScanResultFromIngredientText } from '../services/productService'
+import { createScanResultFromIngredientText, enrichScanResultWithAI } from '../services/productService'
 import { useUserStore } from '../store/userStore'
 import { useAuthStore } from '../store/authStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
@@ -21,6 +21,8 @@ import { useCurrentScanStore } from '../store/currentScanStore'
 import { canUserScan, incrementScanCount } from '../store/scanStore'
 import { showPaywall } from '../services/paywallService'
 import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../lib/authService'
+import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '../lib/scheduleUIWork'
+import { trackScanResultMetric } from '../lib/scanResultMetrics'
 
 export default function ManualIngredientsScreen() {
   const [text, setText] = useState('')
@@ -42,17 +44,25 @@ export default function ManualIngredientsScreen() {
       Alert.alert('Add ingredients', 'Paste or type the ingredient list from the package.')
       return
     }
+    void trackScanResultMetric({
+      name: 'scan_started',
+      payload: { source: 'manual' },
+    })
     const allowed = await canUserScan()
     if (!allowed) {
       const purchased = await showPaywall()
       if (!purchased) {
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: { source: 'manual', reason: 'paywall_not_purchased' },
+        })
         Alert.alert('Scans', 'You need an available scan or Premium to analyze ingredients.')
         return
       }
     }
     setBusy(true)
     try {
-      const result = await createScanResultFromIngredientText({
+      const { result, dietaryProfile } = await createScanResultFromIngredientText({
         allergies,
         sensitivities,
         preferences,
@@ -61,17 +71,60 @@ export default function ManualIngredientsScreen() {
         ingredientsList: pasted,
         scanSource: 'manual',
       })
+      const shouldConsumeCredit = Boolean(result.product.id?.trim()) && result.ingredientBreakdown.length > 0
+      if (!shouldConsumeCredit) {
+        void trackScanResultMetric({
+          name: 'scan_failed',
+          payload: { source: 'manual', reason: 'insufficient_ingredient_data' },
+        })
+        Alert.alert('Scan incomplete', 'We could not build a reliable ingredient result from this input.')
+        return
+      }
+      const productId = result.product.id
       setCurrentScan(result)
       addScan({
         id: `scan_manual_${Date.now()}`,
-        productId: result.product.id,
+        productId,
         productName: result.product.name,
         barcode: result.product.barcode,
         safetyStatus: result.safetyStatus,
-        date: new Date().toLocaleDateString(),
+        date: new Date().toISOString(),
         result,
         source: 'manual',
       })
+      void trackScanResultMetric({
+        name: 'scan_succeeded',
+        productId: result.product.id,
+        barcode: result.product.barcode,
+        payload: { source: 'manual', ingredient_count: result.ingredientBreakdown.length },
+      })
+      void enrichScanResultWithAI(result, dietaryProfile)
+        .then((enriched) => {
+          runAfterInteractionsAndNextFrame(() => {
+            try {
+              const cur = useCurrentScanStore.getState().result
+              if (cur?.product.id === productId) {
+                if (__DEV__) console.log('[Fillr][decode] decode_merged_to_store', { productId })
+                setCurrentScan(enriched)
+              } else if (__DEV__) {
+                console.log('[Fillr][decode] decode_store_mismatch', {
+                  expectedProductId: productId,
+                  currentProductId: cur?.product.id ?? null,
+                })
+              }
+              runOnNextFrameInTransition(() => {
+                try {
+                  useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+                } catch (e) {
+                  console.warn('[Fillr][decode] history update after enrich failed', e)
+                }
+              })
+            } catch (e) {
+              console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+            }
+          })
+        })
+        .catch(() => {})
       await incrementScanCount()
       if (userId) {
         void (async () => {
@@ -92,6 +145,10 @@ export default function ManualIngredientsScreen() {
       }
       router.replace({ pathname: '/product/[id]', params: { id: result.product.id } })
     } catch {
+      void trackScanResultMetric({
+        name: 'scan_failed',
+        payload: { source: 'manual', reason: 'exception' },
+      })
       Alert.alert('Something went wrong', 'Check your connection and try again.')
     } finally {
       setBusy(false)

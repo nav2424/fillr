@@ -20,7 +20,13 @@ function pickNutrimentsForProduct(raw: unknown): Record<string, unknown> | undef
     'proteins_100g',
     'protein_100g',
     'salt_100g',
+    'salt_serving',
     'sodium_100g',
+    'sodium_serving',
+    'omega-3-fat_100g',
+    'omega-6-fat_100g',
+    'trans-fat_100g',
+    'cholesterol_100g',
   ] as const
   const out: Record<string, unknown> = {}
   for (const k of keys) {
@@ -42,6 +48,8 @@ export type AllergenScanResult =
       crossContactWarnings?: string[]
       allergensTags?: string[]
       tracesTags?: string[]
+      /** Raw OFF product document (for Supabase `products` cache upserts). */
+      offProduct: OFFProductLike
     }
   | {
       ok: false
@@ -140,6 +148,7 @@ export async function scanBarcodeForAllergens(params: {
     crossContactWarnings: norm?.cross_contact_warnings,
     allergensTags: norm?.allergens_tags,
     tracesTags: norm?.traces_tags,
+    offProduct: product as OFFProductLike,
   }
 }
 

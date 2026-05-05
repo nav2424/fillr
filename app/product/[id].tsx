@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import { useLocalSearchParams, router } from 'expo-router'
 import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
   View,
   Text,
   StyleSheet,
@@ -11,8 +14,8 @@ import {
   Share,
   Platform,
   Modal,
-  Animated,
-  ActivityIndicator,
+  Image,
+  type ViewStyle,
 } from 'react-native'
 import ViewShot, { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
@@ -22,16 +25,18 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   IngredientCard,
   ShareCard,
+  AllergenSweepOverlay,
+  ProfileReasoningCard,
   resolveIngredientDisplayRating,
   ScoreDisplay,
-  AllergenPill,
-  RatioBar,
-  type RatioCounts,
   type ShareCardProps,
 } from '../../components'
+import { FILLR_LOGO_MARK } from '../../components/FillrHeaderLogo'
 import { colors, theme } from '../../constants/theme'
-import { formatAllergenTagsForDisplay } from '../../lib/fillrAdapter'
 import { toTitleCase } from '../../lib/formatProductTitle'
+import { buildIngredientCardViewModel } from '../../lib/buildIngredientCardViewModel'
+import { buildScoreExplainability } from '../../lib/buildScoreExplainability'
+import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { useCurrentScanStore } from '../../store/currentScanStore'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
 import { useUserStore } from '../../store/userStore'
@@ -42,13 +47,14 @@ import {
   type MatchedSensitivity,
   type ScanResult,
 } from '../../types'
-import { rescanWithManualIngredients } from '../../services/productService'
 import { ingredientSortRank } from '../../lib/scanResultHook'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
-import { formatGoalName } from '../../lib/fillrScoring'
+import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
+import { playSafeScanSound } from '../../lib/playSafeScanSound'
+import { textMatchesIngredientGenericPattern } from '../../lib/ingredientCopyQuality'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { getUserProfile } = require('../../store/userProfileStore.js') as {
   getUserProfile: () => Promise<{
@@ -88,6 +94,32 @@ function ingredientHitsSensitivity(ing: IngredientExplanation, matches: MatchedS
   })
 }
 
+function matchedAllergenLabelForIngredient(
+  ing: IngredientExplanation,
+  matches: MatchedAllergen[]
+): string | undefined {
+  if (!matches.length) return undefined
+  const n = ing.name.toLowerCase()
+  return matches.find((m) => {
+    const t = m.matchedIngredient.toLowerCase().trim()
+    if (!t) return false
+    return n.includes(t) || t.includes(n)
+  })?.allergenName
+}
+
+function matchedSensitivityLabelForIngredient(
+  ing: IngredientExplanation,
+  matches: MatchedSensitivity[]
+): string | undefined {
+  if (!matches.length) return undefined
+  const n = ing.name.toLowerCase()
+  return matches.find((m) => {
+    const t = m.matchedIngredient.toLowerCase().trim()
+    if (!t) return false
+    return n.includes(t) || t.includes(n)
+  })?.sensitivityName
+}
+
 function ingredientHitsCeliac(ing: IngredientExplanation, matches: CeliacSignal[]): CeliacSignal | null {
   if (!matches.length) return null
   const n = ing.name.toLowerCase()
@@ -98,6 +130,12 @@ function ingredientHitsCeliac(ing: IngredientExplanation, matches: CeliacSignal[
       return n.includes(t) || t.includes(n)
     }) ?? null
   )
+}
+
+function isPossibleMatchIngredient(ing: IngredientExplanation): boolean {
+  if (ing.sourceAmbiguity && ing.sourceAmbiguity.confidence !== 'high') return true
+  if (ing.intelligenceConfidence === 'medium') return true
+  return false
 }
 
 function sortIngredientsList(
@@ -134,84 +172,86 @@ function sortIngredientsList(
   })
 }
 
-function TabSectionHeader({ dotColor, label }: { dotColor: string; label: string }) {
-  return (
-    <View style={styles.sectionHeaderRow}>
-      <View style={[styles.sectionHeaderDot, { backgroundColor: dotColor }]} />
-      <Text style={[styles.sectionHeaderLabel, { color: dotColor }]}>{label}</Text>
-    </View>
-  )
+/** Scan control in footer — proportions aligned with home `scanTile` / `scanMark`, scaled down. */
+/** Same proportions as home `scanTile` / `scanMark` (112px tile → 76px mark). */
+const FOOTER_SCAN_TILE = 76
+const FOOTER_SCAN_MARK = Math.round(FOOTER_SCAN_TILE * (76 / 112))
+
+function displayIngredientName(name: string): string {
+  const t = name.trim()
+  if (!t) return ''
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()
 }
 
-function ProductTabs({
-  active,
-  onChange,
+function reasonChipForIngredient(
+  ing: IngredientExplanation,
+  goalKey: string,
+  allergyMatch: boolean,
+  sensitivityMatch: boolean
+): string | null {
+  const n = `${ing.name} ${ing.shortLabel ?? ''} ${ing.systemJudgment ?? ''}`.toLowerCase()
+  if (allergyMatch || ing.flagDriver === 'allergy' || ing.personalFlag === 'allergy') {
+    return 'Conflicts with your allergy'
+  }
+  if (sensitivityMatch || ing.flagDriver === 'sensitivity' || ing.personalFlag === 'sensitivity') {
+    return 'Conflicts with your sensitivity'
+  }
+  if (ing.flagDriver === 'preference' || ing.personalFlag === 'preference_conflict') {
+    return 'Preference conflict'
+  }
+  if (ing.flagDriver === 'goal') {
+    return 'Flagged for your goal'
+  }
+  if (/red\s*40|yellow\s*5|yellow\s*6|blue\s*1|tartrazine|allura|dye|color|colour/.test(n)) {
+    return 'Artificial dye risk'
+  }
+  if (/benzoate|sorbate|nitrite|nitrate|bht|bha|tbhq|edta|preserv/.test(n)) {
+    return 'Preservative risk'
+  }
+  if (/sucralose|aspartame|acesulfame|saccharin|sweetener|fructose|corn syrup|hfcs|sugar/.test(n)) {
+    return 'Sweetener load'
+  }
+  if (/polysorbate|lecithin|mono|diglyceride|carrageenan|xanthan|emulsif/.test(n)) {
+    return 'Emulsifier risk'
+  }
+  if (/hydrogenated|seed oil|canola|soybean oil|sunflower oil|palm oil/.test(n)) {
+    return 'Refined oil risk'
+  }
+  if ((ing.ingredientRating ?? 'okay') === 'avoid' || (ing.ingredientRating ?? 'okay') === 'concerning') {
+    return 'Processing risk'
+  }
+  return null
+}
+
+function personalImpactRank(ing: IngredientExplanation, allergyMatch: boolean, sensitivityMatch: boolean): number {
+  if (allergyMatch || ing.personalFlag === 'allergy' || ing.flagDriver === 'allergy') return 0
+  if (sensitivityMatch || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'sensitivity') return 1
+  if (ing.flagDriver === 'goal') return 2
+  if (ing.flagDriver === 'preference' || ing.personalFlag === 'preference_conflict') return 3
+  const r = ing.ingredientRating ?? 'okay'
+  if (r === 'avoid' || r === 'concerning' || ing.flagDriver === 'processing') return 4
+  return 5
+}
+
+function TabSectionHeader({
+  dotColor,
+  label,
+  icon,
+  containerStyle,
 }: {
-  active: 'summary' | 'ingredients'
-  onChange: (t: 'summary' | 'ingredients') => void
+  dotColor: string
+  label: string
+  icon?: ComponentProps<typeof Ionicons>['name']
+  containerStyle?: ViewStyle
 }) {
-  const aSummary = useRef(new Animated.Value(active === 'summary' ? 1 : 0)).current
-  const aIng = useRef(new Animated.Value(active === 'ingredients' ? 1 : 0)).current
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(aSummary, {
-        toValue: active === 'summary' ? 1 : 0,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-      Animated.timing(aIng, {
-        toValue: active === 'ingredients' ? 1 : 0,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-    ]).start()
-  }, [active, aSummary, aIng])
-
-  const inactiveBg = 'rgba(255,255,255,0)'
-  const summaryBg = aSummary.interpolate({
-    inputRange: [0, 1],
-    outputRange: [inactiveBg, '#ffffff'],
-  })
-  const summaryColor = aSummary.interpolate({
-    inputRange: [0, 1],
-    outputRange: [theme.textMuted, theme.green800],
-  })
-  const ingBg = aIng.interpolate({
-    inputRange: [0, 1],
-    outputRange: [inactiveBg, '#ffffff'],
-  })
-  const ingColor = aIng.interpolate({
-    inputRange: [0, 1],
-    outputRange: [theme.textMuted, theme.green800],
-  })
-
   return (
-    <View style={styles.tabBarWrap}>
-      <View style={styles.tabRow}>
-        <Pressable style={styles.tabFlex} onPress={() => onChange('summary')}>
-          <Animated.View
-            style={[
-              styles.tabInner,
-              { backgroundColor: summaryBg },
-              active === 'summary' ? styles.tabInnerActiveShadow : null,
-            ]}
-          >
-            <Animated.Text style={[styles.tabLabel, { color: summaryColor }]}>Summary</Animated.Text>
-          </Animated.View>
-        </Pressable>
-        <Pressable style={styles.tabFlex} onPress={() => onChange('ingredients')}>
-          <Animated.View
-            style={[
-              styles.tabInner,
-              { backgroundColor: ingBg },
-              active === 'ingredients' ? styles.tabInnerActiveShadow : null,
-            ]}
-          >
-            <Animated.Text style={[styles.tabLabel, { color: ingColor }]}>Ingredients</Animated.Text>
-          </Animated.View>
-        </Pressable>
-      </View>
+    <View style={[styles.sectionHeaderRow, containerStyle]}>
+      {icon ? (
+        <Ionicons name={icon} size={15} color={dotColor} style={styles.sectionHeaderIcon} />
+      ) : (
+        <View style={[styles.sectionHeaderDot, { backgroundColor: dotColor }]} />
+      )}
+      <Text style={[styles.sectionHeaderLabel, { color: dotColor }]}>{label}</Text>
     </View>
   )
 }
@@ -232,20 +272,24 @@ export default function ProductScreen() {
   const toggleSaved = useScanHistoryStore((s) => s.toggleSaved)
   const isSaved = useScanHistoryStore((s) => s.isSaved(id || ''))
   const [ingredientQuery, setIngredientQuery] = useState('')
-  const [expandedIngredientKey, setExpandedIngredientKey] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'summary' | 'ingredients'>('summary')
+  const [expandedIngredientKeys, setExpandedIngredientKeys] = useState<string[]>([])
   const [showAllNatural, setShowAllNatural] = useState(false)
-  const defaultFlaggedExpanded = useRef(false)
-  const [pasteValue, setPasteValue] = useState('')
-  const [pasteAnalyzing, setPasteAnalyzing] = useState(false)
   const [productNameModalVisible, setProductNameModalVisible] = useState(false)
   const [productNameDraft, setProductNameDraft] = useState('')
+  const [profileSectionExpanded, setProfileSectionExpanded] = useState(false)
+  const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
 
   const scrollRef = useRef<ScrollView>(null)
   const shareCardRef = useRef<InstanceType<typeof ViewShot>>(null)
+  const screenOpenedAtMsRef = useRef<number>(Date.now())
+  const uniqueExpandedKeysRef = useRef<Set<string>>(new Set())
+  const decisionMadeRef = useRef<boolean>(false)
+  const renderedEventProductIdRef = useRef<string | null>(null)
+  const possibleMatchViewedProductIdRef = useRef<string | null>(null)
 
   const storedResult =
     currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
+  const isIosStabilityMode = Platform.OS === 'ios'
 
   const userProfileForPersonalize: UserProfile = useMemo(
     () => ({
@@ -260,8 +304,9 @@ export default function ProductScreen() {
 
   const viewResult = useMemo(() => {
     if (!storedResult) return null
+    if (isIosStabilityMode) return storedResult
     return personalizeScanResult(storedResult, userProfileForPersonalize)
-  }, [storedResult, userProfileForPersonalize])
+  }, [storedResult, userProfileForPersonalize, isIosStabilityMode])
 
   const openProductNameModal = useCallback(() => {
     const r = currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
@@ -293,10 +338,22 @@ export default function ProductScreen() {
 
   const displayScoredResult = useMemo((): ScanResult | null => {
     if (!viewResult) return null
+    // Some history entries were persisted before `fillrFit` existed; always hydrate score when missing.
+    if (viewResult.fillrFit) return viewResult
     return attachFillrFitToScanResult(viewResult, getDietProfileSnapshotSync())
   }, [viewResult, allergies, zSensitivities, preferences, goal, celiacStrictGluten])
 
   const displayFillrFit = displayScoredResult?.fillrFit ?? null
+
+  useEffect(() => {
+    if (!displayScoredResult || !displayScoredResult.fillrFit || !viewResult) return
+    if (viewResult.fillrFit) return
+    // Persist one-time hydration so reopening from history never loses score again.
+    updateScanResultByProductId(displayScoredResult.product.id, displayScoredResult)
+    if (currentResult?.product.id === displayScoredResult.product.id) {
+      setCurrentScan(displayScoredResult)
+    }
+  }, [displayScoredResult, viewResult, currentResult?.product.id, setCurrentScan, updateScanResultByProductId])
 
   useFocusEffect(
     useCallback(() => {
@@ -316,37 +373,111 @@ export default function ProductScreen() {
     }, [])
   )
 
-  if (!storedResult || !viewResult) {
-    return (
-      <SafeAreaView style={[styles.screenRoot, styles.centeredMiss]} edges={['top']}>
-        <Text style={styles.error}>Product not found</Text>
-        <Pressable onPress={() => router.replace('/(tabs)/scan')} style={styles.errorPrimaryBtn}>
-          <Text style={styles.errorPrimaryBtnText}>Scan another</Text>
-        </Pressable>
-      </SafeAreaView>
-    )
-  }
+  const ingredientBreakdown = viewResult?.ingredientBreakdown ?? []
+  const matchedAllergens = viewResult?.matchedAllergens ?? []
+  const matchedSensitivities = viewResult?.matchedSensitivities ?? []
+  const celiac = viewResult?.celiac
+  const productVerdict = viewResult?.productVerdict ?? ''
+  const productAnalysis = viewResult?.productAnalysis
+  const safetyStatus = viewResult?.safetyStatus ?? 'UNKNOWN'
+  const product = viewResult?.product
 
-  const {
-    product,
-    matchedAllergens,
-    matchedSensitivities,
-    celiac,
-    ingredientBreakdown,
-    productVerdict,
-    smartSummary,
-    declaredAllergensLabel,
-    safetyStatus,
-  } = viewResult
+  const safetyFlashOpacity = useRef(new Animated.Value(0)).current
+  const safetyFlashFillColor = useMemo(() => {
+    switch (safetyStatus) {
+      case 'SAFE':
+        return colors.safe
+      case 'UNSAFE':
+        return colors.danger
+      case 'CAUTION':
+        return colors.caution
+      default:
+        return colors.unknown
+    }
+  }, [safetyStatus])
 
-  const scoreLoading = useMemo(
-    () => ingredientBreakdown.some((ing) => Boolean(ing.aiDecodePending)),
+  useEffect(() => {
+    if (!product?.id || isOnboardingPreview) return
+    let cancelled = false
+    const run = async () => {
+      try {
+        const reduce = await AccessibilityInfo.isReduceMotionEnabled()
+        if (cancelled) return
+
+        safetyFlashOpacity.setValue(0)
+
+        if (safetyStatus === 'SAFE') {
+          if (reduce) {
+            Animated.sequence([
+              Animated.timing(safetyFlashOpacity, {
+                toValue: 1,
+                duration: 90,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+              }),
+              Animated.timing(safetyFlashOpacity, {
+                toValue: 0,
+                duration: 220,
+                easing: Easing.in(Easing.quad),
+                useNativeDriver: true,
+              }),
+            ]).start()
+            return
+          }
+          void playSafeScanSound()
+          Animated.sequence([
+            Animated.timing(safetyFlashOpacity, {
+              toValue: 1,
+              duration: 120,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.delay(520),
+            Animated.timing(safetyFlashOpacity, {
+              toValue: 0,
+              duration: 520,
+              easing: Easing.in(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]).start()
+          return
+        }
+
+        if (reduce) return
+
+        Animated.sequence([
+          Animated.timing(safetyFlashOpacity, {
+            toValue: 0.44,
+            duration: 150,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(safetyFlashOpacity, {
+            toValue: 0,
+            duration: 480,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]).start()
+      } catch {
+        if (!cancelled) safetyFlashOpacity.setValue(0)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+      safetyFlashOpacity.stopAnimation()
+      safetyFlashOpacity.setValue(0)
+    }
+  }, [product?.id, safetyStatus, isOnboardingPreview, safetyFlashOpacity])
+
+  const uncertainIngredients = useMemo(
+    () => ingredientBreakdown.filter((ing) => isPossibleMatchIngredient(ing)),
     [ingredientBreakdown]
   )
-  const scoreDisplayFit = scoreLoading ? null : displayFillrFit
 
-  const displayName = toTitleCase(product.name)
-  const displayBrand = product.brand ? toTitleCase(product.brand) : ''
+  const displayName = product?.name ? toTitleCase(product.name) : ''
+  const displayBrand = product?.brand ? toTitleCase(product.brand) : ''
 
   const celiacEnabled = Boolean(celiac?.celiacModeEnabled)
   const celiacAvoid = celiacEnabled && celiac?.celiacSeverity === 'AVOID'
@@ -378,7 +509,7 @@ export default function ProductScreen() {
     return o
   }, [previewIngredientSlice, matchedAllergens, matchedSensitivities])
 
-  const summaryRatioCounts: RatioCounts = isOnboardingPreview
+  const summaryRatioCounts = isOnboardingPreview
     ? {
         natural: previewRatingCounts.clean,
         processed: previewRatingCounts.okay,
@@ -391,21 +522,43 @@ export default function ProductScreen() {
         additive: ratingCounts.concerning,
         flagged: ratingCounts.avoid,
       }
-  const scoringGoalMatches = displayScoredResult?.scoringData?.goalMatches ?? []
-  const scoringGoalConflicts = displayScoredResult?.scoringData?.goalConflicts ?? []
-  const userGoalKey = (goal || '').trim().toLowerCase()
-  const showGoalInsight =
-    userGoalKey.length > 0 &&
-    (scoringGoalMatches.length > 0 || scoringGoalConflicts.length > 0)
-  const goalInsightConflict = scoringGoalConflicts.length > 0
-  const goalDisplayName = formatGoalName(userGoalKey)
-
-  const uniqueAllergenNames = useMemo(
-    () => [
-      ...new Map(matchedAllergens.map((m) => [m.allergenKey.toLowerCase(), m.allergenName])).values(),
-    ],
-    [matchedAllergens]
+  const profileReasoning = useMemo(
+    () =>
+      buildProfileReasoningModel({
+        safetyStatus,
+        matchedAllergens,
+        matchedSensitivities,
+        celiac,
+        scoringData: displayScoredResult?.scoringData,
+        fillrFit: displayFillrFit,
+        userGoalKey: goal ?? '',
+      }),
+    [
+      safetyStatus,
+      matchedAllergens,
+      matchedSensitivities,
+      celiac,
+      displayScoredResult?.scoringData,
+      displayFillrFit,
+      goal,
+    ]
   )
+  const scoreExplainability = useMemo(
+    () =>
+      buildScoreExplainability({
+        scoringData: displayScoredResult?.scoringData,
+        ingredients: ingredientBreakdown,
+        goalKey: goal ?? '',
+      }),
+    [displayScoredResult?.scoringData, ingredientBreakdown, goal]
+  )
+  const verificationRecommended =
+    uncertainIngredients.length > 0 &&
+    (safetyStatus === 'UNSAFE' ||
+      safetyStatus === 'CAUTION' ||
+      matchedAllergens.length > 0 ||
+      celiacAvoid ||
+      profileReasoning.fit === 'poor')
 
   const shareCardProps = useMemo((): ShareCardProps | null => {
     if (!displayFillrFit || ingredientBreakdown.length === 0) return null
@@ -413,7 +566,7 @@ export default function ProductScreen() {
       score: displayFillrFit.score,
       verdict: displayFillrFit.verdict,
       productName: displayName,
-      brand: product.brand ?? '',
+      brand: product?.brand ?? '',
       naturalCount: ratingCounts.clean,
       totalCount: ingredientBreakdown.length,
       scanDate: new Date(),
@@ -422,7 +575,7 @@ export default function ProductScreen() {
     displayFillrFit,
     ingredientBreakdown.length,
     displayName,
-    product.brand,
+    product?.brand,
     ratingCounts.clean,
   ])
 
@@ -435,6 +588,10 @@ export default function ProductScreen() {
   function ingredientSearchHaystack(ingredient: IngredientExplanation): string {
     const parts = [
       ingredient.name,
+      ingredient.shortLabel,
+      ingredient.systemJudgment,
+      ingredient.impactForYou,
+      ingredient.whyItMattersBullets?.join(' '),
       ingredient.headline,
       ingredient.funFact,
       ingredient.explanation,
@@ -494,52 +651,196 @@ export default function ProductScreen() {
   )
 
   const groupedForIngredientsTab = useMemo(() => {
-    const flagged: IngredientExplanation[] = []
-    const additive: IngredientExplanation[] = []
-    const processed: IngredientExplanation[] = []
-    const natural: IngredientExplanation[] = []
+    const safety: IngredientExplanation[] = []
+    const processing: IngredientExplanation[] = []
+    const neutral: IngredientExplanation[] = []
     for (const ing of ingredientListForCards) {
-      const r = resolveRate(ing)
-      if (r === 'avoid') flagged.push(ing)
-      else if (r === 'concerning') additive.push(ing)
-      else if (r === 'okay') processed.push(ing)
-      else natural.push(ing)
-    }
-    return { flagged, additive, processed, natural }
-  }, [ingredientListForCards, resolveRate])
+      const aa = ingredientHitsAllergen(ing, matchedAllergens)
+      const ss = ingredientHitsSensitivity(ing, matchedSensitivities)
+      if (aa || ss || ing.personalFlag === 'allergy' || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'allergy' || ing.flagDriver === 'sensitivity') {
+        safety.push(ing)
+        continue
+      }
 
-  const worthLookList = useMemo(() => {
-    return sortedIngredientBreakdown.filter((ing) => resolveRate(ing) === 'avoid')
-  }, [sortedIngredientBreakdown, resolveRate])
+      const displayRating = resolveIngredientDisplayRating(ing, aa, ss)
+      const isProcessingBucket =
+        displayRating === 'avoid' ||
+        displayRating === 'concerning' ||
+        displayRating === 'okay' ||
+        ing.flagDriver === 'processing' ||
+        ing.flagDriver === 'goal' ||
+        ing.personalFlag === 'avoiding'
+
+      if (isProcessingBucket) processing.push(ing)
+      else neutral.push(ing)
+    }
+    return { safety, processing, neutral }
+  }, [ingredientListForCards, matchedAllergens, matchedSensitivities])
+
+  const autoExpandIngredientKeys = useMemo(() => {
+    const prefix = searchTokens.length > 0 ? 'q' : 'i'
+    const top = [
+      ...groupedForIngredientsTab.safety.map((ing, i) => `${prefix}-safety-${i}-${ing.name}`),
+      ...groupedForIngredientsTab.processing.map((ing, i) => `${prefix}-processing-${i}-${ing.name}`),
+    ]
+    return top.slice(0, 2)
+  }, [searchTokens.length, groupedForIngredientsTab])
+
+  const ingredientBreakdownIdentity = useMemo(
+    () => ingredientBreakdown.map((ing) => ing.name).join('\u0001'),
+    [ingredientBreakdown]
+  )
 
   useEffect(() => {
-    if (defaultFlaggedExpanded.current) return
-    if (worthLookList.length > 0) {
-      const first = worthLookList[0]
-      setExpandedIngredientKey(`sf-0-${first.name}`)
-      defaultFlaggedExpanded.current = true
+    screenOpenedAtMsRef.current = Date.now()
+    uniqueExpandedKeysRef.current = new Set()
+    decisionMadeRef.current = false
+    setFeedbackRating(null)
+    setExpandedIngredientKeys([])
+    setProfileSectionExpanded(false)
+    const pid = product?.id
+    const bc = product?.barcode
+    if (pid && bc) {
+      void trackScanResultMetric({
+        name: 'scan_result_opened',
+        productId: pid,
+        barcode: bc,
+        payload: { source: viewResult?.scanSource ?? 'barcode' },
+      })
     }
-  }, [worthLookList])
+  }, [id, ingredientBreakdownIdentity, product?.id, product?.barcode, viewResult?.scanSource])
 
-  const profileConflict = safetyStatus !== 'SAFE'
+  useEffect(() => {
+    const pid = product?.id
+    const bc = product?.barcode
+    if (!pid || !bc) return
+    if (renderedEventProductIdRef.current === pid) return
+    renderedEventProductIdRef.current = pid
 
-  const declaresTagsStr =
-    product.allergensTags && product.allergensTags.length > 0
-      ? formatAllergenTagsForDisplay(product.allergensTags)
-      : null
-  const declaresFromLabel = declaredAllergensLabel?.trim() || null
-  const declaresLine = declaresTagsStr || declaresFromLabel
-  const tracesOnlyStr =
-    !declaresLine && product.tracesTags && product.tracesTags.length > 0
-      ? formatAllergenTagsForDisplay(product.tracesTags)
-      : null
+    const genericCopyCount = ingredientBreakdown.reduce((count, ing) => {
+      const fields = [
+        ing.shortLabel,
+        ing.headline,
+        ing.labelDecoder,
+        ing.whatItIs,
+        ing.whatItDoes,
+        ing.bodyEffect,
+        ing.impactForYou,
+        ing.systemJudgment,
+      ]
+      const hit = fields.some((f) => textMatchesIngredientGenericPattern(f))
+      return count + (hit ? 1 : 0)
+    }, 0)
+    const total = ingredientBreakdown.length
+    void trackScanResultMetric({
+      name: 'scan_result_rendered',
+      productId: pid,
+      barcode: bc,
+      payload: {
+        source: viewResult?.scanSource ?? 'barcode',
+        ingredient_count: total,
+        uncertain_count: uncertainIngredients.length,
+        verification_recommended: verificationRecommended,
+        weak_copy_count: genericCopyCount,
+        weak_copy_rate: total > 0 ? Number((genericCopyCount / total).toFixed(3)) : 0,
+      },
+    })
+    void trackScanResultMetric({
+      name: 'scan_copy_quality',
+      productId: pid,
+      barcode: bc,
+      payload: {
+        weak_copy_count: genericCopyCount,
+        total_ingredients: total,
+        has_weak_copy: genericCopyCount > 0,
+      },
+    })
+  }, [
+    product?.id,
+    product?.barcode,
+    ingredientBreakdown,
+    uncertainIngredients.length,
+    verificationRecommended,
+    viewResult?.scanSource,
+  ])
+
+  useEffect(() => {
+    const pid = product?.id
+    const bc = product?.barcode
+    if (!pid || !bc) return
+    if (uncertainIngredients.length === 0) return
+    if (possibleMatchViewedProductIdRef.current === pid) return
+    possibleMatchViewedProductIdRef.current = pid
+    void trackScanResultMetric({
+      name: 'possible_match_viewed',
+      productId: pid,
+      barcode: bc,
+      payload: {
+        source: viewResult?.scanSource ?? 'barcode',
+        uncertain_count: uncertainIngredients.length,
+      },
+    })
+  }, [product?.id, product?.barcode, uncertainIngredients.length, viewResult?.scanSource])
+
+  useEffect(() => {
+    if (autoExpandIngredientKeys.length === 0) return
+    setExpandedIngredientKeys((prev) => (prev.length === 0 ? autoExpandIngredientKeys : prev))
+  }, [autoExpandIngredientKeys])
+
+  useEffect(() => {
+    const pid = product?.id
+    const bc = product?.barcode
+    return () => {
+      if (!pid || !bc) return
+      const totalShown = Math.max(ingredientListForCards.length, 1)
+      const expandedUnique = uniqueExpandedKeysRef.current.size
+      const expandRate = Math.min(1, expandedUnique / totalShown)
+      void trackScanResultMetric({
+        name: 'scan_result_summary',
+        productId: pid,
+        barcode: bc,
+        payload: {
+          ms_to_exit: Date.now() - screenOpenedAtMsRef.current,
+          expanded_unique: expandedUnique,
+          expand_rate: Number(expandRate.toFixed(3)),
+          decision_made: decisionMadeRef.current,
+          feedback_rating: feedbackRating ?? null,
+        },
+      })
+    }
+  }, [product?.id, product?.barcode, ingredientListForCards.length, feedbackRating])
+
+  const profileTone: 'bad' | 'warn' | 'ok' =
+    safetyStatus !== 'SAFE' || profileReasoning.fit === 'poor'
+      ? 'bad'
+      : profileReasoning.fit === 'mixed'
+        ? 'warn'
+        : 'ok'
+  const verificationSeverity: 'unsafe' | 'caution' | null = !verificationRecommended
+    ? null
+    : safetyStatus === 'UNSAFE' || matchedAllergens.length > 0 || celiacAvoid
+      ? 'unsafe'
+      : 'caution'
+  const profileCollapsedTitle =
+    verificationSeverity === 'unsafe'
+      ? 'High risk - verify label now'
+      : verificationSeverity === 'caution'
+        ? 'Caution - verify label'
+        : profileReasoning.collapsedTitle
+  const profileCollapsedSubtitle =
+    verificationSeverity === 'unsafe'
+      ? 'Potentially high-risk ingredients are uncertain. Verify the physical label before using this result.'
+      : verificationSeverity === 'caution'
+        ? 'Some flagged ingredients are uncertain. Double-check the package label before relying on this result.'
+        : profileReasoning.collapsedSubtitle
 
   const shareMessage = useMemo(() => {
+    if (!product?.barcode) return ''
     const bits = matchedAllergens.map((m) => `${m.allergenName}: ${m.matchedIngredient}`)
     const flags = bits.length ? `\n${bits.join('\n')}` : ''
     const verdict = productVerdict ? `\n${productVerdict}` : ''
     return `Fillr — ${displayName}${verdict}${flags}\n\nBarcode …${lastBarcodeSix(product.barcode)}`
-  }, [displayName, product.barcode, matchedAllergens, productVerdict])
+  }, [displayName, product?.barcode, matchedAllergens, productVerdict])
 
   const shareScanFromCard = useCallback(async () => {
     if (ingredientBreakdown.length === 0 || !shareCardProps) {
@@ -596,42 +897,58 @@ export default function ProductScreen() {
     }
   }, [ingredientBreakdown.length, shareCardProps, shareMessage])
 
-  const runPastedAnalysis = useCallback(async () => {
-    const text = pasteValue.trim()
-    if (!text || pasteAnalyzing) return
-    setPasteAnalyzing(true)
-    try {
-      const next = await rescanWithManualIngredients({
+  const markDecision = useCallback(
+    (kind: 'saved' | 'dismissed' | 'rescanned' | 'shared' | 'swap_click') => {
+      if (!product?.id || !product.barcode) return
+      if (!decisionMadeRef.current) {
+        decisionMadeRef.current = true
+      }
+      void trackScanResultMetric({
+        name: kind === 'swap_click' ? 'scan_result_swap_click' : 'scan_result_decision',
+        productId: product.id,
         barcode: product.barcode,
-        allergies,
-        sensitivities: zSensitivities,
-        preferences,
-        goal,
-        celiacStrictGluten,
-        currentResult: storedResult,
-        pastedIngredients: text,
+        payload: {
+          decision: kind,
+          ms_from_open: Date.now() - screenOpenedAtMsRef.current,
+        },
       })
-      setCurrentScan(next)
-      updateScanResultByProductId(product.id, next)
-    } catch {
-      /* keep existing */
-    } finally {
-      setPasteAnalyzing(false)
-    }
-  }, [
-    pasteValue,
-    pasteAnalyzing,
-    product.barcode,
-    product.id,
-    allergies,
-    zSensitivities,
-    preferences,
-    goal,
-    celiacStrictGluten,
-    storedResult,
-    setCurrentScan,
-    updateScanResultByProductId,
-  ])
+    },
+    [product?.id, product?.barcode]
+  )
+
+  const onIngredientUncertaintyAction = useCallback(
+    (ingredientName: string, action: 'verify_label' | 'retake_photo') => {
+      if (product?.id && product?.barcode) {
+        void trackScanResultMetric({
+          name: 'possible_match_action_clicked',
+          productId: product.id,
+          barcode: product.barcode,
+          payload: {
+            source: viewResult?.scanSource ?? 'barcode',
+            ingredient: ingredientName,
+            action,
+          },
+        })
+      }
+      if (action === 'retake_photo') {
+        markDecision('rescanned')
+        const destination = viewResult?.scanSource === 'ocr' ? '/ocr-scanner' : '/(tabs)/scan'
+        router.replace(destination)
+      }
+    },
+    [markDecision, product?.id, product?.barcode, viewResult?.scanSource]
+  )
+
+  if (!storedResult || !viewResult || !product) {
+    return (
+      <SafeAreaView style={[styles.screenRoot, styles.centeredMiss]} edges={['top']}>
+        <Text style={styles.error}>Product not found</Text>
+        <Pressable onPress={() => router.replace('/(tabs)/scan')} style={styles.errorPrimaryBtn}>
+          <Text style={styles.errorPrimaryBtnText}>Scan another</Text>
+        </Pressable>
+      </SafeAreaView>
+    )
+  }
 
   const renderIngredientCard = (
     ing: IngredientExplanation,
@@ -648,166 +965,79 @@ export default function ProductScreen() {
       <IngredientCard
         key={cardKey}
         ingredient={ing}
-        expanded={expandedIngredientKey === cardKey}
+        expanded={expandedIngredientKeys.includes(cardKey)}
         allergyMatch={allergyMatch}
         sensitivityMatch={sensitivityMatch}
         celiacMatch={celiacMatch}
+        reasonChipLabel={reasonChipForIngredient(ing, goal ?? '', allergyMatch, sensitivityMatch)}
+        onUncertaintyAction={(action) => onIngredientUncertaintyAction(ing.name, action)}
         compactPreview={isOnboardingPreview}
         onToggleExpanded={() =>
-          setExpandedIngredientKey((prev) => (prev === cardKey ? null : cardKey))
+          setExpandedIngredientKeys((prev) => {
+            if (prev.includes(cardKey)) return prev.filter((k) => k !== cardKey)
+            uniqueExpandedKeysRef.current.add(cardKey)
+            void trackScanResultMetric({
+              name: 'ingredient_expanded',
+              productId: product.id,
+              barcode: product.barcode,
+              payload: {
+                ingredient: ing.name,
+                section: sectionKey ?? 'unknown',
+                reason_chip: reasonChipForIngredient(ing, goal ?? '', allergyMatch, sensitivityMatch) ?? null,
+              },
+            })
+            const next = [cardKey, ...prev]
+            return next.slice(0, 2)
+          })
         }
       />
     )
   }
 
-  const greenProfileTitle = 'Matches your profile'
-  const greenProfileSubtitle =
-    (smartSummary || productVerdict || displayFillrFit?.reason || '').trim() ||
-    'No conflicts detected for your saved allergies and preferences on this scan.'
+  const hasAllergenHits = matchedAllergens.length > 0
 
-  const redProfileTitle = 'Heads up for your profile'
-  const redProfileSubtitle =
-    [
-      celiacAvoid ? 'Contains gluten sources flagged for your celiac settings.' : null,
-      matchedAllergens.length ? `Allergens: ${uniqueAllergenNames.join(', ')}.` : null,
-      matchedSensitivities.length
-        ? `Sensitivities: ${matchedSensitivities.map((m) => m.matchedIngredient || m.sensitivityName).join(', ')}.`
-        : null,
-      safetyStatus === 'UNKNOWN' ? 'Label detail may be incomplete — double-check packaging.' : null,
-      productVerdict?.trim() || null,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim() || 'Review this product carefully against your dietary profile.'
-
-  const summaryPanel = (
-    <View style={styles.tabPanel}>
-      <RatioBar counts={summaryRatioCounts} />
-      {showGoalInsight ? (
-        <View
-          style={[
-            styles.goalInsightCard,
-            goalInsightConflict ? styles.goalInsightCardConflict : styles.goalInsightCardMatch,
-          ]}
-        >
-          <Text style={styles.goalInsightTitle}>
-            {goalInsightConflict
-              ? `Not ideal for your ${goalDisplayName} goal`
-              : `Good match for your ${goalDisplayName} goal`}
-          </Text>
-          <Text style={styles.goalInsightBody}>
-            {goalInsightConflict
-              ? `Contains ${scoringGoalConflicts.slice(0, 2).join(' and ')} - worth checking if this fits your plan.`
-              : `Ingredient profile aligns with ${goalDisplayName}.`}
-          </Text>
+  const feedbackRow = (
+    <View style={styles.feedbackRow}>
+      <Text style={styles.feedbackPrompt}>Rate this scan</Text>
+      <View style={styles.feedbackStarsWrap}>
+        {[1, 2, 3, 4, 5].map((v) => {
+          const filled = (feedbackRating ?? 0) >= v
+          return (
+            <Pressable
+              key={`scan-star-${v}`}
+              style={({ pressed }) => [styles.feedbackStarBtn, pressed && { opacity: 0.85 }]}
+              onPress={() => {
+                setFeedbackRating(v)
+                void trackScanResultMetric({
+                  name: 'scan_result_feedback',
+                  productId: product.id,
+                  barcode: product.barcode,
+                  payload: { rating: v, scale: 5 },
+                })
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Rate this scan ${v} out of 5 stars`}
+            >
+              <Ionicons name={filled ? 'star' : 'star-outline'} size={18} color={filled ? '#f59e0b' : '#94a3b8'} />
+            </Pressable>
+          )
+        })}
+      </View>
+      {feedbackRating ? (
+        <View style={styles.feedbackAckWrap}>
+          <Ionicons name="checkmark-circle" size={14} color={theme.green700} />
+          <Text style={styles.feedbackAckText}>Saved ({feedbackRating}/5)</Text>
         </View>
       ) : null}
-
-      {summaryRatioCounts.flagged > 0 ? (
-        <>
-          <TabSectionHeader dotColor={theme.flagged.accent} label="WORTH A LOOK" />
-          {worthLookList.map((ing, i) => renderIngredientCard(ing, i, 'sf'))}
-          <View style={styles.spacer16} />
-        </>
-      ) : null}
-
-      {profileConflict ? (
-        <View style={[styles.profileCard, styles.profileCardConflict]}>
-          <View style={styles.profileRow}>
-            <View style={[styles.profileIconCircle, styles.profileIconCircleConflict]}>
-              <Text style={styles.profileIconMark}>!</Text>
-            </View>
-            <View style={styles.profileTextCol}>
-              <Text style={styles.profileTitleConflict}>{redProfileTitle}</Text>
-              <Text style={styles.profileSubtitle}>{redProfileSubtitle}</Text>
-            </View>
-          </View>
-        </View>
-      ) : (
-        <LinearGradient
-          colors={['#f0fdf4', '#dcfce7']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.profileCardGradient}
-        >
-          <View style={styles.profileRow}>
-            <View style={styles.profileIconCircle}>
-              <Text style={styles.profileIconCheck}>✓</Text>
-            </View>
-            <View style={styles.profileTextCol}>
-              <Text style={styles.profileTitleOk}>{greenProfileTitle}</Text>
-              <Text style={styles.profileSubtitle}>{greenProfileSubtitle}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      )}
-
-      {!isOnboardingPreview ? (
-        <Pressable
-          style={({ pressed }) => [styles.viewAllIngredientsBtn, pressed && { opacity: 0.94 }]}
-          onPress={() => {
-            setActiveTab('ingredients')
-            scrollRef.current?.scrollTo({ y: 0, animated: true })
-          }}
-        >
-          <Text style={styles.viewAllIngredientsText}>View all ingredients</Text>
-          <Text style={styles.viewAllIngredientsArrow}>→</Text>
-        </Pressable>
-      ) : null}
-
-      {!isOnboardingPreview && ingredientBreakdown.length === 0 ? (
-        <View style={styles.missingIngredientsCard}>
-          <Text style={styles.missingIngredientsEmoji}>📋</Text>
-          <Text style={styles.missingIngredientsTitle}>Ingredients not in our database</Text>
-          <Text style={styles.missingIngredientsBody}>
-            We found this product but don&apos;t have its ingredient list yet. Paste them from the
-            packaging to get a full analysis.
-          </Text>
-          <TextInput
-            style={styles.missingIngredientsInput}
-            placeholder="Sugar, enriched flour, palm oil..."
-            placeholderTextColor={theme.textFaint}
-            value={pasteValue}
-            onChangeText={setPasteValue}
-            multiline
-            editable={!pasteAnalyzing}
-          />
-          <Pressable
-            onPress={() => void runPastedAnalysis()}
-            disabled={pasteAnalyzing || !pasteValue.trim()}
-            style={({ pressed }) => [
-              styles.missingIngredientsAnalyzeBtn,
-              pressed && { opacity: 0.92 },
-              (pasteAnalyzing || !pasteValue.trim()) && { opacity: 0.5 },
-            ]}
-          >
-            {pasteAnalyzing ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.missingIngredientsAnalyzeText}>Analyze →</Text>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
-
-      {isOnboardingPreview && matchedAllergens.length > 0 ? (
-        <View style={styles.previewProfileNote}>
-          <Text style={styles.previewProfileNoteLabel}>Matches your profile</Text>
-          <Text style={styles.previewProfileNoteBody}>{uniqueAllergenNames.join(' · ')}</Text>
-        </View>
-      ) : null}
-
-      <Text style={styles.tabDisclaimer}>{TAB_DISCLAIMER}</Text>
     </View>
   )
 
-  const naturalCount = groupedForIngredientsTab.natural.length
+  const naturalCount = groupedForIngredientsTab.neutral.length
 
   const ingredientsPanel = (
     <View style={styles.tabPanel}>
       {!isOnboardingPreview ? (
         <View style={styles.searchBar}>
-          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
             placeholder="Search ingredients"
@@ -815,7 +1045,7 @@ export default function ProductScreen() {
             value={ingredientQuery}
             onChangeText={(t) => {
               setIngredientQuery(t)
-              setExpandedIngredientKey(null)
+              setExpandedIngredientKeys([])
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -824,29 +1054,31 @@ export default function ProductScreen() {
         </View>
       ) : null}
 
-      {groupedForIngredientsTab.flagged.length > 0 ? (
+      {!isOnboardingPreview && uncertainIngredients.length > 0 ? (
+        <View style={styles.possibleMatchBanner}>
+          <Ionicons name="help-circle-outline" size={16} color="#92400e" />
+          <Text style={styles.possibleMatchBannerText}>
+            {uncertainIngredients.length === 1
+              ? '1 ingredient may be a possible match. Verify label details before deciding.'
+              : `${uncertainIngredients.length} ingredients may be possible matches. Verify label details before deciding.`}
+          </Text>
+        </View>
+      ) : null}
+
+      {groupedForIngredientsTab.safety.length > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.flagged.accent} label="FLAGGED FIRST" />
-          {groupedForIngredientsTab.flagged.map((ing, i) =>
-            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'flag')
+          <TabSectionHeader dotColor={theme.flagged.accent} label="ALLERGY / SENSITIVITY CONFLICTS" />
+          {groupedForIngredientsTab.safety.map((ing, i) =>
+            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'safety')
           )}
         </>
       ) : null}
 
-      {groupedForIngredientsTab.additive.length > 0 ? (
+      {groupedForIngredientsTab.processing.length > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.additive.accent} label="ADDITIVE" />
-          {groupedForIngredientsTab.additive.map((ing, i) =>
-            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'add')
-          )}
-        </>
-      ) : null}
-
-      {groupedForIngredientsTab.processed.length > 0 ? (
-        <>
-          <TabSectionHeader dotColor={theme.processed.accent} label="PROCESSED" />
-          {groupedForIngredientsTab.processed.map((ing, i) =>
-            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'proc')
+          <TabSectionHeader dotColor={theme.additive.accent} label="ADDITIVES / PROCESSING" />
+          {groupedForIngredientsTab.processing.map((ing, i) =>
+            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'processing')
           )}
         </>
       ) : null}
@@ -864,9 +1096,9 @@ export default function ProductScreen() {
 
       {showAllNatural && naturalCount > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.natural.accent} label="NATURAL" />
-          {groupedForIngredientsTab.natural.map((ing, i) =>
-            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'nat')
+          <TabSectionHeader dotColor={theme.natural.accent} label="NEUTRAL / NATURAL" />
+          {groupedForIngredientsTab.neutral.map((ing, i) =>
+            renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'neutral')
           )}
         </>
       ) : null}
@@ -875,12 +1107,13 @@ export default function ProductScreen() {
         <Text style={styles.searchEmptyText}>No matching ingredients.</Text>
       ) : null}
 
+      {feedbackRow}
       <Text style={styles.tabDisclaimer}>{TAB_DISCLAIMER}</Text>
     </View>
   )
 
   const heroTitlePressable =
-    !isOnboardingPreview && viewResult.scanSource === 'ocr' ? (
+    !isOnboardingPreview && viewResult?.scanSource === 'ocr' ? (
       <Pressable onPress={openProductNameModal} accessibilityRole="button">
         <Text style={styles.heroTitle}>{displayName}</Text>
       </Pressable>
@@ -895,19 +1128,23 @@ export default function ProductScreen() {
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: 120 + insets.bottom },
+          {
+            /** Room for floating scan FAB + home indicator + shadow lift */
+            paddingBottom:
+              FOOTER_SCAN_TILE + 4 + Math.max(insets.bottom, 14) + 28,
+          },
         ]}
         showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
         <View style={styles.scrollBlockA}>
           <View style={styles.navBar}>
             <Pressable
-              onPress={() =>
+              onPress={() => {
+                markDecision('dismissed')
                 router.canGoBack() ? router.back() : router.replace('/(tabs)/scan')
-              }
+              }}
               style={styles.navIconBare}
               hitSlop={12}
               accessibilityRole="button"
@@ -919,16 +1156,10 @@ export default function ProductScreen() {
               {!isOnboardingPreview ? (
                 <>
                   <Pressable
-                    onPress={() => void shareScanFromCard()}
-                    hitSlop={12}
-                    style={styles.navIconBare}
-                    accessibilityRole="button"
-                    accessibilityLabel="Share scan"
-                  >
-                    <Ionicons name="share-outline" size={20} color={theme.textPrimary} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => toggleSaved(product.id)}
+                    onPress={() => {
+                      if (!isSaved) markDecision('saved')
+                      toggleSaved(product.id)
+                    }}
                     hitSlop={12}
                     style={styles.navIconBare}
                     accessibilityRole="button"
@@ -939,6 +1170,18 @@ export default function ProductScreen() {
                       size={20}
                       color={isSaved ? colors.accent : theme.textPrimary}
                     />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      markDecision('shared')
+                      void shareScanFromCard()
+                    }}
+                    hitSlop={12}
+                    style={styles.navIconBare}
+                    accessibilityRole="button"
+                    accessibilityLabel="Share scan result"
+                  >
+                    <Ionicons name="share-outline" size={20} color={theme.textPrimary} />
                   </Pressable>
                 </>
               ) : null}
@@ -952,40 +1195,121 @@ export default function ProductScreen() {
               <Text style={styles.heroBrand}>{displayBrand.toUpperCase()}</Text>
             ) : null}
             {heroTitlePressable}
-            {(declaresLine || tracesOnlyStr) && (
-              <AllergenPill declaresText={declaresLine} tracesText={tracesOnlyStr} />
-            )}
-            <ScoreDisplay fillrFit={scoreDisplayFit} isLoading={scoreLoading} />
+            <ScoreDisplay fillrFit={displayFillrFit} isLoading={false} />
+            <View
+              style={[
+                styles.profileUnifiedOuter,
+                profileTone === 'bad'
+                  ? styles.profileUnifiedOuterConflict
+                  : profileTone === 'warn'
+                    ? styles.profileUnifiedOuterWarn
+                    : styles.profileUnifiedOuterOk,
+              ]}
+            >
+              <View style={styles.profileUnifiedClip}>
+                {hasAllergenHits ? (
+                  <AllergenSweepOverlay
+                    playKey={`${String(id)}:${ingredientBreakdownIdentity}`}
+                  />
+                ) : null}
+                <View style={styles.profileUnifiedBody}>
+                    <LinearGradient
+                      colors={
+                        profileTone === 'bad'
+                          ? ['#ffffff', '#fff5f5', '#fffbfb']
+                          : profileTone === 'warn'
+                            ? ['#ffffff', '#fffbeb', '#fff7ed']
+                            : ['#ffffff', '#f4fdfa', '#f0fdf9']
+                      }
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFillObject}
+                    />
+                    <View style={styles.profileUnifiedBodyContent}>
+                      <Pressable
+                        onPress={() => setProfileSectionExpanded((v) => !v)}
+                        style={({ pressed }) => [
+                          styles.profileSectionHeader,
+                          pressed && styles.profileSectionHeaderPressed,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          profileSectionExpanded ? 'Collapse your profile section' : 'Expand your profile section'
+                        }
+                        accessibilityState={{ expanded: profileSectionExpanded }}
+                        hitSlop={8}
+                      >
+                        <Text style={[styles.profileUnifiedKicker, styles.profileUnifiedKickerInHeader]}>
+                          YOUR PROFILE
+                        </Text>
+                        <Ionicons
+                          name={profileSectionExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={20}
+                          color={theme.textFaint}
+                        />
+                      </Pressable>
+                      {!profileSectionExpanded ? (
+                        <View style={styles.profileCollapsedSummary} pointerEvents="none">
+                          <Text
+                            style={
+                              profileTone === 'bad'
+                                ? styles.profileTitleConflict
+                                : profileTone === 'warn'
+                                  ? styles.profileTitleWarn
+                                  : styles.profileTitleOk
+                            }
+                            numberOfLines={1}
+                          >
+                            {profileCollapsedTitle}
+                          </Text>
+                          <Text style={styles.profileUnifiedBodyText} numberOfLines={3}>
+                            {profileCollapsedSubtitle}
+                          </Text>
+                        </View>
+                      ) : (
+                        <ProfileReasoningCard
+                          model={profileReasoning}
+                          contributors={scoreExplainability.contributors}
+                        />
+                      )}
+                    </View>
+                  </View>
+              </View>
+            </View>
           </View>
         </View>
 
-        <ProductTabs active={activeTab} onChange={setActiveTab} />
-
-        {activeTab === 'summary' ? summaryPanel : ingredientsPanel}
+        {ingredientsPanel}
       </ScrollView>
 
       {!isOnboardingPreview ? (
-        <View style={[styles.footerWrap, { paddingBottom: Math.max(insets.bottom, 28) }]} pointerEvents="box-none">
-          <LinearGradient
-            colors={['transparent', theme.screenBg]}
-            style={styles.footerGradient}
-            pointerEvents="none"
-          />
-          <View style={styles.footerBtns}>
-            <Pressable
-              onPress={() => void shareScanFromCard()}
-              style={({ pressed }) => [styles.shareBtn, pressed && styles.shareBtnPressed]}
-            >
-              <Text style={styles.shareBtnText}>Share</Text>
-            </Pressable>
+        <View
+          style={[styles.footerWrap, { paddingBottom: Math.max(insets.bottom, 14) }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.footerFloatRow} pointerEvents="box-none">
             <Pressable
               onPress={() => {
+                markDecision('rescanned')
+                void trackScanResultMetric({
+                  name: 'scan_result_rescan_click',
+                  productId: product.id,
+                  barcode: product.barcode,
+                  payload: {
+                    prior_product_name: displayName,
+                    prior_brand: product.brand ?? '',
+                  },
+                })
                 useCurrentScanStore.getState().setResult(null)
                 router.replace('/(tabs)/scan')
               }}
-              style={({ pressed }) => [styles.scanAgainBtn, pressed && styles.scanAgainBtnPressed]}
+              style={({ pressed }) => [styles.footerScanPressable, pressed && { transform: [{ scale: 0.96 }] }]}
+              accessibilityRole="button"
+              accessibilityLabel="Open scanner"
             >
-              <Text style={styles.scanAgainText}>Scan Again</Text>
+              <View style={styles.footerScanTileHome}>
+                <Image source={FILLR_LOGO_MARK} style={styles.footerScanFabMark} resizeMode="contain" />
+              </View>
             </Pressable>
           </View>
         </View>
@@ -1004,6 +1328,31 @@ export default function ProductScreen() {
         <View style={styles.shareCardHiddenWrap} pointerEvents="none" collapsable={false}>
           <ShareCard ref={shareCardRef} {...shareCardProps} />
         </View>
+      ) : null}
+
+      {!isOnboardingPreview ? (
+        <Animated.View
+          pointerEvents="none"
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+          style={[StyleSheet.absoluteFillObject, styles.safetyFlashOverlay, { opacity: safetyFlashOpacity }]}
+        >
+          {safetyStatus === 'SAFE' ? (
+            <View style={styles.safetyFlashSafeFill}>
+              <Ionicons name="checkmark-circle" size={116} color="rgba(255,255,255,0.97)" />
+            </View>
+          ) : safetyStatus === 'UNSAFE' ? (
+            <View style={styles.safetyFlashUnsafeFill}>
+              <Ionicons name="close-circle" size={116} color="rgba(255,255,255,0.97)" />
+            </View>
+          ) : safetyStatus === 'CAUTION' ? (
+            <View style={styles.safetyFlashCautionFill}>
+              <Ionicons name="alert-circle" size={116} color="rgba(255,255,255,0.97)" />
+            </View>
+          ) : (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: safetyFlashFillColor }]} />
+          )}
+        </Animated.View>
       ) : null}
 
       <Modal
@@ -1048,6 +1397,28 @@ export default function ProductScreen() {
 }
 
 const styles = StyleSheet.create({
+  /** Brief full-screen tint on open — green / red / yellow / gray from `SafetyStatus`. */
+  safetyFlashOverlay: {
+    zIndex: 24,
+  },
+  safetyFlashSafeFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.safe,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  safetyFlashUnsafeFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  safetyFlashCautionFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.caution,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   screenRoot: {
     flex: 1,
     backgroundColor: theme.screenBg,
@@ -1086,6 +1457,123 @@ const styles = StyleSheet.create({
   heroInner: {
     paddingHorizontal: theme.heroPadding,
   },
+  /** Elevated card + gradient stripe (shadow on outer so radius + blur work). */
+  profileUnifiedOuter: {
+    marginTop: 18,
+    marginBottom: 6,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.17,
+    shadowRadius: 34,
+    elevation: 11,
+  },
+  profileUnifiedOuterOk: {
+    shadowColor: '#0d9488',
+    shadowOpacity: 0.16,
+  },
+  profileUnifiedOuterConflict: {
+    shadowColor: '#e11d48',
+    shadowOpacity: 0.14,
+  },
+  profileUnifiedOuterWarn: {
+    shadowColor: '#ea580c',
+    shadowOpacity: 0.16,
+  },
+  profileUnifiedClip: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 0,
+    backgroundColor: '#ffffff',
+  },
+  profileUnifiedBody: {
+    flex: 1,
+    position: 'relative',
+  },
+  profileUnifiedBodyContent: {
+    paddingTop: 16,
+    paddingRight: 17,
+    paddingBottom: 18,
+    paddingLeft: 16,
+    zIndex: 1,
+  },
+  profileUnifiedKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    color: theme.textFaint,
+    opacity: 0.92,
+    marginBottom: 13,
+  },
+  profileUnifiedKickerInHeader: {
+    marginBottom: 0,
+    flex: 1,
+  },
+  profileSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  profileSectionHeaderPressed: {
+    opacity: 0.88,
+  },
+  profileCollapsedSummary: {
+    marginTop: 0,
+  },
+  profileUnifiedRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  profileUnifiedIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileUnifiedIconWrapOk: {
+    backgroundColor: 'rgba(45, 212, 191, 0.12)',
+  },
+  profileUnifiedIconWrapConflict: {
+    backgroundColor: 'rgba(244, 63, 94, 0.1)',
+  },
+  profileUnifiedBodyText: {
+    marginTop: 7,
+    fontSize: 12,
+    lineHeight: 19,
+    color: theme.textMuted,
+  },
+  profileUnifiedDivider: {
+    height: 1,
+    marginVertical: 18,
+    width: '100%',
+  },
+  profileUnifiedSectionKicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    color: theme.textFaint,
+    opacity: 0.92,
+    marginBottom: 9,
+  },
+  profileUnifiedGoalTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginBottom: 7,
+    color: theme.green800,
+  },
+  profileUnifiedGoalTitleWarn: {
+    color: '#b45309',
+  },
+  profileUnifiedGoalBody: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: theme.textMuted,
+  },
   heroBrand: {
     fontSize: 10,
     fontWeight: '600',
@@ -1102,80 +1590,158 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
     marginBottom: 16,
   },
-  tabBarWrap: {
-    backgroundColor: theme.screenBg,
-    paddingTop: 12,
+  tabPanel: {
+    paddingTop: 20,
     paddingHorizontal: theme.screenPadding,
-    paddingBottom: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.greenTrack,
+    paddingBottom: 24,
+    backgroundColor: theme.screenBg,
   },
-  tabRow: {
+  /** Space between "WORTH A LOOK" label and the card cluster */
+  worthLookSectionHeader: {
+    marginBottom: 8,
+  },
+  summaryWorthCluster: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: theme.cardBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.cardBorder,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 1,
+  },
+  worthLookTileList: {
+    gap: 0,
+  },
+  worthLookRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(15, 23, 42, 0.08)',
+  },
+  worthLookRowLast: {
+    borderBottomWidth: 0,
+    paddingBottom: 2,
+  },
+  worthLookRowInner: {
     flexDirection: 'row',
-    backgroundColor: theme.greenTabBg,
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 0,
+    alignItems: 'center',
+    gap: 14,
   },
-  tabFlex: {
-    flex: 1,
-  },
-  tabInner: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+  worthLookIconOrb: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(241, 245, 249, 0.95)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabInnerActiveShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  worthLookTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
-  tabLabel: {
+  worthLookTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.textPrimary,
+    letterSpacing: -0.35,
+    marginBottom: 2,
+  },
+  /** One-line “should I care” hook under the ingredient name */
+  worthLookRoleTag: {
     fontSize: 13,
     fontWeight: '600',
+    color: theme.textMuted,
+    lineHeight: 18,
+    letterSpacing: -0.15,
+    marginTop: 2,
   },
-  tabPanel: {
-    paddingTop: 18,
-    paddingHorizontal: theme.screenPadding,
-    paddingBottom: 8,
-    backgroundColor: theme.screenBg,
+  worthLookExpanded: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.1)',
+    paddingLeft: 54,
+    paddingRight: 0,
   },
-  goalInsightCard: {
-    marginTop: 14,
-    marginBottom: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  worthLookCategoryPill: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.85,
+    textTransform: 'uppercase',
+    color: theme.green800,
+    opacity: 0.85,
+    marginBottom: 10,
   },
-  goalInsightCardConflict: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
+  worthLookImpactList: {
+    gap: 10,
   },
-  goalInsightCardMatch: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#bbf7d0',
+  worthLookImpactRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
-  goalInsightTitle: {
-    fontSize: 13,
+  worthLookImpactArrow: {
+    fontSize: 14,
     fontWeight: '700',
-    color: theme.textPrimary,
+    color: theme.textMuted,
+    lineHeight: 20,
+    marginTop: 0,
+    width: 18,
   },
-  goalInsightBody: {
-    marginTop: 6,
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#6b7280',
+  worthLookImpactText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textPrimary,
+    lineHeight: 20,
+    letterSpacing: -0.15,
+  },
+  worthLookJudgmentBlock: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.08)',
+  },
+  worthLookIntelSectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.85,
+    textTransform: 'uppercase',
+    color: theme.textFaint,
+    marginBottom: 6,
+  },
+  worthLookJudgmentBody: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textSecondary,
+    lineHeight: 20,
+    letterSpacing: -0.12,
+  },
+  worthLookForYouBlock: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.08)',
+  },
+  worthLookForYouBody: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textMuted,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 12,
+  },
+  sectionHeaderIcon: {
+    marginTop: 1,
   },
   sectionHeaderDot: {
     width: 7,
@@ -1183,111 +1749,62 @@ const styles = StyleSheet.create({
     borderRadius: 50,
   },
   sectionHeaderLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.15,
     textTransform: 'uppercase',
   },
   spacer16: {
     height: 16,
   },
-  profileCardGradient: {
-    borderWidth: 1.5,
-    borderColor: theme.greenBorder,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 14,
-  },
-  profileCard: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 14,
-  },
-  profileCardConflict: {
-    backgroundColor: '#fef2f2',
-    borderWidth: 1.5,
-    borderColor: '#fecaca',
-  },
-  profileRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  profileIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.green500,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: theme.green500,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  profileIconCircleConflict: {
-    backgroundColor: theme.flagged.accent,
-    shadowColor: theme.flagged.accent,
-  },
-  profileIconCheck: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  profileIconMark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
   profileTextCol: {
     flex: 1,
   },
   profileTitleOk: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: theme.green800,
-    marginBottom: 3,
+    letterSpacing: -0.2,
   },
   profileTitleConflict: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: theme.flagged.text,
-    marginBottom: 3,
+    letterSpacing: -0.2,
   },
-  profileSubtitle: {
-    fontSize: 11,
-    color: theme.textMuted,
-    lineHeight: 16,
+  profileTitleWarn: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.processed.text,
+    letterSpacing: -0.2,
   },
   viewAllIngredientsBtn: {
-    backgroundColor: theme.cardBg,
-    borderWidth: 1.5,
-    borderColor: theme.cardBorderOpen,
-    borderRadius: 14,
-    paddingVertical: 13,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(22, 163, 74, 0.22)',
+    borderRadius: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
+    marginBottom: 28,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  viewAllIngredientsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   viewAllIngredientsText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
-  viewAllIngredientsArrow: {
-    fontSize: 16,
-    color: theme.green500,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.green800,
+    letterSpacing: -0.2,
   },
   searchBar: {
     backgroundColor: theme.cardBg,
@@ -1298,7 +1815,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 16,
     flexDirection: 'row',
-    gap: 9,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1306,15 +1822,31 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  searchIcon: {
-    fontSize: 15,
-  },
   searchInput: {
     flex: 1,
     fontSize: 13,
     fontWeight: '500',
     color: theme.textPrimary,
     padding: 0,
+  },
+  possibleMatchBanner: {
+    marginBottom: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    backgroundColor: '#fffbeb',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  possibleMatchBannerText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#92400e',
+    fontWeight: '600',
   },
   showNaturalBtn: {
     backgroundColor: theme.green50,
@@ -1336,58 +1868,83 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
     paddingTop: 16,
+    marginBottom: 8,
+  },
+  feedbackRow: {
+    marginTop: 8,
+    marginBottom: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  feedbackPrompt: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: theme.textMuted,
+  },
+  feedbackStarsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  feedbackStarBtn: {
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  feedbackAckWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  feedbackAckText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.green700,
   },
   footerWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-  },
-  footerGradient: {
-    height: 40,
-    width: '100%',
-  },
-  footerBtns: {
-    backgroundColor: theme.screenBg,
     paddingHorizontal: theme.screenPadding,
-    paddingTop: 0,
-    gap: 8,
+    paddingTop: 4,
+    backgroundColor: 'transparent',
   },
-  shareBtn: {
-    backgroundColor: theme.green500,
-    borderRadius: 16,
-    paddingVertical: 16,
+  footerFloatRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: theme.green500,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
+    justifyContent: 'center',
+    minHeight: FOOTER_SCAN_TILE,
   },
-  shareBtnPressed: {
-    backgroundColor: theme.green700,
-  },
-  shareBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: -0.2,
-  },
-  scanAgainBtn: {
-    backgroundColor: theme.cardBg,
-    borderWidth: 1.5,
-    borderColor: theme.cardBorderOpen,
-    borderRadius: 16,
-    paddingVertical: 14,
+  footerScanPressable: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  scanAgainBtnPressed: {
-    backgroundColor: '#f9fafb',
+  /** Mirrors `HomeScreen` `scanTile` — white disc, hairline rim, soft lift (scaled to footer size). */
+  footerScanTileHome: {
+    width: FOOTER_SCAN_TILE,
+    height: FOOTER_SCAN_TILE,
+    borderRadius: FOOTER_SCAN_TILE / 2,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.11,
+        shadowRadius: 16,
+      },
+      android: { elevation: 7 },
+      default: {},
+    }),
   },
-  scanAgainText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.textMuted,
+  footerScanFabMark: {
+    width: FOOTER_SCAN_MARK,
+    height: FOOTER_SCAN_MARK,
   },
   footerPreview: {
     position: 'absolute',
@@ -1421,55 +1978,6 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     textAlign: 'center',
     marginTop: 16,
-  },
-  missingIngredientsCard: {
-    marginTop: 12,
-    marginBottom: 12,
-    padding: 18,
-    borderRadius: 16,
-    backgroundColor: theme.cardBg,
-    borderWidth: 1.5,
-    borderColor: theme.cardBorderOpen,
-  },
-  missingIngredientsEmoji: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  missingIngredientsTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.textPrimary,
-    marginBottom: 8,
-  },
-  missingIngredientsBody: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: theme.textMuted,
-    marginBottom: 14,
-  },
-  missingIngredientsInput: {
-    minHeight: 100,
-    borderWidth: 1.5,
-    borderColor: theme.cardBorderOpen,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    color: theme.textSecondary,
-    textAlignVertical: 'top',
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
-  },
-  missingIngredientsAnalyzeBtn: {
-    height: 50,
-    borderRadius: 100,
-    backgroundColor: theme.green500,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  missingIngredientsAnalyzeText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
   },
   previewProfileNote: {
     backgroundColor: '#fef2f2',

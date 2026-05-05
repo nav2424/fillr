@@ -4,6 +4,7 @@ import { FREE_SCAN_LIMIT } from '../constants/subscription'
 const FREE_BASE_SCANS = FREE_SCAN_LIMIT
 
 export async function canUserScan(): Promise<boolean> {
+  if (__DEV__) return true
   const s = useUserStore.getState()
   if (s.isPro) return true
   const totalUsed = s.totalScansUsed ?? 0
@@ -13,6 +14,7 @@ export async function canUserScan(): Promise<boolean> {
 }
 
 export async function getRemainingScans(): Promise<number> {
+  if (__DEV__) return Number.POSITIVE_INFINITY
   const s = useUserStore.getState()
   if (s.isPro) return Number.POSITIVE_INFINITY
   const totalUsed = s.totalScansUsed ?? 0
