@@ -15,6 +15,7 @@ import {
   UNDETECTABLE_AVOIDING_KEYS,
 } from './profileSignals'
 import { migrateGoalKey } from './goalKeyMigration'
+import { shouldAttachGoalConflictsToIngredients } from './goalApplicability'
 
 export interface ProfileMatchResult {
   sensitivityMatches: string[]
@@ -178,7 +179,9 @@ export function buildProfileMatches(
         const hits = allNames.filter((name) => signal.conflictPattern!.test(name))
         if (hits.length > 0) {
           goalConflicts.push(signal.label)
-          mergeConflictIngredients(goalConflictIngredientMap, signal.label, hits)
+          if (shouldAttachGoalConflictsToIngredients(profile.goal)) {
+            mergeConflictIngredients(goalConflictIngredientMap, signal.label, hits)
+          }
           preferencePenalty += hits.length * signal.conflictPenalty
         }
       }

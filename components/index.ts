@@ -16,6 +16,9 @@ export { ProgressDots } from './ProgressDots'
 export { SafetyBanner } from './SafetyBanner'
 export { IngredientCard, resolveIngredientDisplayRating } from './IngredientCard'
 export { LabelVsRealityCard } from './LabelVsRealityCard'
+export { AllergenEvidenceChips } from './AllergenEvidenceChips'
+export { ScanDataQualityBanner } from './ScanDataQualityBanner'
+export { ProductIntelligenceSection } from './ProductIntelligenceSection'
 export {
   ScanShareCardVisual,
   buildScanShareCardModel,

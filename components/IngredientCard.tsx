@@ -12,6 +12,7 @@ import {
 import type { CeliacSignal, IngredientExplanation, IngredientRating } from '../types'
 import { resolveIngredientDisplayRating } from '../lib/resolveIngredientDisplayRating'
 import { buildIngredientCardViewModel } from '../lib/buildIngredientCardViewModel'
+import { ingredientExplanationFailsQualityGate } from '../lib/ingredientCopyQuality'
 import { theme } from '../constants/theme'
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -65,7 +66,6 @@ export interface IngredientCardProps {
   ingredient: IngredientExplanation
   expanded?: boolean
   onToggleExpanded?: () => void
-  onUncertaintyAction?: (action: 'verify_label' | 'retake_photo') => void
   allergyMatch?: boolean
   sensitivityMatch?: boolean
   celiacMatch?: CeliacSignal | null
@@ -77,7 +77,6 @@ export function IngredientCard({
   ingredient,
   expanded: expandedProp,
   onToggleExpanded,
-  onUncertaintyAction,
   allergyMatch = false,
   sensitivityMatch = false,
   celiacMatch = null,
@@ -89,6 +88,9 @@ export function IngredientCard({
 
   const rating = resolveIngredientDisplayRating(ingredient, allergyMatch, sensitivityMatch)
   const ui = RATING_UI[rating]
+  const decodeUnavailable =
+    ingredient.ingredientDecodeStatus === 'unavailable' ||
+    (!ingredient.aiDecodePending && ingredientExplanationFailsQualityGate(ingredient))
 
   const vm = useMemo(
     () =>
@@ -131,7 +133,7 @@ export function IngredientCard({
     onToggleExpanded?.()
   }
 
-  const showCollapsedSubtitle = Boolean(vm.shortLabel)
+  const showCollapsedSubtitle = Boolean(decodeUnavailable || vm.shortLabel)
 
   return (
     <Pressable
@@ -148,17 +150,12 @@ export function IngredientCard({
               </Text>
               {showCollapsedSubtitle ? (
                 <Text style={styles.collapsedSubtitle} numberOfLines={8}>
-                  {vm.shortLabel}
+                  {decodeUnavailable ? 'Details unavailable' : vm.shortLabel}
                 </Text>
               ) : null}
               {reasonChipLabel ? (
                 <View style={styles.reasonChip}>
                   <Text style={styles.reasonChipText}>{reasonChipLabel}</Text>
-                </View>
-              ) : null}
-              {vm.uncertaintyLabel ? (
-                <View style={styles.uncertaintyChip}>
-                  <Text style={styles.uncertaintyChipText}>{vm.uncertaintyLabel}</Text>
                 </View>
               ) : null}
             </View>
@@ -175,7 +172,14 @@ export function IngredientCard({
           </View>
           {expanded && !compactPreview ? (
             ingredient.aiDecodePending ? (
-              <Text style={styles.decodePlaceholder}>Decoding...</Text>
+              <Text style={styles.decodePlaceholder}>Still loading this line…</Text>
+            ) : decodeUnavailable ? (
+              <View style={styles.unavailableBlock}>
+                <Text style={styles.unavailableTitle}>Ingredient details unavailable</Text>
+                <Text style={styles.unavailableBody}>
+                  Fillr could not load a reliable explanation for this line. Use the printed label as the source of truth.
+                </Text>
+              </View>
             ) : (
               <View style={styles.expandedBlock}>
                 {vm.bullets.length > 0 ? (
@@ -212,9 +216,6 @@ export function IngredientCard({
                   </View>
                 ) : null}
 
-                {vm.confidence === 'medium' ? (
-                  <Text style={styles.confidenceHint}>Model confidence: medium</Text>
-                ) : null}
                 {showFlagReasoning ? (
                   <View style={styles.section}>
                     <Text style={styles.sectionLabel}>Why this was flagged</Text>
@@ -224,23 +225,6 @@ export function IngredientCard({
                         {item.value}
                       </Text>
                     ))}
-                  </View>
-                ) : null}
-
-                {vm.uncertaintyLabel && onUncertaintyAction ? (
-                  <View style={styles.uncertaintyActionsRow}>
-                    <Pressable
-                      onPress={() => onUncertaintyAction('verify_label')}
-                      style={({ pressed }) => [styles.uncertaintyGhostBtn, pressed && { opacity: 0.88 }]}
-                    >
-                      <Text style={styles.uncertaintyGhostBtnText}>Verify label</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => onUncertaintyAction('retake_photo')}
-                      style={({ pressed }) => [styles.uncertaintyPrimaryBtn, pressed && { opacity: 0.9 }]}
-                    >
-                      <Text style={styles.uncertaintyPrimaryBtnText}>Retake photo</Text>
-                    </Pressable>
                   </View>
                 ) : null}
 
@@ -326,22 +310,6 @@ const styles = StyleSheet.create({
     color: theme.flagged.text,
     letterSpacing: 0.2,
   },
-  uncertaintyChip: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: '#fffbeb',
-    borderWidth: 1,
-    borderColor: '#fcd34d',
-  },
-  uncertaintyChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#92400e',
-    letterSpacing: 0.2,
-  },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,13 +381,6 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     lineHeight: 20,
   },
-  confidenceHint: {
-    marginTop: -4,
-    marginBottom: 10,
-    fontSize: 11,
-    color: theme.textFaint,
-    fontStyle: 'italic',
-  },
   evidenceLine: {
     color: theme.textSecondary,
     fontSize: 12,
@@ -430,38 +391,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.textPrimary,
   },
-  uncertaintyActionsRow: {
-    marginTop: -2,
-    marginBottom: 10,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  uncertaintyGhostBtn: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.cardBorderOpen,
-    backgroundColor: '#f8fafc',
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  uncertaintyGhostBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
-  uncertaintyPrimaryBtn: {
-    flex: 1,
-    borderRadius: 12,
-    backgroundColor: '#1f9f63',
-    paddingVertical: 9,
-    alignItems: 'center',
-  },
-  uncertaintyPrimaryBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#f6fffa',
-  },
   footnote: {
     fontSize: 11.5,
     color: theme.textFaint,
@@ -470,10 +399,28 @@ const styles = StyleSheet.create({
   },
   decodePlaceholder: {
     marginTop: 10,
-    minHeight: 76,
+    fontSize: 13,
+    color: theme.textFaint,
+    lineHeight: 18,
+  },
+  unavailableBlock: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f8fafc',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    gap: 4,
+  },
+  unavailableTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: theme.textPrimary,
+  },
+  unavailableBody: {
     fontSize: 12,
-    color: '#9ca3af',
-    fontStyle: 'italic',
-    lineHeight: 19,
+    lineHeight: 17,
+    color: theme.textMuted,
   },
 })

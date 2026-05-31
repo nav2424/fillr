@@ -20,6 +20,9 @@ const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
   /may\s+contain\s+traces?\s+of\s*/i,
+  /possible\s+cross[\s-]?contamination\b/i,
+  /cross[\s-]?contamination\b/i,
+  /because\s+(?:they\s+)?(?:were\s+)?(?:made|manufactured|processed)\s+in\s+(?:the\s+)?same\s+facility/i,
   /traces?\s+of\s*/i,
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,

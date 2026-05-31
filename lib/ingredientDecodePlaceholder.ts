@@ -44,18 +44,18 @@ export function createAwaitingDecodeAnalysisItem(labelName: string): IngredientA
  */
 export function createOfflineOrTimeoutIngredientExplanation(labelName: string): IngredientExplanation {
   const raw = labelName.trim() || 'Ingredient'
-  const quoted = raw.includes('"') ? raw : `“${raw}”`
   return {
     name: raw,
-    headline: `Decode for ${quoted} didn’t load this time.`,
-    labelDecoder: `We see ${quoted} on your label, but the detailed Fillr card didn’t download—usually a weak connection or a timeout.`,
-    whatItIs: `Reconnect when you can, open this scan again, and Fillr will try to pull the same ingredient breakdown you get online. Until then, treat the printed package as the source of truth, especially for allergens.`,
-    whyItsUsed: `No role text is available without a network decode; this row only mirrors the wording from your label.`,
-    whatToKnow: `If you manage allergies medically, confirm the physical label before eating.`,
-    quickSummary: `Offline or timed out — tap back in online to refresh this line.`,
+    headline: 'Ingredient details unavailable.',
+    labelDecoder: 'Ingredient intelligence did not load for this line.',
+    whatItIs: '',
+    whyItsUsed: '',
+    whatToKnow: 'Use the printed package as the source of truth, especially for allergens.',
+    quickSummary: 'Details unavailable',
     ingredientRating: 'okay',
     verdict: 'NEUTRAL',
     ratingReason: 'Rating may update after a successful online decode; it is based on the ingredient name only right now.',
     ratingSource: 'deterministic',
+    ingredientDecodeStatus: 'unavailable',
   }
 }

@@ -36,6 +36,9 @@ import {
   applySensitivityPersonalizedProductCopy,
 } from '../lib/personalizationEngine'
 import { lookupIngredientAmbiguity } from '../lib/ingredientAmbiguity'
+import { stripPersonalizationNotInProfile } from '../lib/stripProfilePersonalization'
+import { ensureDistinctIngredientExplanation } from '../lib/ingredientProseHydration'
+import { buildFallbackIngredientExplanation } from '../lib/fillrAdapter'
 import {
   analysisItemToSaveInput,
   getIngredientsFromCacheBatch,
@@ -55,6 +58,10 @@ import { detectProductPatterns } from '../lib/productPatternDetection'
 import { validateIngredientAnalysisOutput } from '../lib/ingredientAnalysisValidation'
 import { detectProductCategoryFromSignals } from '../lib/buildScoringData'
 import { getGoalDisplayLabel } from '../lib/profileDisplayLabels'
+import {
+  isProductLevelGoal,
+  stripProductLevelGoalFromIngredient,
+} from '../lib/goalApplicability'
 import {
   composeDeterministicProductSummary,
   composeDeterministicProductVerdict,
@@ -271,7 +278,7 @@ function applyNuclearForceRatings(
   })
 }
 
-/** Faster default; set EXPO_PUBLIC_OPENAI_INGREDIENT_MODEL=gpt-4o if you need maximum depth. */
+/** Fast default; set EXPO_PUBLIC_OPENAI_INGREDIENT_MODEL=gpt-4o for higher-quality (slower) scans. */
 const DEFAULT_MODEL = 'gpt-4o-mini'
 const TEMPERATURE = 0
 const MAX_TOKENS = 3072
@@ -350,30 +357,41 @@ function ingredientExplanationToAnalysisItem(fb: IngredientExplanation): Ingredi
 }
 
 export function padTranslatorFields(item: IngredientAnalysisItem): IngredientAnalysisItem {
+  const name = (item.name ?? '').trim() || 'Ingredient'
+  const fb = buildFallbackIngredientExplanation(name)
   let labelDecoder = String(item.labelDecoder ?? '').trim()
+  let whatItIs = String(item.whatItIs ?? '').trim()
+  let whatItDoes = String(item.whatItDoes ?? '').trim()
+  let bodyEffect = String(item.bodyEffect ?? '').trim()
+  let funFact = String(item.funFact ?? '').trim()
   let whyItMattersYou = String(item.whyItMattersYou ?? '').trim()
 
   if (proseFieldInvalid(labelDecoder)) {
-    const h = String(item.headline ?? '').trim()
-    const w = String(item.whatItIs ?? '').trim()
-    const firstWhat = w ? w.split('.')[0]?.trim() || w.slice(0, 120) : ''
-    labelDecoder =
-      h && firstWhat
-        ? `${h} ${firstWhat}`.trim()
-        : firstWhat || h || `This line on the label names a typical packaged-food ingredient used for taste, texture, or shelf life.`
+    labelDecoder = fb.labelDecoder ?? fb.whatItIs.split('.')[0] ?? ''
     if (!endsWithSentencePunctuation(labelDecoder)) labelDecoder = `${labelDecoder.trim()}.`
   }
-
+  if (proseFieldInvalid(whatItIs)) {
+    whatItIs = fb.whatItIs
+    if (!endsWithSentencePunctuation(whatItIs)) whatItIs = `${whatItIs.trim()}.`
+  }
+  if (proseFieldInvalid(whatItDoes)) {
+    whatItDoes = fb.whatItDoes ?? fb.whyItsUsed ?? ''
+    if (!endsWithSentencePunctuation(whatItDoes)) whatItDoes = `${whatItDoes.trim()}.`
+  }
+  if (proseFieldInvalid(bodyEffect)) {
+    bodyEffect = fb.bodyEffect ?? ''
+    if (!endsWithSentencePunctuation(bodyEffect)) bodyEffect = `${bodyEffect.trim()}.`
+  }
+  if (proseFieldInvalid(funFact)) {
+    funFact = fb.funFact ?? ''
+    if (!endsWithSentencePunctuation(funFact)) funFact = `${funFact.trim()}.`
+  }
   if (proseFieldInvalid(whyItMattersYou)) {
-    const rr = String(item.ratingReason ?? '').trim()
-    const firstR = rr ? rr.split('.')[0]?.trim() || rr.slice(0, 140) : ''
-    whyItMattersYou = firstR
-      ? `For everyday shopping, the main tradeoff is: ${firstR.endsWith('.') ? firstR.slice(0, -1) : firstR}.`
-      : `Use this row to compare similar products and see whether ${item.name} is something you want often or only occasionally.`
+    whyItMattersYou = fb.whyItMatters ?? fb.whatToKnow ?? ''
     if (!endsWithSentencePunctuation(whyItMattersYou)) whyItMattersYou = `${whyItMattersYou.trim()}.`
   }
 
-  return { ...item, labelDecoder, whyItMattersYou }
+  return { ...item, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, whyItMattersYou }
 }
 
 function termsMatch(ingredientLower: string, termLower: string): boolean {
@@ -554,6 +572,7 @@ function aiItemToExplanation(item: IngredientAnalysisItem, labelLine?: string): 
     ...(item.profileAnchor?.trim() ? { profileAnchor: item.profileAnchor.trim() } : {}),
     ...(item.actionability ? { actionability: item.actionability } : {}),
     ...(item.intelligenceConfidence ? { intelligenceConfidence: item.intelligenceConfidence } : {}),
+    ...(item.decodeStatus ? { ingredientDecodeStatus: item.decodeStatus } : {}),
     evidenceTrace: {
       ruleMatched:
         item.evidenceRuleMatched ??
@@ -876,9 +895,12 @@ function proseFieldInvalid(s: string | undefined): boolean {
 }
 
 /** Pad compact intelligence strings so legacy prose validators still pass. */
-function padShortProse(s: string, extras: string[]): string {
+function padShortProse(s: string, extras: string[], ingredientName?: string): string {
   let t = s.replace(/\s+/g, ' ').trim()
-  const tail = extras.map((e) => e.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  const tail = extras
+    .map((e) => e.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter((e, idx, arr) => arr.findIndex((x) => x.toLowerCase() === e.toLowerCase()) === idx)
   if (!t) {
     t = tail[0] ?? 'This line is part of your scanned ingredient list.'
   }
@@ -886,11 +908,13 @@ function padShortProse(s: string, extras: string[]): string {
   let i = 0
   while (t.length < MIN_PROSE_LENGTH && i < tail.length) {
     const e = tail[i++]
+    if (!e || t.toLowerCase().includes(e.toLowerCase().slice(0, 20))) continue
     const chunk = e.endsWith('.') ? e.slice(0, -1) : e
     t = `${t} ${chunk}.`.replace(/\s+/g, ' ')
   }
   if (t.length < MIN_PROSE_LENGTH) {
-    t = `${t} It is listed on packaged-food labels in this general category.`
+    const n = (ingredientName ?? '').trim() || 'This ingredient'
+    t = `${t} On food labels, "${n}" is the name the manufacturer uses for this part of the recipe.`
   }
   if (!endsWithSentencePunctuation(t)) t = `${t.trim()}.`
   return t
@@ -899,43 +923,62 @@ function padShortProse(s: string, extras: string[]): string {
 /** When the model returns Fillr intelligence, hydrate legacy translator fields before validation. */
 function mergeIntelligenceIntoLegacyItem(item: IngredientAnalysisItem): IngredientAnalysisItem {
   const next: IngredientAnalysisItem = { ...item }
+  const name = (next.name ?? '').trim() || 'Ingredient'
   const b = next.whyItMattersBullets
   const sj = next.systemJudgment?.trim()
   const sl = next.shortLabel?.trim()
   const ify = next.impactForYou?.trim()
+  const local = buildFallbackIngredientExplanation(name)
 
   if (b?.[0] && b?.[1] && proseFieldInvalid(next.whyItMattersYou)) {
-    next.whyItMattersYou = padShortProse(`${b[0]} ${b[1]}`, [sj ?? '', ify ?? ''])
+    next.whyItMattersYou = padShortProse(b[1], [ify ?? ''], name)
   }
   if (sj && proseFieldInvalid(next.ratingReason)) {
-    next.ratingReason = padShortProse(sj, [b?.[1] ?? '', ify ?? ''])
+    next.ratingReason = padShortProse(sj, [b?.[1] ?? ''], name)
   }
-  if (sl && sj && proseFieldInvalid(next.labelDecoder)) {
-    next.labelDecoder = padShortProse(`${sl}. ${sj}`, [b?.[0] ?? '', ify ?? ''])
-  } else if (sl && proseFieldInvalid(next.labelDecoder)) {
-    next.labelDecoder = padShortProse(sl, [sj || '', b?.[0] || ''])
+  if (proseFieldInvalid(next.labelDecoder)) {
+    const ld = sl || local.labelDecoder || b?.[0] || ''
+    next.labelDecoder = padShortProse(ld, [], name)
   }
-  if (sl && proseFieldInvalid(next.headline)) {
-    next.headline = padShortProse(sl, [`On this label it appears as "${next.name}".`])
+  if (proseFieldInvalid(next.headline)) {
+    next.headline = padShortProse(sl || local.headline || name, [], name)
   }
-  if (b?.[0] && proseFieldInvalid(next.whatItIs)) {
-    next.whatItIs = padShortProse(b[0], [b[1] || '', sl || ''])
+  if (proseFieldInvalid(next.whatItIs)) {
+    next.whatItIs = padShortProse(b?.[0] || local.whatItIs, [], name)
   }
-  if (b?.[1] && proseFieldInvalid(next.whatItDoes)) {
-    next.whatItDoes = padShortProse(b[1], [sj || '', sl || ''])
+  if (proseFieldInvalid(next.whatItDoes)) {
+    next.whatItDoes = padShortProse(b?.[1] || local.whatItDoes || local.whyItsUsed, [], name)
   }
-  if (sj && proseFieldInvalid(next.bodyEffect)) {
-    next.bodyEffect = padShortProse(sj, [ify || '', b?.[1] || ''])
-  } else if (b?.[1] && proseFieldInvalid(next.bodyEffect)) {
-    next.bodyEffect = padShortProse(b[1], [sj || ''])
+  if (proseFieldInvalid(next.bodyEffect)) {
+    next.bodyEffect = padShortProse(local.bodyEffect, [], name)
   }
-  if (ify && proseFieldInvalid(next.funFact)) {
-    next.funFact = padShortProse(ify, [sl || '', sj || ''])
-  } else if (sj && proseFieldInvalid(next.funFact)) {
-    next.funFact = padShortProse(sj, [ify || '', sl || ''])
+  if (proseFieldInvalid(next.funFact)) {
+    next.funFact = padShortProse(local.funFact, [ify ?? ''], name)
   }
 
-  return next
+  const merged = ingredientExplanationToAnalysisItem(
+    ensureDistinctIngredientExplanation(aiItemToExplanation(next, name))
+  )
+  return {
+    ...next,
+    ...merged,
+    rating: next.rating ?? merged.rating,
+    personalFlag: next.personalFlag,
+    personalMessage: next.personalMessage,
+    ratingSource: next.ratingSource ?? merged.ratingSource,
+    ratingOverridden: next.ratingOverridden,
+    shortLabel: next.shortLabel ?? merged.shortLabel,
+    whyItMattersBullets: next.whyItMattersBullets ?? merged.whyItMattersBullets,
+    systemJudgment: next.systemJudgment ?? merged.systemJudgment,
+    impactForYou: next.impactForYou ?? merged.impactForYou,
+    flagDriver: next.flagDriver ?? merged.flagDriver,
+    profileAnchor: next.profileAnchor ?? merged.profileAnchor,
+    actionability: next.actionability ?? merged.actionability,
+    intelligenceConfidence: next.intelligenceConfidence ?? merged.intelligenceConfidence,
+    from_cache: next.from_cache,
+    evidenceRuleMatched: next.evidenceRuleMatched,
+    evidenceSource: next.evidenceSource,
+  }
 }
 
 function containsGenericFiller(s: string | undefined): boolean {
@@ -1030,13 +1073,15 @@ function buildFallbackImpactForYou(item: IngredientAnalysisItem, profile: Dietar
   const personalMsg = String(item.personalMessage ?? '').trim()
   if (personalMsg) return rewriteToSecondPerson(personalMsg)
   const goal = String(profile.goal ?? '').trim()
-  if (item.personalFlag === 'allergy') {
+  const hasAllergies = (profile.allergies ?? []).length > 0
+  const hasSensitivities = (profile.sensitivities ?? []).length > 0
+  if (item.personalFlag === 'allergy' && hasAllergies) {
     return 'Flagged for you because this appears to match an item in your saved allergy profile.'
   }
   if (item.personalFlag === 'celiac') {
     return 'Flagged for you because your strict celiac setting treats this ingredient as a gluten-risk line.'
   }
-  if (item.personalFlag === 'sensitivity') {
+  if (item.personalFlag === 'sensitivity' && hasSensitivities) {
     return 'Flagged for you because this conflicts with a sensitivity in your saved profile.'
   }
   if (item.personalFlag === 'avoiding') {
@@ -1044,10 +1089,6 @@ function buildFallbackImpactForYou(item: IngredientAnalysisItem, profile: Dietar
   }
   if (item.personalFlag === 'preference_conflict') {
     return 'Flagged for you because this conflicts with one of your saved dietary preferences.'
-  }
-  if (goal) {
-    const goalLabel = getGoalDisplayLabel(goal) || goal.replace(/_/g, ' ')
-    return `Flagged for you because this works against your current goal: ${goalLabel}.`
   }
   if ((profile.scoringPreferenceKeys ?? []).length > 0) {
     return 'Flagged for you because this conflicts with your saved nutrition priorities.'
@@ -1070,6 +1111,7 @@ export function enforcePersonalizedCopy(
       next.impactForYou = rewriteToSecondPerson(next.impactForYou)
 
       const isFlagged = next.rating === 'concerning' || next.rating === 'avoid'
+      const productGoalOnly = isProductLevelGoal(profile.goal)
       const hasPersonalConflict =
         next.personalFlag === 'allergy' ||
         next.personalFlag === 'sensitivity' ||
@@ -1078,7 +1120,7 @@ export function enforcePersonalizedCopy(
         next.personalFlag === 'preference_conflict' ||
         next.flagDriver === 'allergy' ||
         next.flagDriver === 'sensitivity' ||
-        next.flagDriver === 'goal' ||
+        (next.flagDriver === 'goal' && !productGoalOnly) ||
         next.flagDriver === 'preference'
       const impactClaimsNoConflict = /\bno direct conflicts with your current profile\b/i.test(
         next.impactForYou ?? ''
@@ -1128,13 +1170,13 @@ export function enforcePersonalizedCopy(
           next.flagDriver = 'sensitivity'
         else if (next.personalFlag === 'avoiding' || next.personalFlag === 'preference_conflict')
           next.flagDriver = 'preference'
-        else if (isFlagged) next.flagDriver = 'processing'
+        else if (isFlagged && !productGoalOnly) next.flagDriver = 'processing'
       }
       if (!next.actionability) {
         next.actionability = next.rating === 'avoid' ? 'avoid' : next.rating === 'concerning' ? 'limit' : 'okay'
       }
 
-      return next
+      return stripProductLevelGoalFromIngredient(next, profile.goal)
     }),
   }
 
@@ -1192,6 +1234,7 @@ function applyDeterministicPipeline(
   corrected = applyDeterministicRatings(corrected, ingredientsListForMatcher) as IngredientAnalysisItem[]
   corrected = applyNuclearForceRatings(corrected, ingredientsListForMatcher, productCategory)
   corrected = applyPersonalizedRatings(corrected, dietaryProfile) as IngredientAnalysisItem[]
+  corrected = stripPersonalizationNotInProfile(corrected, dietaryProfile) as IngredientAnalysisItem[]
   parsed.ingredients = corrected.map(padTranslatorFields)
 
   const counts = recalculateProductSummary(corrected)
@@ -1352,7 +1395,8 @@ async function validateAndRepairIngredients(
   parsed: ProductIngredientAnalysisResponse,
   ingredientsList: string,
   systemContent: string,
-  repairAllowedKeys?: Set<string>
+  repairAllowedKeys?: Set<string>,
+  maxRepairJobs = MAX_REPAIR_ATTEMPTS * 12
 ): Promise<ProductIngredientAnalysisResponse> {
   const ingredients = [...parsed.ingredients]
   const repetitive = repetitiveTemplateRows(ingredients)
@@ -1369,8 +1413,9 @@ async function validateAndRepairIngredients(
     if (repetitive.has(i)) reasons.push('repetitive template copy')
     jobs.push({ i, targetName, reasons })
   }
+  const cappedJobs = jobs.slice(0, Math.max(0, maxRepairJobs))
   const results = await Promise.all(
-    jobs.map(async ({ i, targetName, reasons }) => {
+    cappedJobs.map(async ({ i, targetName, reasons }) => {
       console.warn(
         `[Fillr] Ingredient "${targetName}" failed validation (${reasons.join(', ')}); re-fetching`
       )
@@ -1406,11 +1451,11 @@ const EMPTY_DIETARY: DietaryProfile = {
   scoringPreferenceKeys: [],
 }
 
-/** Barcode scans: tighter budget + no sequential repair calls (saves 10–60s on slow networks). */
-const SCAN_AI_TIMEOUT_MS = 18_000
+/** Barcode scans: bounded budget; greedy merge + capped repairs keep latency predictable. */
+const SCAN_AI_TIMEOUT_MS = 28_000
 const SCAN_AI_MAX_TOKENS = 2200
-const PARTIAL_AI_PER_ING_TOKENS = 280
-const PARTIAL_AI_BASE_TOKENS = 380
+const PARTIAL_AI_PER_ING_TOKENS = 220
+const PARTIAL_AI_BASE_TOKENS = 320
 
 function synthesizeProductVerdictFromSummary(items: IngredientAnalysisItem[]): string {
   const c = recalculateProductSummary(items)
@@ -1456,17 +1501,78 @@ function buildLocalFallbackAnalysisItem(labelName: string): IngredientAnalysisIt
   const key = normalizeIngredientName(name)
   const lower = key || name.toLowerCase()
 
-  let shortLabel = 'Label ingredient'
-  let headline = 'Ingredient listed on this label.'
-  let labelDecoder = 'Listed as part of this product formula.'
-  let whatItIs = 'This ingredient is explicitly listed on the label and contributes to the product formula in a measurable way.'
-  let whatItDoes = 'Contributes to the product recipe, texture, flavor, stability, or nutrition profile.'
-  let bodyEffect = 'Usually not enough to judge alone; the full ingredient list and nutrition panel matter more.'
-  let whyItMattersYou = 'Use this line as context alongside your allergies, sensitivities, and goals.'
+  let shortLabel = 'Named label ingredient'
+  let headline = `${name} is part of this formula.`
+  let labelDecoder = `${name} appears directly in the ingredient list.`
+  let whatItIs = `${name} is a named food ingredient on this label; its exact role depends on the surrounding formula.`
+  let whatItDoes = "Helps build the product's taste, texture, nutrition, or shelf stability."
+  let bodyEffect = 'Judge it together with ingredient order, serving size, and the nutrition panel.'
+  let whyItMattersYou = 'This line is useful context, but it is not a personal concern unless it matches your profile.'
   let rating: IngredientAnalysisItem['rating'] = 'okay'
   let ratingReason = 'Local fallback rating based on ingredient name and common packaged-food role.'
 
-  if (/\b(milk|cream|butter|whey|casein|lactose|cheese|yogurt|yoghurt)\b/.test(lower)) {
+  if (/\b(oat\s+protein|oat\s+flour|oat\b|oats)\b/.test(lower) && /\bprotein\b/.test(lower)) {
+    shortLabel = 'Oat protein'
+    headline = 'Oat-derived protein boost.'
+    labelDecoder = "Protein extracted from oats and added to raise the product's protein content."
+    whatItIs = 'A concentrated oat ingredient with more protein than regular oats.'
+    whatItDoes = 'Adds protein and structure, especially in bars, snacks, and plant-based products.'
+    bodyEffect = 'Can support fullness better than pure starch, but it is still a processed fraction of oats.'
+    whyItMattersYou = 'Relevant if you want higher protein; verify gluten certification if gluten is a strict concern.'
+    rating = 'okay'
+    ratingReason = 'Recognizable plant protein with processing, generally reasonable unless gluten/cross-contact matters.'
+  } else if (/\b(oat\s+fib(?:er|re)|oat\b.*fib(?:er|re))\b/.test(lower)) {
+    shortLabel = 'Oat fiber'
+    headline = 'Oat-derived fiber ingredient.'
+    labelDecoder = 'Fiber separated from oats and added for texture and fiber content.'
+    whatItIs = 'The fibrous part of oats, usually used as a concentrated ingredient rather than whole oats.'
+    whatItDoes = 'Adds bulk, chew, and fiber without adding much sugar or fat.'
+    bodyEffect = 'May support fullness and digestion, but too much added fiber can bother sensitive stomachs.'
+    whyItMattersYou = 'Useful if fiber fits your goals; check gluten-free sourcing if you need strict gluten control.'
+    rating = 'okay'
+    ratingReason = 'Added fiber ingredient with useful function, though less whole-food than intact oats.'
+  } else if (/\b(prebiotic|inulin|chicory|soluble\s+fib(?:er|re)|fib(?:er|re))\b/.test(lower)) {
+    shortLabel = 'Added fiber'
+    headline = 'Fiber added for function.'
+    labelDecoder = 'A fiber ingredient used to raise fiber content and change texture.'
+    whatItIs = 'A concentrated fiber source, often separated from plants and added back into the recipe.'
+    whatItDoes = 'Adds bulk, chew, and fiber while helping the product feel more filling.'
+    bodyEffect = 'Can help fullness, but larger amounts may cause gas or bloating for sensitive users.'
+    whyItMattersYou = 'Good to notice if you track fiber or have a sensitive gut.'
+    rating = 'okay'
+    ratingReason = 'Functional fiber ingredient; useful but more processed than whole plant foods.'
+  } else if (/\b(faba|fava|pea|soy|rice|hemp)\b.*\bprotein\b|\bprotein\b.*\b(faba|fava|pea|soy|rice|hemp)\b/.test(lower)) {
+    const source = /\bfaba|fava\b/.test(lower) ? 'faba bean' : /\bpea\b/.test(lower) ? 'pea' : 'plant'
+    shortLabel = `${source.charAt(0).toUpperCase()}${source.slice(1)} protein`
+    headline = 'Plant protein concentrate.'
+    labelDecoder = `Protein separated from ${source}s and added to improve the nutrition profile.`
+    whatItIs = `A concentrated ${source}-based protein ingredient, not the whole bean or seed.`
+    whatItDoes = 'Raises protein, improves structure, and can make snacks or bars more filling.'
+    bodyEffect = 'Usually digests slower than refined carbs, though concentrates can feel heavier for some stomachs.'
+    whyItMattersYou = 'Helpful if higher protein is your goal; less relevant if you prioritize only whole-food ingredients.'
+    rating = 'okay'
+    ratingReason = 'Plant protein concentrate with a useful role but clear processing.'
+  } else if (/\bisomaltulose\b/.test(lower)) {
+    shortLabel = 'Slow sugar'
+    headline = 'Lower-glycemic sweetener.'
+    labelDecoder = 'A sugar-type carbohydrate used for sweetness with slower digestion than regular table sugar.'
+    whatItIs = 'A processed sweetener made from sucrose, often marketed for steadier energy release.'
+    whatItDoes = 'Adds sweetness and carbohydrate energy while keeping texture close to sugar.'
+    bodyEffect = 'Still counts as sugar/carbohydrate, but it may raise blood glucose more gradually.'
+    whyItMattersYou = 'Most relevant if you are watching sugar load or blood-glucose response.'
+    rating = 'okay'
+    ratingReason = 'Sweetener with a better glucose profile than standard sugar, but still an added carbohydrate.'
+  } else if (/\bmonk\s+fruit\b/.test(lower)) {
+    shortLabel = 'High-intensity sweetener'
+    headline = 'Sweetener from monk fruit.'
+    labelDecoder = 'A very sweet extract used to add sweetness without much sugar.'
+    whatItIs = 'A concentrated sweetener extract; tiny amounts can taste very sweet.'
+    whatItDoes = 'Boosts sweetness while helping keep sugar grams lower.'
+    bodyEffect = 'Usually contributes little sugar, but it can signal a formula built around sweetener engineering.'
+    whyItMattersYou = 'Useful for low-sugar goals, but watch the full sweetener stack around it.'
+    rating = 'okay'
+    ratingReason = 'Low-sugar sweetener; processing concern depends on how many sweeteners are stacked.'
+  } else if (/\b(milk|cream|butter|whey|casein|lactose|cheese|yogurt|yoghurt)\b/.test(lower)) {
     shortLabel = 'Dairy ingredient'
     headline = 'Dairy-based ingredient.'
     labelDecoder = 'A dairy ingredient used for creaminess, flavor, protein, fat, or milk solids.'
@@ -1540,6 +1646,7 @@ function buildLocalFallbackAnalysisItem(labelName: string): IngredientAnalysisIt
     contextStat: '',
     ratingSource: 'deterministic',
     from_cache: false,
+    decodeStatus: 'unavailable',
   }
 }
 
@@ -1597,6 +1704,10 @@ export async function analyzeIngredientsWithOpenAI(
     ingredientParseSource?: IngredientTextParseSource
     requestTimeoutMs?: number
     maxTokens?: number
+    /** Cap parallel per-line OpenAI repairs (barcode enrich uses a small number). */
+    maxRepairJobs?: number
+    /** Resolve templates + shared cache only; return null if any line still needs OpenAI. */
+    localOnly?: boolean
   }
 ): Promise<ProductIngredientAnalysisResponse | null> {
   const devDecodeLog = (stage: string, extra?: Record<string, unknown>) => {
@@ -1669,6 +1780,10 @@ export async function analyzeIngredientsWithOpenAI(
     cacheHitCount,
     templateHitCount,
     aiIngredientCount: aiAnalyzedCount,
+  }
+
+  if (options?.localOnly && aiAnalyzedCount > 0) {
+    return null
   }
 
   if (aiAnalyzedCount === 0) {
@@ -1767,21 +1882,30 @@ export async function analyzeIngredientsWithOpenAI(
   }
 
   const aiByKey = new Map<string, IngredientAnalysisItem[]>()
-  const assignCount = Math.min(unknownNamesForPrompt.length, partialFixed.ingredients.length)
-  for (let i = 0; i < assignCount; i++) {
-    const key = normalizeIngredientName(unknownNamesForPrompt[i])
-    const item = partialFixed.ingredients[i]
+  const partialRows = partialFixed.ingredients.slice(0, unknownNamesForPrompt.length)
+  const greedyAssignment = assignLabelsToAiItemsGreedy(unknownNamesForPrompt, partialRows)
+  const assignedAiIndices = new Set<number>()
+  for (let li = 0; li < unknownNamesForPrompt.length; li++) {
+    const labelName = unknownNamesForPrompt[li]
+    const aiIdx = greedyAssignment.get(li)
+    if (aiIdx == null || aiIdx < 0 || aiIdx >= partialRows.length) continue
+    assignedAiIndices.add(aiIdx)
+    const key = normalizeIngredientName(labelName)
+    const item = partialRows[aiIdx]
     if (!key || !item) continue
     const q = aiByKey.get(key)
     if (q) q.push(item)
     else aiByKey.set(key, [item])
   }
-  if (assignCount < unknownNamesForPrompt.length) {
+  const missingNames = unknownNamesForPrompt.filter((name, li) => {
+    const key = normalizeIngredientName(name)
+    return !key || !aiByKey.has(key)
+  })
+  if (missingNames.length > 0) {
     console.warn(
-      `[Fillr] partial decode returned ${assignCount}/${unknownNamesForPrompt.length} ingredient rows; repairing missing rows`
+      `[Fillr] partial decode missing ${missingNames.length}/${unknownNamesForPrompt.length} ingredient rows; repairing`
     )
   }
-  const missingNames = unknownNamesForPrompt.slice(assignCount)
   const repairedMissingRows = await Promise.all(
     missingNames.map((missingName) =>
       repairIngredientLineWithOpenAI(missingName, ingredientsList, systemContent).then((row) => ({
@@ -1807,15 +1931,28 @@ export async function analyzeIngredientsWithOpenAI(
     productAnalysis: partialFixed.productAnalysis ?? ({} as ProductAnalysis),
   }
   const repairAllowedKeys = new Set(unknownNames.map((n) => normalizeIngredientName(n)).filter(Boolean))
+  const maxRepairJobs = options?.maxRepairJobs ?? (quick ? 0 : MAX_REPAIR_ATTEMPTS * 12)
   let repaired = quick
     ? parsed
-    : await validateAndRepairIngredients(parsed, ingredientsList, systemContent, repairAllowedKeys)
+    : await validateAndRepairIngredients(
+        parsed,
+        ingredientsList,
+        systemContent,
+        repairAllowedKeys,
+        maxRepairJobs
+      )
   const validation = validateIngredientAnalysisOutput(ingredientNames, repaired)
-  if (validation.failedRowNames.length > 0) {
+  if (validation.failedRowNames.length > 0 && maxRepairJobs > 0) {
     const forceRepairKeys = new Set(
       validation.failedRowNames.map((n) => normalizeIngredientName(n)).filter(Boolean)
     )
-    repaired = await validateAndRepairIngredients(repaired, ingredientsList, systemContent, forceRepairKeys)
+    repaired = await validateAndRepairIngredients(
+      repaired,
+      ingredientsList,
+      systemContent,
+      forceRepairKeys,
+      Math.min(maxRepairJobs, validation.failedRowNames.length)
+    )
   }
   applyDeterministicPipeline(repaired, cleanedLabel, profile, productCategory)
   devDecodeLog('decode_parsed_ok', {
@@ -1848,7 +1985,7 @@ export async function analyzeIngredientsWithOpenAI(
     cacheWriteTasks.push(saveIngredientToCache(analysisItemToSaveInput(item)))
   }
   if (cacheWriteTasks.length > 0) {
-    await Promise.allSettled(cacheWriteTasks)
+    void Promise.allSettled(cacheWriteTasks)
   }
   console.log(
     JSON.stringify({
@@ -1908,7 +2045,7 @@ export async function repairScanIngredientBreakdownGaps(
     if (!item || ingredientParseLooksInvalid(item) || ingredientAnalysisItemFailsGenericGate(item)) {
       continue
     }
-    breakdown[i] = aiItemToExplanation(item, labelName)
+    breakdown[i] = ensureDistinctIngredientExplanation(aiItemToExplanation(item, labelName))
     repairedCount++
   }
 
@@ -1954,7 +2091,11 @@ function enforceDeterministicRatingsOnBreakdown(
       }) as IngredientAnalysisItem
   )
   let corrected = applyDeterministicRatings(minimal, fullLabelHaystack) as IngredientAnalysisItem[]
-  corrected = applyNuclearForceRatings(corrected)
+  const productCategory = detectProductCategoryFromSignals(
+    fullLabelHaystack,
+    breakdown.map((i) => normalizeIngredientName(i.name))
+  )
+  corrected = applyNuclearForceRatings(corrected, fullLabelHaystack, productCategory)
   return breakdown.map((ing, idx) => {
     const c = corrected[idx]
     if (!c) return ing
@@ -1997,6 +2138,7 @@ function hydrateEmptyIngredientExplanations(ing: IngredientExplanation): Ingredi
     systemJudgment: ing.systemJudgment,
     impactForYou: ing.impactForYou,
     intelligenceConfidence: ing.intelligenceConfidence,
+    ingredientDecodeStatus: base.ingredientDecodeStatus,
     aiDecodePending: false,
   }
 }
@@ -2014,7 +2156,7 @@ export function applyPresentationDefaults(result: ScanResult): ScanResult {
   const resorted = sortIngredientsBySeverity(enforced).map((ing) => {
     const amb = lookupIngredientAmbiguity(ing.name)
     const base = amb ? { ...ing, sourceAmbiguity: amb } : ing
-    const hydrated = hydrateEmptyIngredientExplanations(base)
+    const hydrated = ensureDistinctIngredientExplanation(hydrateEmptyIngredientExplanations(base))
     return {
       ...hydrated,
       quickSummary: buildQuickSummaryFallback({

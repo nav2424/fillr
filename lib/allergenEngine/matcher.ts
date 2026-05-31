@@ -6,6 +6,7 @@ import {
   ANTI_MATCHES,
   CELIAC_RULES,
   NON_DAIRY_BUTTER_CREAM,
+  NON_WHEAT_FLOURS,
   getBuiltinById,
 } from './builtinDictionary'
 import type { CustomAllergenRule } from './types'
@@ -27,6 +28,11 @@ export function normalizeText(text: string): string {
     .replace(/[()\[\]{}.,;:!'"\-]/g, ' ') // hyphen so "milk-free" -> "milk free"
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function sectionUsesNonWheatFlour(sectionText: string): boolean {
+  const norm = normalizeText(sectionText)
+  return NON_WHEAT_FLOURS.some((flour) => norm.includes(normalizeText(flour)))
 }
 
 /** Check if term matches as whole word (word boundaries) - "nut" does NOT match "donut" */
@@ -135,6 +141,13 @@ function matchBuiltinInSection(
       continue
     }
     if (allergenId === 'soy' && (term.includes('lecithin') || term === 'lécithine de soja') && shouldSkipSoyLecithin(sectionText)) {
+      continue
+    }
+    if (
+      allergenId === 'wheat' &&
+      (term.includes('flour') || term === 'semolina' || term === 'durum') &&
+      sectionUsesNonWheatFlour(sectionText)
+    ) {
       continue
     }
 

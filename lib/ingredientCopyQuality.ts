@@ -31,6 +31,13 @@ export const INGREDIENT_GENERIC_PROSE_PATTERNS: RegExp[] = [
   /a named ingredient in (this|the) (formula|product)/i,
   /one of the key lines to verify/i,
   /if dairy is in your profile/i,
+  /this ingredient is explicitly listed on the label and contributes to the product formula/i,
+  /contributes to the product recipe,\s*texture,\s*flavou?r,\s*stability,\s*or nutrition profile/i,
+  /\b(label ingredient|named label ingredient)\b/i,
+  /does not align with your profile settings and is one of the lines driving this rating/i,
+  /an indication of .* presence/i,
+  /warns of potential .* allergens/i,
+  /it helps prevent allergic reactions/i,
 ]
 
 export function textMatchesIngredientGenericPattern(text: string | undefined | null): boolean {
@@ -57,6 +64,7 @@ function collectExplanationProse(ing: IngredientExplanation): string {
 
 /** True when merged / cached card copy is empty, too thin, template-like, or knowledge-cache filler. */
 export function ingredientExplanationFailsQualityGate(ing: IngredientExplanation): boolean {
+  if (ing.ingredientDecodeStatus === 'unavailable') return true
   const blob = collectExplanationProse(ing)
   if (!blob.trim()) return true
   const wi = (ing.whatItIs ?? '').trim().length

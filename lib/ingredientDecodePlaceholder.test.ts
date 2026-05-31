@@ -17,6 +17,8 @@ test('createAwaitingDecodeAnalysisItem is invalid for full-list validation', () 
   assert.ok(!item.whatItIs?.trim())
 })
 
-test('offline/timeout hydration copy passes quality gate', () => {
-  assert.equal(ingredientExplanationFailsQualityGate(createOfflineOrTimeoutIngredientExplanation('Guar gum')), false)
+test('offline/timeout hydration copy is explicit unavailable fallback, not real intelligence', () => {
+  const item = createOfflineOrTimeoutIngredientExplanation('Guar gum')
+  assert.equal(item.ingredientDecodeStatus, 'unavailable')
+  assert.equal(ingredientExplanationFailsQualityGate(item), true)
 })

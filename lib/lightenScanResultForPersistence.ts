@@ -5,6 +5,7 @@ import type { ScanResult } from '../types'
  * smaller — lowers iOS main-thread time and peak memory during `JSON.stringify` of scan history.
  */
 export function lightenScanResultForPersistence(r: ScanResult): ScanResult {
+  if (r.scoringFrozenAt && r.fillrFit) return r
   const { scoringData: _sd, fillrFit: _ff, processedRating: _pr, ...rest } = r
   return rest
 }

@@ -32,6 +32,14 @@ test('OCR strips may contain clause', () => {
   assert.equal(result.length, 3)
 })
 
+test('barcode strips facility cross-contact and bare allergen tokens', () => {
+  const raw =
+    'Sugar, cocoa, salt. Possible cross-contamination: made in the same facility as products containing wheat, milk, and eggs.'
+  const result = parseIngredientListFromPlain(raw, 'barcode')
+  assert.ok(!result.some((s) => /^(wheat|milk|eggs?)$/i.test(s.trim())))
+  assert.ok(result.some((s) => /sugar/i.test(s)))
+})
+
 test('OCR bilingual EN + FR still dedupes', () => {
   const raw =
     'Ingredients: Sugar, salt, water. Ingrédients: Sucre, sel, eau.'

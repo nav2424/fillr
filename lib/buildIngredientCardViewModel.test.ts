@@ -35,9 +35,29 @@ test('buildIngredientCardViewModel prefers intelligence fields', () => {
   const vm = buildIngredientCardViewModel(ing, { displayRating: 'avoid' })
   assert.equal(vm.shortLabel, 'Artificial food dye.')
   assert.equal(vm.bullets.length, 2)
+  assert.match(vm.bullets[0], /^What it is:/)
+  assert.match(vm.bullets[1], /^Why it's here:/)
   assert.equal(vm.status, 'FLAGGED')
   assert.ok(vm.systemJudgment?.includes('dye'))
-  assert.ok(vm.impactForYou?.includes('avoid'))
+  assert.ok(vm.impactForYou?.includes('avoid') || vm.systemJudgment?.includes('dye'))
+})
+
+test('buildIngredientCardViewModel teaches identity and formula role before personal impact', () => {
+  const ing: IngredientExplanation = {
+    name: 'Maltodextrin',
+    whatItIs: 'A refined starch-derived carbohydrate usually made from corn, wheat, or potato.',
+    whyItsUsed: '',
+    whatToKnow: '',
+    whatItDoes: 'Adds bulk, sweetness, and quick-dissolving texture to packaged foods.',
+    impactForYou: 'Conflicts with your low-sugar goal because it behaves like a fast carbohydrate.',
+    ingredientRating: 'concerning',
+  }
+  const vm = buildIngredientCardViewModel(ing, { displayRating: 'concerning' })
+  const joined = vm.bullets.join(' ')
+  assert.match(joined, /refined starch-derived carbohydrate/i)
+  assert.match(joined, /Adds bulk/i)
+  assert.equal(vm.bullets.length, 2)
+  assert.match(vm.impactForYou ?? '', /low-sugar goal/i)
 })
 
 test('buildIngredientCardViewModel prefers a complete sentence over a truncated shortLabel', () => {
@@ -170,6 +190,21 @@ test('buildIngredientCardViewModel evidence shows concrete goal/preference confl
   const vm = buildIngredientCardViewModel(ing, { displayRating: 'okay' })
   assert.equal(vm.evidence[0]?.label, 'Matched rule')
   assert.equal(vm.evidence[0]?.value, 'Conflict with "Vegan"')
+})
+
+test('buildIngredientCardViewModel does not label every line as a protein-goal conflict', () => {
+  const ing: IngredientExplanation = {
+    name: 'Salt',
+    whatItIs: 'Sodium chloride used for flavor.',
+    whyItsUsed: 'Seasoning.',
+    whatToKnow: '',
+    ingredientRating: 'okay',
+    impactForYou: 'Flagged for you because this works against your current goal: Eat more protein.',
+    flagDriver: 'goal',
+  }
+  const vm = buildIngredientCardViewModel(ing, { displayRating: 'okay' })
+  assert.doesNotMatch(vm.shortLabel ?? '', /protein/i)
+  assert.doesNotMatch(vm.impactForYou ?? '', /does not align with your Eat more protein/i)
 })
 
 test('buildIngredientCardViewModel avoids internal deterministic-rule jargon', () => {

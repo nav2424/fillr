@@ -36,6 +36,11 @@ export interface PreferenceSignal {
 
 export interface GoalSignal {
   label: string
+  /**
+   * `product` — goal affects Fillr Fit / product copy only (e.g. eat more protein).
+   * `ingredient` — specific label lines may conflict (e.g. sugar vs eat less sugar).
+   */
+  scope: 'product' | 'ingredient'
   /** Ingredients that align with this goal */
   alignPattern?: RegExp
   /** Ingredients that conflict with this goal */
@@ -209,6 +214,7 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
 
 const MORE_PROTEIN: GoalSignal = {
   label: 'Eat more protein',
+  scope: 'product',
   alignPattern: /protein|whey|casein|egg|chicken|beef|soy protein|pea protein|hemp protein/i,
   alignBoost: 12,
   conflictPattern: /hydrogenated|glucose syrup|artificial/i,
@@ -217,6 +223,7 @@ const MORE_PROTEIN: GoalSignal = {
 
 const BALANCED_DIET: GoalSignal = {
   label: 'Maintain a balanced diet',
+  scope: 'product',
   conflictPattern: /hydrogenated|glucose syrup|corn syrup|artificial|e\d{3}/i,
   conflictPenalty: 6,
 }
@@ -227,17 +234,20 @@ export const GOAL_SIGNALS: Record<string, GoalSignal> = {
   build_muscle: MORE_PROTEIN,
   less_sugar: {
     label: 'Eat less sugar',
+    scope: 'ingredient',
     conflictPattern:
       /\bsugar\b|glucose|fructose|corn syrup|dextrose|maltose|sucrose|honey|agave|maple syrup|molasses/i,
     conflictPenalty: 12,
   },
   lose_weight: {
     label: 'Lose weight',
+    scope: 'ingredient',
     conflictPattern: /\bsugar\b|glucose syrup|corn syrup|hydrogenated|lard|shortening/i,
     conflictPenalty: 10,
   },
   gain_weight: {
     label: 'Gain weight',
+    scope: 'product',
     alignPattern: /protein|nut|almond|walnut|pecan|oil|butter|cream|avocado|mct|coconut oil|peanut/i,
     alignBoost: 8,
     conflictPattern: /artificial|e\d{3}|maltodextrin/i,
@@ -245,6 +255,7 @@ export const GOAL_SIGNALS: Record<string, GoalSignal> = {
   },
   gut_health: {
     label: 'Improve gut health',
+    scope: 'ingredient',
     alignPattern: /fiber|fibre|prebiotic|probiotic|ferment|yogurt|yoghurt|kefir|kimchi|miso/i,
     alignBoost: 8,
     conflictPattern: /carrageenan|polysorbate|aspartame|sucralose|saccharin|acesulfame|artificial/i,
@@ -252,6 +263,7 @@ export const GOAL_SIGNALS: Record<string, GoalSignal> = {
   },
   eat_cleaner: {
     label: 'Eat cleaner',
+    scope: 'ingredient',
     conflictPattern:
       /e\d{3}|modified starch|hydrogenated|glucose syrup|maltodextrin|artificial|sodium caseinate|carrageenan/i,
     conflictPenalty: 8,
@@ -263,17 +275,20 @@ export const GOAL_SIGNALS: Record<string, GoalSignal> = {
   improve_health: BALANCED_DIET,
   reduce_upf: {
     label: 'Reduce ultra-processed foods',
+    scope: 'ingredient',
     conflictPattern:
       /e\d{3}|modified starch|hydrogenated|glucose syrup|maltodextrin|artificial|hydrolyzed|textured vegetable protein/i,
     conflictPenalty: 12,
   },
   lower_sodium: {
     label: 'Lower sodium',
+    scope: 'ingredient',
     conflictPattern: /salt|sodium|soy sauce|msg|monosodium glutamate|e621|brine|miso|tamari/i,
     conflictPenalty: 10,
   },
   understand: {
     label: "Understand what I'm eating",
+    scope: 'product',
   },
 }
 

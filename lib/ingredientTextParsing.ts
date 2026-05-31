@@ -127,12 +127,79 @@ export function sliceToEnglishIngredientSection(
  * Cut OCR text where packaging / customer-service copy starts (after the real list).
  * ML Kit often reads the whole panel; without this, commas split garbage into “ingredients”.
  */
+/** Advisory lines (not formula ingredients) — strip before comma-splitting ingredient lists. */
+export function stripAllergenAdvisoryClausesFromBlob(raw: string): string {
+  let s = stripHtmlForIngredients(raw)
+  const clausePatterns: RegExp[] = [
+    /\ballergen(?:s)?\s*(?:info(?:rmation)?)?\s*:?\s*[^.;]+(?:[.;]|$)/gi,
+    /\bcontains\s*:\s*[^.;]+(?:[.;]|$)/gi,
+    /\bcontient\s*:\s*[^.;]+(?:[.;]|$)/gi,
+    /\bmay\s+contain(?:\s+traces?\s+of)?\s*[^.;]+(?:[.;]|$)/gi,
+    /\bpeut\s+contenir(?:\s+des\s+traces?\s+(?:de|d'))?\s*[^.;]+(?:[.;]|$)/gi,
+    /\btraces?\s+of\s+[^.;]+(?:[.;]|$)/gi,
+    /\bpossible\s+cross[\s-]?contamination[^.;]*(?:[.;]|$)/gi,
+    /\bcross[\s-]?contamination[^.;]*(?:[.;]|$)/gi,
+    /\b(?:made|manufactured|processed|packaged|prepared)\s+in\s+(?:a\s+)?(?:facility|plant)\s+[^.;]+(?:[.;]|$)/gi,
+    /\b(?:same|shared)\s+(?:facility|equipment)\s+[^.;]+(?:[.;]|$)/gi,
+    /\bprocessed\s+on\s+(?:shared\s+)?equipment\s+[^.;]+(?:[.;]|$)/gi,
+    /\bmay\s+have\s+come\s+into\s+contact\s+with\s+[^.;]+(?:[.;]|$)/gi,
+  ]
+  for (const re of clausePatterns) {
+    s = s.replace(re, ' ')
+  }
+  return s.replace(/\s{2,}/g, ' ').trim()
+}
+
+/** Single-token rows like "milk" / "eggs" from advisory lines — not real ingredients. */
+export function isBareAllergenDisclosureName(name: string): boolean {
+  const n = normalizeText(name)
+    .replace(/[.:;]+$/g, '')
+    .trim()
+  if (!n) return true
+  const bare = new Set([
+    'milk',
+    'dairy',
+    'egg',
+    'eggs',
+    'wheat',
+    'gluten',
+    'soy',
+    'soya',
+    'peanut',
+    'peanuts',
+    'tree nut',
+    'tree nuts',
+    'nuts',
+    'fish',
+    'shellfish',
+    'sesame',
+    'mustard',
+    'sulfites',
+    'sulphites',
+    'celery',
+    'lupin',
+    'lupine',
+    'allergen',
+    'allergens',
+    'allergen information',
+    'allergen info',
+  ])
+  if (bare.has(n)) return true
+  if (/^(contains|may contain|allergen)/.test(n)) return true
+  if (n === 'may') return true
+  return false
+}
+
 export function truncateIngredientBlobAtPackagingTail(raw: string): string {
-  const t = raw.trim()
+  const t0 = raw.trim()
+  const t = t0.length >= 50 ? stripAllergenAdvisoryClausesFromBlob(t0) : t0
   if (t.length < 50) return t
   let cut = t.length
   const markers: RegExp[] = [
     /\battention\s*[:\-]/i,
+    /\bmay\s+contain\b/i,
+    /\bcross[\s-]?contamination\b/i,
+    /\b(?:same|shared)\s+facility\b/i,
     /\bhigh caffeine content\b/i,
     /\bexcessive consumption\b/i,
     /\bconsume responsibly\b/i,
@@ -499,12 +566,16 @@ export function parseIngredientListFromPlain(
       .map((name) => name.replace(/\s+(?:ch|cmd|opt|del|delele|delete)$/i, '').trim())
       .filter(isPlausibleIngredientToken)
       .filter((s) => !isJunkOcrIngredientToken(s))
+      .filter((name) => !isBareAllergenDisclosureName(name))
   }
 
   const englishSliced = sliceToEnglishIngredientSection(htmlStripped, { ocr: false })
   const withoutPackagingTail = truncateIngredientBlobAtPackagingTail(englishSliced)
-  const stripped = prepareIngredientTextForAnalysis(withoutPackagingTail)
-  return chunkIngredientBlobToEnglishNames(stripped, 'auto').filter(isPlausibleIngredientToken)
+  const advisoryStripped = stripAllergenAdvisoryClausesFromBlob(withoutPackagingTail)
+  const stripped = prepareIngredientTextForAnalysis(advisoryStripped)
+  return chunkIngredientBlobToEnglishNames(stripped, 'auto')
+    .filter(isPlausibleIngredientToken)
+    .filter((name) => !isBareAllergenDisclosureName(name))
 }
 
 /**

@@ -4,7 +4,19 @@
  * All results are personalized to the user's profile (allergies, sensitivities, preferences, goal)
  */
 
-import { scanBarcodeForAllergens, type AllergenScanResult } from '../lib/AllergenCheckService'
+import {
+  scanBarcodeForAllergens,
+  fetchOffAllergenSupplement,
+  offAllergenSupplementFromNorm,
+  type AllergenScanResult,
+  type OffAllergenSupplement,
+} from '../lib/AllergenCheckService'
+import { normalizeOFFProduct } from '../lib/allergenEngine/offNormalizer'
+import {
+  embedFillrAllergenMetaInNutritionJson,
+  extractFillrAllergenMetaFromNutritionJson,
+  type FillrProductAllergenMeta,
+} from '../lib/fillrProductAllergenMeta'
 import { mapDetectionToFillrResult, parseIngredients } from '../lib/fillrAdapter'
 import { personalizeScanResult } from '../lib/personalizationEngine'
 import { detectAllergensEvidenceBased, buildUserAllergenConfig } from '../lib/allergenEngine'
@@ -14,9 +26,19 @@ import {
   mergeAiAnalysisWithScan,
   repairScanIngredientBreakdownGaps,
 } from './openaiIngredientAnalysis'
+import {
+  analyzeProductDeepWithOpenAI,
+  mergeProductDeepAnalysisIntoScan,
+} from './openaiProductAnalysis'
 import { mockProductByBarcode, isDemoScanBarcode } from './mockProducts'
 import { getDietProfileSnapshotSync, getUserProfileForScan } from '../lib/getUserProfileForScan'
-import { finalizeScanForPresentation } from '../lib/attachFillrFit'
+import {
+  finalizeEnrichedScanPreservingScore,
+  finalizeScanForPresentation,
+  freezeScanScoring,
+  preserveFrozenScoring,
+} from '../lib/attachFillrFit'
+import { ingredientExplanationFailsQualityGate } from '../lib/ingredientCopyQuality'
 import { applyDemoScanProfileTailoring } from '../lib/demoScanPersonalize'
 import { DEFAULT_OCR_PRODUCT_NAME } from '../lib/historyDisplayLabel'
 import type { DietaryProfile, ScanResult } from '../types'
@@ -72,7 +94,21 @@ async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: stri
       null
 
     const nut = offProduct.nutriments
-    const nutritionJson = nut && typeof nut === 'object' ? (nut as Record<string, unknown>) : null
+    const nutritionBase = nut && typeof nut === 'object' ? (nut as Record<string, unknown>) : null
+    const norm = normalizeOFFProduct(offProduct, 'en')
+    const allergenMeta: FillrProductAllergenMeta | null = norm
+      ? {
+          allergens_tags: norm.allergens_tags,
+          traces_tags: norm.traces_tags,
+          contains_text: norm.contains_text || undefined,
+          may_contain_text: norm.may_contain_text || undefined,
+          cross_contact_warnings: norm.cross_contact_warnings?.length
+            ? norm.cross_contact_warnings
+            : undefined,
+          ingredients_text_safety: norm.ingredients_text_safety || undefined,
+        }
+      : null
+    const nutritionJson = embedFillrAllergenMetaInNutritionJson(nutritionBase, allergenMeta)
 
     const { error } = await supabase.from('products').upsert(
       {
@@ -204,10 +240,65 @@ async function getCachedProductByBarcode(barcode: string): Promise<CachedBarcode
   }
 }
 
+function offSupplementToDetectionFields(supplement: OffAllergenSupplement | null | undefined) {
+  const meta = supplement ?? null
+  return {
+    contains_text: meta?.containsText?.trim() ?? '',
+    may_contain_text: meta?.mayContainText?.trim() ?? '',
+    allergens_tags: meta?.allergensTags ?? [],
+    traces_tags: meta?.tracesTags ?? [],
+    ingredients_text_safety: meta?.ingredientsTextSafety?.trim() ?? '',
+    cross_contact_warnings: meta?.crossContactWarnings ?? [],
+  }
+}
+
+function offAllergenSupplementFromScanResult(
+  off: AllergenScanResult & { ok: true }
+): OffAllergenSupplement | null {
+  const fromNorm = offAllergenSupplementFromNorm(normalizeOFFProduct(off.offProduct, 'en'))
+  if (fromNorm) return fromNorm
+  const fallback: OffAllergenSupplement = {
+    allergensTags: off.allergensTags,
+    tracesTags: off.tracesTags,
+    crossContactWarnings: off.crossContactWarnings,
+  }
+  const hasData =
+    (fallback.allergensTags?.length ?? 0) > 0 ||
+    (fallback.tracesTags?.length ?? 0) > 0 ||
+    (fallback.crossContactWarnings?.length ?? 0) > 0
+  return hasData ? fallback : null
+}
+
+function fillrMetaToOffSupplement(meta: FillrProductAllergenMeta | null): OffAllergenSupplement | null {
+  if (!meta) return null
+  return {
+    allergensTags: meta.allergens_tags,
+    tracesTags: meta.traces_tags,
+    containsText: meta.contains_text,
+    mayContainText: meta.may_contain_text,
+    crossContactWarnings: meta.cross_contact_warnings,
+    ingredientsTextSafety: meta.ingredients_text_safety,
+  }
+}
+
+async function resolveOffAllergenSupplementForCache(
+  barcode: string,
+  cached: CachedBarcodeProduct,
+  offSupplement?: OffAllergenSupplement | null
+): Promise<OffAllergenSupplement | null> {
+  if (offSupplement) return offSupplement
+  const fromDb = fillrMetaToOffSupplement(
+    extractFillrAllergenMetaFromNutritionJson(cached.nutrition_json ?? null)
+  )
+  if (fromDb) return fromDb
+  return fetchOffAllergenSupplement(barcode)
+}
+
 async function buildScanFromCachedBarcodeProduct(
   params: ScanProductParams,
   barcode: string,
-  cachedInput?: CachedBarcodeProduct | null
+  cachedInput?: CachedBarcodeProduct | null,
+  offSupplement?: OffAllergenSupplement | null
 ): Promise<ScanProductFastResult | null> {
   const cached = cachedInput ?? (await getCachedProductByBarcode(barcode))
   const ingredientText = String(cached?.ingredient_text ?? '').trim()
@@ -215,16 +306,21 @@ async function buildScanFromCachedBarcodeProduct(
     return null
   }
 
+  const supplement = await resolveOffAllergenSupplementForCache(barcode, cached, offSupplement)
+  const detectionFields = offSupplementToDetectionFields(supplement)
+  const ingredientsTextSafety =
+    detectionFields.ingredients_text_safety.trim() || ingredientText
+
   const userConfig = buildUserAllergenConfig(params.allergies)
   const output = detectAllergensEvidenceBased(
     {
       product_name: cached.name,
       ingredients_text: ingredientText,
-      ingredients_text_safety: ingredientText,
-      contains_text: '',
-      may_contain_text: '',
-      allergens_tags: [],
-      traces_tags: [],
+      ingredients_text_safety: ingredientsTextSafety,
+      contains_text: detectionFields.contains_text,
+      may_contain_text: detectionFields.may_contain_text,
+      allergens_tags: detectionFields.allergens_tags,
+      traces_tags: detectionFields.traces_tags,
       ingredients: undefined,
       ingredients_tags: undefined,
     },
@@ -238,7 +334,14 @@ async function buildScanFromCachedBarcodeProduct(
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean)
-    const celiacMatches = runCeliacCheck(ingredients, ingredientText)
+    const celiacHaystack = [
+      ingredientsTextSafety,
+      detectionFields.contains_text,
+      detectionFields.may_contain_text,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || ingredientText)
     output.celiac = {
       celiacModeEnabled: true,
       matchedGlutenSignals: celiacMatches.map((m) => ({
@@ -259,6 +362,9 @@ async function buildScanFromCachedBarcodeProduct(
     {
       brand: cached.brand ?? undefined,
       nutritionJson: cached.nutrition_json ?? undefined,
+      crossContactWarnings: detectionFields.cross_contact_warnings,
+      allergensTags: detectionFields.allergens_tags,
+      tracesTags: detectionFields.traces_tags,
     }
   )
   const userProfile = {
@@ -269,9 +375,9 @@ async function buildScanFromCachedBarcodeProduct(
     celiacStrictGluten: celiacStrict,
   }
   let result = personalizeScanResult(baseResult, userProfile)
-  let finalResult = finalizeScanForPresentation(result, dietaryProfile)
+  let finalResult = freezeScanScoring(finalizeScanForPresentation(result, dietaryProfile), dietaryProfile)
   if (!isFillrDemoBarcode(barcode) && finalResult.ingredientBreakdown.length > 0) {
-    finalResult = markScanFastPendingDecode(finalResult)
+    finalResult = await maybeMarkScanPendingDecode(finalResult, dietaryProfile, barcode)
   }
   return { ok: true, result: finalResult, dietaryProfile }
 }
@@ -301,6 +407,115 @@ function scoreIngredientSource(
 /** OpenAI ingredient enrichment can be slow on poor networks; fallback copy fills in if this fires. */
 const AI_ENRICH_TIMEOUT_MS = 130_000
 
+const enrichPipelineByProductId = new Map<string, Promise<ScanResult>>()
+
+/** True while scan → product handoff already kicked off decode for this product. */
+export function isIngredientEnrichInFlight(productId: string): boolean {
+  return enrichPipelineByProductId.has(productId)
+}
+
+export type EnrichScanAiOptions = {
+  /** Pass for photo OCR / manual label text so the model uses the OCR system prefix. */
+  fromOcr?: boolean
+  ingredientParseSource?: IngredientTextParseSource
+  /**
+   * Emergency safety mode for low-end / unstable runtimes: skip heavy presentation finalize
+   * and return merged AI copy directly.
+   */
+  skipFinalizePresentation?: boolean
+  /** Skip slow per-ingredient gap repair so the final score can settle faster. Default true. */
+  skipIngredientRepair?: boolean
+  /**
+   * When false, skip regulatory / label-vs-reality OpenAI pass.
+   * When true (default), that pass runs in the background after ingredient decode so scans feel faster.
+   */
+  runProductDeepPass?: boolean
+}
+
+/**
+ * Optional cap if a screen wants to wait for ingredient decode before navigating.
+ * Default scan flow navigates immediately; product screen shows a single decode status line.
+ */
+export const NAV_INGREDIENT_DECODE_WAIT_MS = 8_000
+
+export function scanNeedsIngredientDecode(scan: ScanResult): boolean {
+  const text = scan.product.ingredientText?.trim()
+  if (!text || !scan.ingredientBreakdown.length) return false
+  return scan.ingredientBreakdown.some(
+    (ing) =>
+      ing.aiDecodePending ||
+      (ingredientExplanationFailsQualityGate(ing) && ing.ingredientDecodeStatus !== 'unavailable')
+  )
+}
+
+async function attachLocalIngredientKnowledgeIfComplete(
+  scan: ScanResult,
+  profile: DietaryProfile
+): Promise<ScanResult> {
+  const text = scan.product.ingredientText?.trim()
+  if (!text) return scan
+  const ai = await analyzeIngredientsWithOpenAI(text, profile, {
+    skipIngredientRepair: true,
+    localOnly: true,
+  })
+  if (!ai) return scan
+  return finalizeEnrichedScanPreservingScore(scan, mergeAiAnalysisWithScan(ai, scan), profile)
+}
+
+/**
+ * Optionally wait for the **ingredient** decode phase only (not product deep analysis).
+ * If `maxWaitMs` elapses, returns the fast scan and enrichment continues in the background.
+ */
+export async function enrichScanBeforeNavigation(
+  base: ScanResult,
+  dietaryProfile: DietaryProfile,
+  aiOptions?: EnrichScanAiOptions,
+  onStage?: (scan: ScanResult, stage: 'ingredients' | 'product') => void,
+  maxWaitMs = NAV_INGREDIENT_DECODE_WAIT_MS
+): Promise<ScanResult> {
+  let latestIngredients: ScanResult | null = null
+  let resolveIngredients!: (scan: ScanResult) => void
+  const ingredientsReady = new Promise<ScanResult>((resolve) => {
+    resolveIngredients = resolve
+  })
+
+  const wrappedOnStage = (scan: ScanResult, stage: 'ingredients' | 'product') => {
+    onStage?.(scan, stage)
+    if (stage === 'ingredients') {
+      latestIngredients = scan
+      resolveIngredients(scan)
+    }
+  }
+
+  const enrichPromise = runScanAiEnrichment(base, dietaryProfile, aiOptions, wrappedOnStage)
+
+  const raced = await Promise.race([
+    ingredientsReady,
+    new Promise<'timeout'>((resolve) => {
+      setTimeout(() => resolve('timeout'), maxWaitMs)
+    }),
+  ])
+
+  if (raced !== 'timeout') return raced
+
+  void enrichPromise.catch((err) => {
+    console.warn('[Fillr] background ingredient decode after navigation wait failed:', err)
+  })
+  return latestIngredients ?? base
+}
+
+async function maybeMarkScanPendingDecode(
+  scan: ScanResult,
+  profile: DietaryProfile,
+  barcode: string
+): Promise<ScanResult> {
+  if (isFillrDemoBarcode(barcode)) return scan
+  if (!scan.product.ingredientText.trim() || !scan.ingredientBreakdown.length) return scan
+  const withLocal = await attachLocalIngredientKnowledgeIfComplete(scan, profile)
+  if (!scanNeedsIngredientDecode(withLocal)) return withLocal
+  return markScanFastPendingDecode(withLocal)
+}
+
 function clearPendingDecodeState(result: ScanResult): ScanResult {
   if (!result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) return result
   return {
@@ -323,7 +538,7 @@ async function analyzeIngredientsWithTimeout(
   return Promise.race([analyzeIngredientsWithOpenAI(text, dietaryProfile, options), timeout])
 }
 
-/** Strip AI prose for instant navigation; cards show “Decoding…” until enrichment. */
+/** Strip AI prose for instant navigation; cards stay name + rating until enrichment. */
 function markScanFastPendingDecode(result: ScanResult): ScanResult {
   if (!result.ingredientBreakdown.length) {
     return { ...result, productAnalysis: undefined, ingredientDecodeMeta: undefined }
@@ -407,7 +622,12 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
       const hasAdequateIngredientData =
         ingredientText.trim().length > 20 && parseIngredients(ingredientText, 'barcode').length >= 3
       if (!hasAdequateIngredientData) {
-        const fused = await buildScanFromCachedBarcodeProduct(params, offResult.barcode)
+        const fused = await buildScanFromCachedBarcodeProduct(
+          params,
+          offResult.barcode,
+          undefined,
+          offAllergenSupplementFromScanResult(offResult)
+        )
         void trackScanResultMetric({
           name: 'source_decision',
           barcode: offResult.barcode,
@@ -454,7 +674,12 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
               cached_source: cached.source ?? 'unknown',
             },
           })
-          const fusedPreferred = await buildScanFromCachedBarcodeProduct(params, offResult.barcode, cached)
+          const fusedPreferred = await buildScanFromCachedBarcodeProduct(
+            params,
+            offResult.barcode,
+            cached,
+            offAllergenSupplementFromScanResult(offResult)
+          )
           if (fusedPreferred?.ok) return fusedPreferred
         }
         if (cachedScore < offScore + 18) {
@@ -477,13 +702,16 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
       const userProfile = { allergies, sensitivities, preferences, goal, celiacStrictGluten }
 
       let result = personalizeScanResult(baseResult, userProfile)
-      let finalResult = finalizeScanForPresentation(result, dietaryProfile)
+      let finalResult = freezeScanScoring(
+        finalizeScanForPresentation(result, dietaryProfile),
+        dietaryProfile
+      )
       if (
         !isFillrDemoBarcode(barcode) &&
         finalResult.product.ingredientText.trim() &&
         finalResult.ingredientBreakdown.length > 0
       ) {
-        finalResult = markScanFastPendingDecode(finalResult)
+        finalResult = await maybeMarkScanPendingDecode(finalResult, dietaryProfile, barcode)
       }
       return { ok: true, result: finalResult, dietaryProfile }
     }
@@ -501,13 +729,16 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
     if (isFillrDemoBarcode(barcode)) {
       result = applyDemoScanProfileTailoring(result, userProfile)
     }
-    let finalResult = finalizeScanForPresentation(result, dietaryProfile)
+    let finalResult = freezeScanScoring(
+      finalizeScanForPresentation(result, dietaryProfile),
+      dietaryProfile
+    )
     if (
       !isFillrDemoBarcode(barcode) &&
       finalResult.product.ingredientText.trim() &&
       finalResult.ingredientBreakdown.length > 0
     ) {
-      finalResult = markScanFastPendingDecode(finalResult)
+      finalResult = await maybeMarkScanPendingDecode(finalResult, dietaryProfile, barcode)
     }
     return { ok: true, result: finalResult, dietaryProfile }
   }
@@ -530,15 +761,66 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
   }
 }
 
-export type EnrichScanAiOptions = {
-  /** Pass for photo OCR / manual label text so the model uses the OCR system prefix. */
-  fromOcr?: boolean
-  ingredientParseSource?: IngredientTextParseSource
-  /**
-   * Emergency safety mode for low-end / unstable runtimes: skip heavy presentation finalize
-   * and return merged AI copy directly.
-   */
-  skipFinalizePresentation?: boolean
+/** Phase 3 — regulatory / label-vs-reality product copy after ingredient decode. */
+export async function enrichScanProductAnalysisSecondPass(
+  scan: ScanResult,
+  dietaryProfile: DietaryProfile
+): Promise<ScanResult> {
+  if (!scan.product.ingredientText?.trim() || scan.ingredientBreakdown.length === 0) {
+    return scan
+  }
+  try {
+    const deep = await analyzeProductDeepWithOpenAI(scan, dietaryProfile)
+    if (!deep) return scan
+    return mergeProductDeepAnalysisIntoScan(scan, deep)
+  } catch (err) {
+    console.warn(
+      '[Fillr] product deep analysis failed:',
+      err instanceof Error ? err.message : String(err)
+    )
+    return scan
+  }
+}
+
+/**
+ * Ingredient decode (phase 2) then product intelligence (phase 3).
+ * Call `onStage` after each phase so the UI can update without waiting for both.
+ */
+export async function runScanAiEnrichment(
+  base: ScanResult,
+  dietaryProfile: DietaryProfile,
+  aiOptions?: EnrichScanAiOptions,
+  onStage?: (scan: ScanResult, stage: 'ingredients' | 'product') => void
+): Promise<ScanResult> {
+  const productId = base.product.id
+  const existing = enrichPipelineByProductId.get(productId)
+  if (existing) return existing
+
+  const pipeline = (async () => {
+    const enriched = await enrichScanResultWithAI(base, dietaryProfile, aiOptions)
+    onStage?.(enriched, 'ingredients')
+    if (aiOptions?.runProductDeepPass === false) {
+      return enriched
+    }
+    // Product deep pass is optional polish — do not block the ingredient verdict on it.
+    void enrichScanProductAnalysisSecondPass(enriched, dietaryProfile)
+      .then((deep) => {
+        onStage?.(deep, 'product')
+        return deep
+      })
+      .catch((err) => {
+        console.warn(
+          '[Fillr] background product deep analysis failed:',
+          err instanceof Error ? err.message : String(err)
+        )
+      })
+    return enriched
+  })().finally(() => {
+    enrichPipelineByProductId.delete(productId)
+  })
+
+  enrichPipelineByProductId.set(productId, pipeline)
+  return pipeline
 }
 
 /** Phase 2 — merge AI ingredient copy; keeps allergy `productVerdict` when the fast path had matches. */
@@ -555,46 +837,52 @@ export async function enrichScanResultWithAI(
       ...(extra ?? {}),
     })
   }
-  const baseWithoutPending = clearPendingDecodeState(base)
   const text = base.product.ingredientText?.trim()
   if (!text) {
     devDecodeLog('decode_fallback_reason', { reason: 'missing_ingredient_text' })
-    return baseWithoutPending
+    return clearPendingDecodeState(base)
   }
   try {
+    const skipIngredientRepair = aiOptions?.skipIngredientRepair ?? true
     devDecodeLog('decode_enrich_started', {
       ingredientTextChars: text.length,
       fromOcr: Boolean(aiOptions?.fromOcr),
       ingredientParseSource: aiOptions?.ingredientParseSource ?? null,
+      skipIngredientRepair,
     })
     const ai = await analyzeIngredientsWithTimeout(text, dietaryProfile, {
       nutritionJson: base.product.nutritionJson,
-      skipIngredientRepair: true,
-      requestTimeoutMs: 20_000,
+      skipIngredientRepair,
+      maxRepairJobs: 5,
+      requestTimeoutMs: 28_000,
       ...(aiOptions?.fromOcr ? { fromOcr: true as const } : {}),
       ...(aiOptions?.ingredientParseSource
         ? { ingredientParseSource: aiOptions.ingredientParseSource }
         : {}),
     })
     if (!ai) {
-      console.warn('[Fillr] AI enrichment returned no analysis; using local presentation fallback')
+      console.warn('[Fillr] AI enrichment returned no analysis; keeping decode pending when possible')
       devDecodeLog('decode_fallback_reason', { reason: 'analyze_timeout_or_null' })
+      if (base.ingredientBreakdown.some((ing) => ing.aiDecodePending)) {
+        return base
+      }
       if (aiOptions?.skipFinalizePresentation) {
-        return baseWithoutPending
+        return base
       }
       await yieldToMainThread()
-      return finalizeScanForPresentation(baseWithoutPending, dietaryProfile)
+      if (base.scoringFrozenAt && base.fillrFit) return base
+      return finalizeScanForPresentation(base, dietaryProfile)
     }
     devDecodeLog('decode_http_ok', {
       ingredientRows: ai.ingredients?.length ?? 0,
     })
-    let merged = mergeAiAnalysisWithScan(ai, baseWithoutPending)
+    let merged = mergeAiAnalysisWithScan(ai, base)
     devDecodeLog('decode_merged', {
       ingredientRows: merged.ingredientBreakdown.length,
     })
     // OCR: skip second-pass line repairs — they duplicate validate/repair work and can add minutes of
     // sequential HTTP when the user backgrounds the app (network failures + poor UX).
-    if (!aiOptions?.fromOcr) {
+    if (!aiOptions?.fromOcr && !skipIngredientRepair) {
       merged = await repairScanIngredientBreakdownGaps(merged, text, dietaryProfile)
     }
     merged = clearPendingDecodeState(merged)
@@ -605,7 +893,7 @@ export async function enrichScanResultWithAI(
       ingredientRows: merged.ingredientBreakdown.length,
     })
     if (aiOptions?.skipFinalizePresentation) {
-      return merged
+      return preserveFrozenScoring(base, merged)
     }
     // `finalizeScanForPresentation` is CPU-heavy; never run it in the same turn as the HTTP
     // response handler or the UI stays frozen until it completes.
@@ -613,16 +901,20 @@ export async function enrichScanResultWithAI(
     if (aiOptions?.fromOcr) {
       await yieldToMainThread()
     }
-    return finalizeScanForPresentation(merged, dietaryProfile)
+    return finalizeEnrichedScanPreservingScore(base, merged, dietaryProfile)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.warn(`[Fillr] AI enrichment crashed; using local presentation fallback: ${msg}`)
     devDecodeLog('decode_fallback_reason', { reason: 'enrich_crash', message: msg })
+    if (base.ingredientBreakdown.some((ing) => ing.aiDecodePending)) {
+      return base
+    }
     if (aiOptions?.skipFinalizePresentation) {
-      return baseWithoutPending
+      return base
     }
     await yieldToMainThread()
-    return finalizeScanForPresentation(baseWithoutPending, dietaryProfile)
+    if (base.scoringFrozenAt && base.fillrFit) return base
+    return finalizeScanForPresentation(base, dietaryProfile)
   }
 }
 
@@ -632,7 +924,7 @@ export async function scanProduct(
 ): Promise<{ ok: true; result: ScanResult } | { ok: false; error: string }> {
   const fast = await scanProductFast(params)
   if (!fast.ok) return fast
-  const enriched = await enrichScanResultWithAI(fast.result, fast.dietaryProfile)
+  const enriched = await runScanAiEnrichment(fast.result, fast.dietaryProfile)
   return { ok: true, result: enriched }
 }
 
@@ -730,15 +1022,18 @@ export async function rescanWithManualIngredients(
   } catch {
     // keep rule-based breakdown
   }
-  return finalizeScanForPresentation(
-    {
-      ...result,
-      product: {
-        ...result.product,
-        id: product.id,
-        barcode: product.barcode,
+  return freezeScanScoring(
+    finalizeScanForPresentation(
+      {
+        ...result,
+        product: {
+          ...result.product,
+          id: product.id,
+          barcode: product.barcode,
+        },
       },
-    },
+      dietaryProfile
+    ),
     dietaryProfile
   )
 }
@@ -869,18 +1164,21 @@ export async function createScanResultFromIngredientText(
       // keep rule-based breakdown
     }
   }
-  const finalizedBase = finalizeScanForPresentation(
-    {
-      ...result,
-      scanSource: params.scanSource,
-      product: {
-        ...result.product,
-        id: `prod_${barcode}`,
-        barcode,
-        name: productDisplayName,
-        source: params.scanSource === 'ocr' ? 'photo_ocr' : 'manual_entry',
+  const finalizedBase = freezeScanScoring(
+    finalizeScanForPresentation(
+      {
+        ...result,
+        scanSource: params.scanSource,
+        product: {
+          ...result.product,
+          id: `prod_${barcode}`,
+          barcode,
+          name: productDisplayName,
+          source: params.scanSource === 'ocr' ? 'photo_ocr' : 'manual_entry',
+        },
       },
-    },
+      dietaryProfile
+    ),
     dietaryProfile
   )
   const finalized =

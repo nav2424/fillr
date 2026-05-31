@@ -5,6 +5,7 @@
 
 import type { DietaryProfile, ProductAnalysis } from '../types'
 import { GOAL_OPTIONS } from '../types'
+import { isProductLevelGoal } from '../lib/goalApplicability'
 import type { ProductPatternDetection } from '../lib/productPatternDetection'
 
 function formatGoalLine(profile: DietaryProfile): string {
@@ -119,15 +120,25 @@ SECOND-PERSON PRODUCT COPY (when this user's allergies/sensitivities are listed 
 
 INGREDIENT COPY — profile + goal:
 - For every ingredient with personalFlag + personalMessage, also make whyItMattersYou explicitly reinforce that same stake in different words (no contradiction).
-- On the intelligence field impact_for_you: state the highest-priority stake for this user on that line (allergy → celiac → sensitivity → goal → preference → additive/processed load → explicit no conflict). Never hedge with "if you avoid" or "some people."
-- When the user has a stated goal (not "not stated"), at least 2–3 ingredients most relevant to that goal (sugar load, protein quality, ultra-processing, allergens, etc.) should nod to it in whyItMattersYou without marketing fluff.`
+- On the intelligence field impact_for_you: write a line only when this exact ingredient affects a saved allergy, celiac/gluten setting, sensitivity, avoiding item, or preference. For ingredient-scoped goals (eat less sugar, eat cleaner, lower sodium, etc.), you may mention the goal only on lines that directly match (e.g. sugar, salt, additives). Otherwise return "".
+- Do NOT set flag_driver "goal" on neutral formula ingredients (salt, water, starch carriers) when the user's goal is macro/directional (eat more protein, gain weight, balanced diet, understand what I'm eating). Those goals belong in productVerdict and productAnalysis only.`
 
   const goalKey = (profile.goal ?? '').trim()
-  const goalGuidance = goalKey ? GOAL_INGREDIENT_GUIDANCE[goalKey] : undefined
+  const productScopedGoal = goalKey ? isProductLevelGoal(goalKey) : false
+  if (productScopedGoal && goalKey) {
+    append += `
+
+PRODUCT-LEVEL GOAL (${formatGoalLine(profile)}):
+- Apply this goal to productVerdict, productAnalysis, and overall fit — NOT to every ingredient line.
+- Do NOT set flag_driver "goal" or claim each ingredient "works against" this goal.
+- Only flag individual ingredients for allergies, sensitivities, avoiding list, preferences, or processing — not for macro goal fit.`
+  }
+  const goalGuidance =
+    goalKey && !productScopedGoal ? GOAL_INGREDIENT_GUIDANCE[goalKey] : undefined
   if (goalGuidance) {
     append += `
 
-GOAL-SPECIFIC INGREDIENT GUIDANCE:
+GOAL-SPECIFIC INGREDIENT GUIDANCE (ingredient-scoped goal — only on matching lines):
 ${goalGuidance}`
   }
 
@@ -409,12 +420,28 @@ All description text must start with a capital letter. Never begin any sentence 
 
 INGREDIENT TRANSLATOR (every ingredient row — this is the core product value):
 - headline: Plain hook, max ~10 words. Name the category in simple words (thickener, dye, sweetener, preservative, protein, oil, etc.) when obvious.
-- labelDecoder: ONE short sentence (aim under 25 words). What it really is on the label, in plain English—no semicolon stacks, no "surfactant-class" style phrasing.
-- whatItIs: Exactly ONE sentence: what it is or where it comes from, simply.
-- whatItDoes: Exactly ONE sentence: what job it does in this kind of product (texture, shelf life, color, sweetness, etc.).
+- labelDecoder: ONE short sentence (aim under 25 words). Translate the exact label line into simple English. A 12-year-old shopper should understand it.
+- whatItIs: Exactly ONE sentence: what the ingredient truly is, where it usually comes from, or what category it belongs to. Name the real substance/category, not vague words like "component" or "compound".
+- whatItDoes: Exactly ONE sentence: the specific job it does in this product (sweetens, thickens, preserves, emulsifies, colors, adds protein, adds oil/fat, adds acidity, adds crunch, etc.).
 - bodyEffect: Exactly ONE sentence: what happens when you eat it at normal amounts (simple, concrete).
 - funFact: ONE short useful sentence — shopping tip, label habit, or comparison. No trivia for its own sake.
-- whyItMattersYou: ONE short sentence for real-life decisions. If personalization lists allergies/sensitivities/goal, nod to it when relevant (do not repeat personalMessage verbatim).
+- whyItMattersYou: ONE short sentence for real-life decisions. Only make it personal when this exact ingredient affects the user's saved allergies, celiac/gluten setting, sensitivities, avoiding list, preferences, or goal.
+
+FIELD UNIQUENESS (critical):
+- labelDecoder, whatItIs, whatItDoes, bodyEffect, and funFact must each be a different sentence with different information.
+- Never paste the same sentence (or system_judgment) into multiple fields.
+- whatItIs = what the substance IS; whatItDoes = its job in THIS product; bodyEffect = what happens when you eat it; funFact = one shopping or label tip.
+
+PLAIN-ENGLISH QUALITY BAR:
+- Bad: "A food additive used for texture and stability."
+- Good: "Xanthan gum is a fermented sugar thickener that helps sauces stay smooth."
+- Bad: "A dairy component used in food."
+- Good: "Milk powder is dried milk solids used for dairy flavor, protein, and creaminess."
+- Bad: "A chemical compound used as a preservative."
+- Good: "Potassium sorbate is a preservative that slows mold and yeast growth."
+- Do not repeat the ingredient name as the whole explanation.
+- Do not use science-class language when a grocery-language explanation is possible.
+- Do not say "used for taste, texture, and shelf life" unless you also name the exact role.
 
 ---
 
@@ -514,9 +541,11 @@ You are Fillr’s ingredient intelligence engine. Explain each line in a way tha
 Include these keys on EVERY ingredient (alongside the legacy translator keys above):
 - "ingredient_name": same string as "name" (exact label line)
 - "short_label": 2–5 words; fast identity (e.g. "Artificial food dye", "Processed seed oil")
-- "why_it_matters": exactly two short strings (plain English bullets; health/processing/role; no chemistry trivia unless it changes the decision)
+- "why_it_matters": exactly two short strings, in this order:
+  1) what it is: identity, source, and processing level in plain English.
+  2) why it is here: the formula role plus the practical body/food-quality effect.
 - "system_judgment": one sentence; clear product-level judgment (aim under ~80 characters when possible)
-- "impact_for_you": one sentence only; must state impact for THIS user using the personalization block when present—priority: allergy → celiac/gluten → sensitivity → goal → preference → additive/processed pattern → no conflict (say directly: "No conflicts with your current profile." when true)
+- "impact_for_you": one sentence only when this exact ingredient affects the user's saved profile. Use the personalization block and priority: allergy → celiac/gluten → sensitivity → avoiding list → preference → goal. If there is no direct saved-profile impact for this ingredient, return an empty string "".
 - "flag_driver": one of "allergy" | "sensitivity" | "goal" | "preference" | "processing" indicating the primary reason this ingredient is highlighted for this user
 - "profile_anchor": short key or phrase for the matched profile driver (examples: "more_protein", "low_sugar", "vegan", "milk")
 - "actionability": one of "avoid" | "limit" | "okay" to support quick UI chips
@@ -524,20 +553,23 @@ Include these keys on EVERY ingredient (alongside the legacy translator keys abo
 
 Tone: calm, modern, direct. Never write hypothetically. Never use: "if you avoid", "some people", "you may want to", "worth noting", "neutral for most people", or similar hedging.
 
+EDUCATIONAL PRECISION STANDARD:
+- Do not say only "used for taste, texture, and shelf life." Name the exact role: sweetener, emulsifier, thickener, preservative, acid regulator, color, protein isolate, refined oil, whole-food base, etc.
+- Do not write body-effect claims that sound medical. Prefer concrete food behavior: quick-digesting sugar, low-satiety refined starch, added sodium load, low-transparency flavor blend, texture helper, complete/limited protein quality.
+- For profile impact, name the matched profile driver when known: "your milk allergy," "your strict gluten setting," "your low-sugar goal," "your vegan preference," etc.
+- If the ingredient is safe/neutral for the profile, teach why it matters through whatItIs / whatItDoes / why_it_matters instead of writing an impact_for_you line.
+
 PERSONALIZATION ENFORCEMENT (strict):
 - Never use generic cohort phrasing like "not suitable for diabetics," "not suitable for athletes," "not suitable for people with X," "people with allergies should avoid," or "those trying to lose weight."
 - Always anchor reasoning to THIS user profile using second person ("you", "your profile", "your goal", "your preferences").
-- For every ingredient rated "concerning" or "avoid", make impact_for_you explicitly answer: "Why was this flagged for this user specifically?" in one sentence.
-- If the user has no allergy/sensitivity/preference conflict on that ingredient, tie impact_for_you to the strongest active profile signal in this order: stated goal -> scoring preferences -> Fillr additive/processing caution baseline.
-- If there is truly no personalized conflict, state that directly in impact_for_you ("No direct conflicts with your current profile, but this is flagged due to Fillr's additive/processing rules.").
-- whyItMattersYou must align with impact_for_you and cannot fall back to generic population advice.
+- For every ingredient rated "concerning" or "avoid", explain the reason in system_judgment and whyItMattersYou.
+- Only fill impact_for_you when the ingredient directly touches a saved allergy, celiac/gluten setting, sensitivity, avoiding item, preference, or goal.
+- If there is no direct saved-profile impact, impact_for_you must be "" even when the ingredient is concerning for processing reasons.
+- whyItMattersYou must never pretend a generic processing concern is a personal profile conflict.
 
-GOAL TEMPLATE ENFORCEMENT (when profile goal is more_protein or build_muscle):
-- For goal-relevant flagged ingredients, mention at least one of these concrete angles in impact_for_you or whyItMattersYou:
-  1) protein source quality/completeness,
-  2) additive/sweetener tradeoff in a protein product,
-  3) satiety/recovery relevance in plain non-medical language.
-- Keep this practical and user-specific ("for your protein goal"), not generic population advice.
+GOAL SCOPE (strict):
+- Product-level goals (eat more protein, gain weight, balanced diet, understand what I'm eating): summarize fit in productVerdict and productAnalysis only. Do not set flag_driver "goal" on salt, water, starches, or other neutral lines.
+- Ingredient-level goals (eat less sugar, eat cleaner, lower sodium, lose weight, gut health, reduce ultra-processed): you may set flag_driver "goal" only on ingredients that directly match that goal's pattern (sugar, sodium, additives, etc.).
 
 Intelligence strings may be short. Legacy fields (headline, labelDecoder, whatItIs, whatItDoes, bodyEffect, funFact, whyItMattersYou, ratingReason) must still each be at least 25 characters with sentence-ending punctuation—expand the intelligence copy into those fields without changing meaning or contradicting rating.
 
@@ -600,7 +632,8 @@ Ingredient rules:
 - Include exactly one ingredient object for every requested line, in the same order.
 - name and ingredient_name must exactly match the input line.
 - All legacy prose fields must be at least 25 characters and end with punctuation.
-- why_it_matters must contain exactly two useful, non-repetitive strings.
+- why_it_matters must contain exactly two useful, non-repetitive strings: first what the ingredient is/source/processing level, second why it is in the formula and what practical food/body effect it has.
+- impact_for_you must explain why this ingredient affects this user's saved profile, goal, or preferences; when there is no direct profile effect, return "".
 - productAnalysis must be {}.
 - productVerdict must be one honest sentence.
 - For milk, cream, whey, casein, lactose, butter, cheese, yogurt: identify as dairy and make profile impact explicit if dairy/milk/lactose/vegan is relevant.
@@ -787,7 +820,7 @@ Field rules:
 - Per ingredient: legacy prose fields at least 25 characters, ending with . ! or ?; contextStat may be "".
 - labelDecoder and whyItMattersYou are mandatory for every ingredient (same length/punctuation rules).
 - Per ingredient: also include ingredient_name, short_label, why_it_matters (two strings), system_judgment, impact_for_you, confidence per system instructions (intelligence copy may be compact).
-- Every ingredient rated "concerning" or "avoid" must include a user-specific reason in impact_for_you and whyItMattersYou (why this is flagged for this exact profile).
+- Every ingredient rated "concerning" or "avoid" must include a concrete reason in system_judgment and whyItMattersYou; impact_for_you is only for direct saved-profile effects.
 - Every ingredient row (including clean/okay) must include at least one concrete tradeoff or practical insight in funFact or whyItMattersYou (no generic filler).
 
 COVERAGE (mandatory):
@@ -908,6 +941,8 @@ export type IngredientAnalysisItem = {
   evidenceSource?: string
   evidenceConfidence?: 'high' | 'medium' | 'low'
   evidenceLastVerifiedAt?: string
+  /** Internal UI state: real decode failed or timed out. */
+  decodeStatus?: 'decoded' | 'unavailable'
 }
 
 export type ProductIngredientAnalysisResponse = {
@@ -916,4 +951,93 @@ export type ProductIngredientAnalysisResponse = {
   ingredients: IngredientAnalysisItem[]
   /** Internal: full decode served from Supabase ingredient_knowledge (all lines cached). */
   _fillrIngredientDecodeMeta?: { allIngredientsFromCache: boolean }
+}
+
+/** Second-pass product-level analysis (ingredient cards already decoded). */
+export type ProductDeepAnalysisResponse = {
+  productVerdict: string
+  productAnalysis: ProductAnalysis
+}
+
+export const PRODUCT_DEEP_ANALYSIS_SYSTEM_PROMPT = `You are Fillr's product intelligence engine. The ingredient list has ALREADY been decoded and rated. Your job is ONLY product-level analysis: marketing vs reality, regulatory context, sugar systems, and a clear action sentence for THIS user.
+
+OUTPUT LANGUAGE: English only. Second person (you / your). No hedging ("some people", "may want to").
+
+QUALITY BAR:
+- Product intelligence must teach the user something they could not see from a simple safe/unsafe result.
+- Identify the product's formula strategy: sugar system, refined-carb base, protein/fiber fortification, texture engineering, shelf-life system, flavor/color system, or genuinely minimal processing.
+- Use specific ingredient evidence. Name the ingredients driving each claim.
+- Avoid empty summaries like "This product has a mix of ingredients" or "Check the label carefully."
+- Do not overstate. If the evidence is ordinary, say the ordinary but useful thing clearly.
+- If the product is middle-ground, explain the tradeoff: what is real food value, and what is processing convenience.
+
+Return valid JSON only:
+{
+  "productVerdict": string,
+  "productAnalysis": {
+    "viralHook": string,
+    "labelVsReality": [ { "claim": string, "reality": string, "example": string } ],
+    "redFlags": [ string ],
+    "whatTheyDontTellYou": string,
+    "whoShouldAvoid": string,
+    "bottomLine": string,
+    "sugarSources": [ string ],
+    "hiddenIngredients": [ { "name": string, "whatItReallyIs": string } ],
+    "regulatoryFlags": [ { "ingredient": string, "issue": string, "regions": string } ],
+    "labelClaims": [ string ],
+    "ingredientOrderInsight": string
+  },
+  "ingredients": []
+}
+
+RULES:
+- ingredients must be an empty array [].
+- viralHook: one sharp sentence; if any avoid/concerning-rated lines exist, the hook MUST reflect that (never wholesome copy for junky formulas).
+- bottomLine: 2–3 practical sentences on how the product is engineered. Mention the strongest 1–3 formula patterns and the exact ingredients proving them.
+- productVerdict: one honest actionable sentence aligned with severity.
+- sugarSources: every sweetener/syrup name from the provided list; [] if none.
+- hiddenIngredients: only when a label name hides processing (natural flavors, caramel color, enriched flour, modified starch, etc.).
+- regulatoryFlags: only cite real, well-known restrictions (EU TiO2 ban, BVO US phase-out, potassium bromate bans, Red 3, etc.) — never invent dates.
+- labelVsReality / labelClaims: only when you can infer a real contrast from the data provided.
+- whoShouldAvoid: one sentence for THIS user's allergies/sensitivities when relevant; otherwise who should limit it based on formula.
+- whatTheyDontTellYou: explain the non-obvious formula trick or tradeoff, not a generic warning.
+- ingredientOrderInsight: use order-by-weight to explain whether sugar, refined flour/starch, oils, protein, or whole-food bases dominate.
+- All strings >= 25 characters where they are full sentences; end with . ! or ?`
+
+export function buildProductDeepAnalysisUserPrompt(params: {
+  productName: string
+  brand?: string
+  safetyStatus: string
+  ingredientLines: string
+  ratingSummary: string
+  patternSummary: string
+  nutritionAppend?: string
+  existingVerdict?: string
+  allergenSummary?: string
+  sensitivitySummary?: string
+}): string {
+  const brandLine = params.brand?.trim() ? `Brand: ${params.brand.trim()}\n` : ''
+  const allergenLine = params.allergenSummary?.trim()
+    ? `Profile allergen matches: ${params.allergenSummary}\n`
+    : ''
+  const sensitivityLine = params.sensitivitySummary?.trim()
+    ? `Profile sensitivity matches: ${params.sensitivitySummary}\n`
+    : ''
+  const existing = params.existingVerdict?.trim()
+    ? `Current product verdict (refine if needed, do not contradict allergy safety): ${params.existingVerdict.trim()}\n`
+    : ''
+
+  return `Analyze this packaged product for Fillr product-level intelligence.
+
+Product: ${params.productName.trim()}
+${brandLine}Safety status for this user: ${params.safetyStatus}
+${allergenLine}${sensitivityLine}${existing}
+Rated ingredient lines (name → Fillr rating):
+${params.ratingSummary}
+
+Full ingredient list (label order):
+${params.ingredientLines}
+${params.patternSummary}${params.nutritionAppend ?? ''}
+
+Return JSON with productVerdict, productAnalysis (all fields), and ingredients: [].`
 }

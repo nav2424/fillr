@@ -70,19 +70,19 @@ export function knowledgeRowToAnalysisItem(
   const headline = (row.common_name || display || name).trim()
   const labelDecoder = ensureMinProse(
     row.explanation || row.what_it_is,
-    `This line on the label refers to ${name}, a typical ingredient used for taste, texture, or stability in packaged foods.`
+    `On the label, "${name}" is how the manufacturer names this part of the recipe.`
   )
   const whatItIs = ensureMinProse(
     row.what_it_is,
-    labelDecoder
+    labelDecoder === row.what_it_is ? `This is ${name}—the substance listed on the package under that name.` : labelDecoder
   )
   const whatItDoes = ensureMinProse(
     row.what_it_does_in_product,
-    `It plays a standard formulation role in this type of product, similar to other items in the same category.`
+    `Manufacturers add ${name} to help with flavor, texture, moisture, or how long the product stays fresh on the shelf.`
   )
   const bodyEffect = ensureMinProse(
     row.body_effect,
-    `At typical snack-sized portions, your body processes it like other small formulation inputs alongside the main macros.`
+    `In normal serving sizes, ${name} is handled like other small parts of the formula—not a main protein, fat, or carb source by itself.`
   )
   const funFact = ensureMinProse(
     row.fun_fact,

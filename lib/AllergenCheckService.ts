@@ -36,6 +36,16 @@ function pickNutrimentsForProduct(raw: unknown): Record<string, unknown> | undef
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+/** Lightweight OFF allergen payload for cache-backed scans (ingredient text may come from DB). */
+export type OffAllergenSupplement = {
+  allergensTags?: string[]
+  tracesTags?: string[]
+  containsText?: string
+  mayContainText?: string
+  crossContactWarnings?: string[]
+  ingredientsTextSafety?: string
+}
+
 export type AllergenScanResult =
   | {
       ok: true
@@ -152,3 +162,39 @@ export async function scanBarcodeForAllergens(params: {
   }
 }
 
+export function offAllergenSupplementFromNorm(
+  norm: ReturnType<typeof normalizeOFFProduct>
+): OffAllergenSupplement | null {
+  if (!norm) return null
+  const supplement: OffAllergenSupplement = {
+    allergensTags: norm.allergens_tags,
+    tracesTags: norm.traces_tags,
+    containsText: norm.contains_text,
+    mayContainText: norm.may_contain_text,
+    crossContactWarnings: norm.cross_contact_warnings,
+    ingredientsTextSafety: norm.ingredients_text_safety,
+  }
+  const hasData =
+    (supplement.allergensTags?.length ?? 0) > 0 ||
+    (supplement.tracesTags?.length ?? 0) > 0 ||
+    Boolean(supplement.containsText?.trim()) ||
+    Boolean(supplement.mayContainText?.trim()) ||
+    (supplement.crossContactWarnings?.length ?? 0) > 0 ||
+    Boolean(supplement.ingredientsTextSafety?.trim())
+  return hasData ? supplement : null
+}
+
+export async function fetchOffAllergenSupplement(
+  barcode: string
+): Promise<OffAllergenSupplement | null> {
+  const bc = barcode.trim()
+  if (!bc) return null
+  try {
+    const data = await fetchOpenFoodFactsProduct(bc)
+    if (data?.status !== 1 || !data.product) return null
+    const norm = normalizeOFFProduct(data.product, 'en')
+    return offAllergenSupplementFromNorm(norm)
+  } catch {
+    return null
+  }
+}

@@ -73,18 +73,19 @@ test('adds fallback personalized impact for flagged ingredient when missing', ()
   assert.equal(out.ingredients[0].whyItMattersYou, out.ingredients[0].impactForYou)
 })
 
-test('uses goal-specific fallback when no direct personal flag exists', () => {
+test('product-level goals do not stamp per-ingredient goal conflict copy', () => {
   const input = makeResponse(
     makeIngredient({
       name: 'Sugar',
       rating: 'concerning',
       impactForYou: 'Some people may want to limit this.',
       whyItMattersYou: 'People with goals may avoid this.',
+      flagDriver: 'goal',
     })
   )
   const profile: DietaryProfile = { ...BASE_PROFILE, goal: 'more_protein' }
 
   const out = enforcePersonalizedCopy(input, profile)
-  assert.match(out.ingredients[0].impactForYou ?? '', /your current goal: eat more protein/i)
-  assert.match(out.ingredients[0].whyItMattersYou ?? '', /\byour current goal\b/i)
+  assert.doesNotMatch(out.ingredients[0].impactForYou ?? '', /your current goal: eat more protein/i)
+  assert.notEqual(out.ingredients[0].flagDriver, 'goal')
 })

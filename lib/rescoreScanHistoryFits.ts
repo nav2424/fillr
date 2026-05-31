@@ -13,6 +13,7 @@ export async function rescoreAllSavedScanFits(): Promise<void> {
 
   for (const rec of scans) {
     if (!rec.result) continue
+    if (rec.result.scoringFrozenAt) continue
     await new Promise((r) => setTimeout(r, RESCORE_STEP_MS))
     const next = attachFillrFitToScanResult(rec.result, dietary)
     updateScanResultByProductId(rec.productId, next)

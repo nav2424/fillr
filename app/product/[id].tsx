@@ -20,28 +20,29 @@ import {
 import ViewShot, { captureRef } from 'react-native-view-shot'
 import * as Sharing from 'expo-sharing'
 import { Ionicons } from '@expo/vector-icons'
-import { LinearGradient } from 'expo-linear-gradient'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   IngredientCard,
   ShareCard,
-  AllergenSweepOverlay,
   ProfileReasoningCard,
   resolveIngredientDisplayRating,
   ScoreDisplay,
+  AllergenEvidenceChips,
+  ProductIntelligenceSection,
   type ShareCardProps,
 } from '../../components'
 import { FILLR_LOGO_MARK } from '../../components/FillrHeaderLogo'
 import { colors, theme } from '../../constants/theme'
 import { toTitleCase } from '../../lib/formatProductTitle'
 import { buildIngredientCardViewModel } from '../../lib/buildIngredientCardViewModel'
-import { buildScoreExplainability } from '../../lib/buildScoreExplainability'
+import { buildScoreExplainability, type ScoreContributor } from '../../lib/buildScoreExplainability'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { useCurrentScanStore } from '../../store/currentScanStore'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
 import { useUserStore } from '../../store/userStore'
 import {
   type CeliacSignal,
+  type FillrScoringDataSnapshot,
   type IngredientExplanation,
   type MatchedAllergen,
   type MatchedSensitivity,
@@ -49,12 +50,19 @@ import {
 } from '../../types'
 import { ingredientSortRank } from '../../lib/scanResultHook'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
+import {
+  isIngredientEnrichInFlight,
+  runScanAiEnrichment,
+  scanNeedsIngredientDecode,
+} from '../../services/productService'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
 import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
 import { playSafeScanSound } from '../../lib/playSafeScanSound'
 import { textMatchesIngredientGenericPattern } from '../../lib/ingredientCopyQuality'
+import { isIngredientLevelGoal } from '../../lib/goalApplicability'
+import { migrateGoalKey } from '../../lib/goalKeyMigration'
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { getUserProfile } = require('../../store/userProfileStore.js') as {
   getUserProfile: () => Promise<{
@@ -187,19 +195,24 @@ function reasonChipForIngredient(
   ing: IngredientExplanation,
   goalKey: string,
   allergyMatch: boolean,
-  sensitivityMatch: boolean
+  sensitivityMatch: boolean,
+  hasUserAllergies: boolean,
+  hasUserSensitivities: boolean
 ): string | null {
   const n = `${ing.name} ${ing.shortLabel ?? ''} ${ing.systemJudgment ?? ''}`.toLowerCase()
-  if (allergyMatch || ing.flagDriver === 'allergy' || ing.personalFlag === 'allergy') {
+  if (hasUserAllergies && (allergyMatch || ing.flagDriver === 'allergy' || ing.personalFlag === 'allergy')) {
     return 'Conflicts with your allergy'
   }
-  if (sensitivityMatch || ing.flagDriver === 'sensitivity' || ing.personalFlag === 'sensitivity') {
+  if (
+    hasUserSensitivities &&
+    (sensitivityMatch || ing.flagDriver === 'sensitivity' || ing.personalFlag === 'sensitivity')
+  ) {
     return 'Conflicts with your sensitivity'
   }
   if (ing.flagDriver === 'preference' || ing.personalFlag === 'preference_conflict') {
     return 'Preference conflict'
   }
-  if (ing.flagDriver === 'goal') {
+  if (ing.flagDriver === 'goal' && isIngredientLevelGoal(migrateGoalKey(goalKey))) {
     return 'Flagged for your goal'
   }
   if (/red\s*40|yellow\s*5|yellow\s*6|blue\s*1|tartrazine|allura|dye|color|colour/.test(n)) {
@@ -223,14 +236,49 @@ function reasonChipForIngredient(
   return null
 }
 
-function personalImpactRank(ing: IngredientExplanation, allergyMatch: boolean, sensitivityMatch: boolean): number {
-  if (allergyMatch || ing.personalFlag === 'allergy' || ing.flagDriver === 'allergy') return 0
-  if (sensitivityMatch || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'sensitivity') return 1
-  if (ing.flagDriver === 'goal') return 2
+function personalImpactRank(
+  ing: IngredientExplanation,
+  allergyMatch: boolean,
+  sensitivityMatch: boolean,
+  hasUserAllergies: boolean,
+  hasUserSensitivities: boolean,
+  goalKey: string
+): number {
+  if (hasUserAllergies && (allergyMatch || ing.personalFlag === 'allergy' || ing.flagDriver === 'allergy'))
+    return 0
+  if (
+    hasUserSensitivities &&
+    (sensitivityMatch || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'sensitivity')
+  )
+    return 1
+  if (ing.flagDriver === 'goal' && isIngredientLevelGoal(migrateGoalKey(goalKey))) return 2
   if (ing.flagDriver === 'preference' || ing.personalFlag === 'preference_conflict') return 3
   const r = ing.ingredientRating ?? 'okay'
   if (r === 'avoid' || r === 'concerning' || ing.flagDriver === 'processing') return 4
   return 5
+}
+
+function firstSentence(text: string): string {
+  const clean = text.trim()
+  if (!clean) return ''
+  return clean.split(/(?<=[.!?])\s+/)[0]?.trim() ?? clean
+}
+
+function productAnalysisHasIntel(
+  analysis: ScanResult['productAnalysis']
+): boolean {
+  if (!analysis) return false
+  return Boolean(
+    analysis.viralHook?.trim() ||
+      analysis.bottomLine?.trim() ||
+      (analysis.regulatoryFlags?.length ?? 0) > 0 ||
+      (analysis.labelVsReality?.length ?? 0) > 0 ||
+      (analysis.redFlags?.length ?? 0) > 0 ||
+      (analysis.hiddenIngredients?.length ?? 0) > 0 ||
+      (analysis.sugarSources?.length ?? 0) > 1 ||
+      analysis.ingredientOrderInsight?.trim() ||
+      analysis.whatTheyDontTellYou?.trim()
+  )
 }
 
 function TabSectionHeader({
@@ -256,13 +304,173 @@ function TabSectionHeader({
   )
 }
 
+type ScoreDriverRow = {
+  sign: '+' | '-' | '!'
+  label: string
+  tone: 'good' | 'warn' | 'bad'
+}
+
+function titleCaseDriver(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ''
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+function scoreDriverFromContributor(c: ScoreContributor): ScoreDriverRow {
+  if (c.capMaxScore != null) {
+    return { sign: '!', label: `${titleCaseDriver(c.label)} cap`, tone: 'bad' }
+  }
+  return {
+    sign: c.delta >= 0 ? '+' : '-',
+    label: titleCaseDriver(c.label),
+    tone: c.delta >= 0 ? 'good' : Math.abs(c.delta) >= 18 ? 'bad' : 'warn',
+  }
+}
+
+function positiveScoreDrivers(scoringData?: FillrScoringDataSnapshot): ScoreDriverRow[] {
+  if (!scoringData) return []
+  const counts = scoringData.ingredientCounts
+  const total = Math.max(1, scoringData.totalIngredients ?? 0)
+  const rows: ScoreDriverRow[] = []
+  if ((counts?.natural ?? 0) >= Math.max(2, total * 0.45)) {
+    rows.push({ sign: '+', label: 'Whole-food base', tone: 'good' })
+  }
+  if (scoringData.productCategory === 'whole_food' || scoringData.productCategory === 'clean_snack') {
+    rows.push({ sign: '+', label: 'Simple formula', tone: 'good' })
+  }
+  if ((counts?.additive ?? 0) === 0 && (counts?.flagged ?? 0) === 0 && total > 0) {
+    rows.push({ sign: '+', label: 'No major additive load', tone: 'good' })
+  }
+  return rows
+}
+
+function buildScoreDrivers(
+  scoringData: FillrScoringDataSnapshot | undefined,
+  contributors: ScoreContributor[]
+): ScoreDriverRow[] {
+  const rows = [
+    ...positiveScoreDrivers(scoringData),
+    ...contributors.map(scoreDriverFromContributor),
+  ]
+  const seen = new Set<string>()
+  return rows
+    .filter((row) => {
+      const key = row.label.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 3)
+}
+
+function ScoreDriversBrief({
+  scoringData,
+  contributors,
+}: {
+  scoringData?: FillrScoringDataSnapshot
+  contributors: ScoreContributor[]
+}) {
+  const rows = buildScoreDrivers(scoringData, contributors)
+  if (rows.length === 0) return null
+  return (
+    <View style={styles.scoreDriversWrap} accessibilityLabel="Why this score">
+      <Text style={styles.scoreDriversTitle}>Why this score</Text>
+      <View style={styles.scoreDriversRow}>
+        {rows.map((row) => (
+          <View
+            key={`${row.sign}-${row.label}`}
+            style={[
+              styles.scoreDriverPill,
+              row.tone === 'good'
+                ? styles.scoreDriverGood
+                : row.tone === 'bad'
+                  ? styles.scoreDriverBad
+                  : styles.scoreDriverWarn,
+            ]}
+          >
+            <Text
+              style={[
+                styles.scoreDriverSign,
+                row.tone === 'good'
+                  ? styles.scoreDriverGoodText
+                  : row.tone === 'bad'
+                    ? styles.scoreDriverBadText
+                    : styles.scoreDriverWarnText,
+              ]}
+            >
+              {row.sign}
+            </Text>
+            <Text
+              style={[
+                styles.scoreDriverText,
+                row.tone === 'good'
+                  ? styles.scoreDriverGoodText
+                  : row.tone === 'bad'
+                    ? styles.scoreDriverBadText
+                    : styles.scoreDriverWarnText,
+              ]}
+              numberOfLines={1}
+            >
+              {row.label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+function profileGoalLabel(goalKey: string): string {
+  const map: Record<string, string> = {
+    less_sugar: 'low-sugar goal',
+    low_sugar: 'low-sugar goal',
+    more_protein: 'protein goal',
+    high_protein: 'protein goal',
+    build_muscle: 'protein goal',
+    gut_health: 'gut-health goal',
+    eat_cleaner: 'cleaner-eating goal',
+    reduce_upf: 'less-processed goal',
+    lower_sodium: 'lower-sodium goal',
+  }
+  return map[goalKey] ?? goalKey.replace(/_/g, ' ')
+}
+
+function buildPersonalizedProductInsight(args: {
+  goalKey?: string
+  scoreExplainability: ReturnType<typeof buildScoreExplainability>
+  matchedAllergens: MatchedAllergen[]
+  matchedSensitivities: MatchedSensitivity[]
+  celiacAvoid: boolean
+}): string | null {
+  const { goalKey = '', scoreExplainability, matchedAllergens, matchedSensitivities, celiacAvoid } = args
+  if (matchedAllergens.length > 0) {
+    const names = matchedAllergens.map((m) => m.allergenName).filter(Boolean).slice(0, 2).join(', ')
+    return `For your profile, the main issue is the confirmed ${names || 'allergen'} match.`
+  }
+  if (celiacAvoid) {
+    return 'For your strict gluten setting, the main issue is the gluten signal in this ingredient list.'
+  }
+  if (matchedSensitivities.length > 0) {
+    const names = matchedSensitivities.map((m) => m.sensitivityName).filter(Boolean).slice(0, 2).join(', ')
+    return `For your profile, the main issue is the ${names || 'sensitivity'} match.`
+  }
+  const goalConflict = scoreExplainability.goalConflicts[0]
+  if (goalKey && goalConflict) {
+    const ingredients = goalConflict.ingredients.length > 0 ? `: ${goalConflict.ingredients.join(', ')}` : ''
+    return `For your ${profileGoalLabel(goalKey)}, the issue is ${goalConflict.title.toLowerCase()}${ingredients}.`
+  }
+  return null
+}
+
 export default function ProductScreen() {
   const insets = useSafeAreaInsets()
   const { id, preview } = useLocalSearchParams<{ id: string; preview?: string }>()
   const isOnboardingPreview = preview === 'onboarding'
   const allergies = useUserStore((s) => s.allergies)
+  const hasUserAllergies = (allergies?.length ?? 0) > 0
   const celiacStrictGluten = useUserStore((s) => s.celiacStrictGluten)
   const zSensitivities = useUserStore((s) => s.sensitivities)
+  const hasUserSensitivities = (zSensitivities?.length ?? 0) > 0
   const preferences = useUserStore((s) => s.preferences)
   const goal = useUserStore((s) => s.goal)
   const currentResult = useCurrentScanStore((s) => s.result)
@@ -277,6 +485,8 @@ export default function ProductScreen() {
   const [productNameModalVisible, setProductNameModalVisible] = useState(false)
   const [productNameDraft, setProductNameDraft] = useState('')
   const [profileSectionExpanded, setProfileSectionExpanded] = useState(false)
+  const [allergenEvidenceExpanded, setAllergenEvidenceExpanded] = useState(false)
+  const [showIngredientSearch, setShowIngredientSearch] = useState(false)
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
 
   const scrollRef = useRef<ScrollView>(null)
@@ -285,7 +495,7 @@ export default function ProductScreen() {
   const uniqueExpandedKeysRef = useRef<Set<string>>(new Set())
   const decisionMadeRef = useRef<boolean>(false)
   const renderedEventProductIdRef = useRef<string | null>(null)
-  const possibleMatchViewedProductIdRef = useRef<string | null>(null)
+  const decodeRetryStartedRef = useRef(false)
 
   const storedResult =
     currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
@@ -338,12 +548,13 @@ export default function ProductScreen() {
 
   const displayScoredResult = useMemo((): ScanResult | null => {
     if (!viewResult) return null
-    // Some history entries were persisted before `fillrFit` existed; always hydrate score when missing.
-    if (viewResult.fillrFit) return viewResult
+    // Frozen or stored score — never recompute when profile or ingredient copy changes.
+    if (viewResult.fillrFit || viewResult.scoringFrozenAt) return viewResult
     return attachFillrFitToScanResult(viewResult, getDietProfileSnapshotSync())
   }, [viewResult, allergies, zSensitivities, preferences, goal, celiacStrictGluten])
 
   const displayFillrFit = displayScoredResult?.fillrFit ?? null
+  const displayScoringData = displayScoredResult?.scoringData
 
   useEffect(() => {
     if (!displayScoredResult || !displayScoredResult.fillrFit || !viewResult) return
@@ -354,6 +565,31 @@ export default function ProductScreen() {
       setCurrentScan(displayScoredResult)
     }
   }, [displayScoredResult, viewResult, currentResult?.product.id, setCurrentScan, updateScanResultByProductId])
+
+  useEffect(() => {
+    if (isOnboardingPreview || !displayScoredResult || decodeRetryStartedRef.current) return
+    if (!scanNeedsIngredientDecode(displayScoredResult)) return
+    const productId = displayScoredResult.product.id
+    if (isIngredientEnrichInFlight(productId)) return
+    decodeRetryStartedRef.current = true
+    void (async () => {
+      try {
+        const enriched = await runScanAiEnrichment(
+          displayScoredResult,
+          getDietProfileSnapshotSync()
+        )
+        setCurrentScan(enriched)
+        updateScanResultByProductId(productId, enriched)
+      } catch (err) {
+        console.warn('[Fillr] product screen ingredient decode retry failed', err)
+      }
+    })()
+  }, [
+    displayScoredResult,
+    isOnboardingPreview,
+    setCurrentScan,
+    updateScanResultByProductId,
+  ])
 
   useFocusEffect(
     useCallback(() => {
@@ -379,6 +615,7 @@ export default function ProductScreen() {
   const celiac = viewResult?.celiac
   const productVerdict = viewResult?.productVerdict ?? ''
   const productAnalysis = viewResult?.productAnalysis
+  const showTrustPanels = !isOnboardingPreview && Boolean(viewResult)
   const safetyStatus = viewResult?.safetyStatus ?? 'UNKNOWN'
   const product = viewResult?.product
 
@@ -529,7 +766,7 @@ export default function ProductScreen() {
         matchedAllergens,
         matchedSensitivities,
         celiac,
-        scoringData: displayScoredResult?.scoringData,
+        scoringData: displayScoringData,
         fillrFit: displayFillrFit,
         userGoalKey: goal ?? '',
       }),
@@ -538,7 +775,7 @@ export default function ProductScreen() {
       matchedAllergens,
       matchedSensitivities,
       celiac,
-      displayScoredResult?.scoringData,
+      displayScoringData,
       displayFillrFit,
       goal,
     ]
@@ -546,11 +783,22 @@ export default function ProductScreen() {
   const scoreExplainability = useMemo(
     () =>
       buildScoreExplainability({
-        scoringData: displayScoredResult?.scoringData,
+        scoringData: displayScoringData,
         ingredients: ingredientBreakdown,
         goalKey: goal ?? '',
       }),
-    [displayScoredResult?.scoringData, ingredientBreakdown, goal]
+    [displayScoringData, ingredientBreakdown, goal]
+  )
+  const personalizedProductInsight = useMemo(
+    () =>
+      buildPersonalizedProductInsight({
+        goalKey: goal ?? '',
+        scoreExplainability,
+        matchedAllergens,
+        matchedSensitivities,
+        celiacAvoid,
+      }),
+    [goal, scoreExplainability, matchedAllergens, matchedSensitivities, celiacAvoid]
   )
   const verificationRecommended =
     uncertainIngredients.length > 0 &&
@@ -657,7 +905,11 @@ export default function ProductScreen() {
     for (const ing of ingredientListForCards) {
       const aa = ingredientHitsAllergen(ing, matchedAllergens)
       const ss = ingredientHitsSensitivity(ing, matchedSensitivities)
-      if (aa || ss || ing.personalFlag === 'allergy' || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'allergy' || ing.flagDriver === 'sensitivity') {
+      if (
+        (hasUserAllergies && (aa || ing.personalFlag === 'allergy' || ing.flagDriver === 'allergy')) ||
+        (hasUserSensitivities &&
+          (ss || ing.personalFlag === 'sensitivity' || ing.flagDriver === 'sensitivity'))
+      ) {
         safety.push(ing)
         continue
       }
@@ -668,14 +920,14 @@ export default function ProductScreen() {
         displayRating === 'concerning' ||
         displayRating === 'okay' ||
         ing.flagDriver === 'processing' ||
-        ing.flagDriver === 'goal' ||
+        (ing.flagDriver === 'goal' && isIngredientLevelGoal(migrateGoalKey(goal ?? ''))) ||
         ing.personalFlag === 'avoiding'
 
       if (isProcessingBucket) processing.push(ing)
       else neutral.push(ing)
     }
     return { safety, processing, neutral }
-  }, [ingredientListForCards, matchedAllergens, matchedSensitivities])
+  }, [ingredientListForCards, matchedAllergens, matchedSensitivities, goal, hasUserAllergies, hasUserSensitivities])
 
   const autoExpandIngredientKeys = useMemo(() => {
     const prefix = searchTokens.length > 0 ? 'q' : 'i'
@@ -690,6 +942,7 @@ export default function ProductScreen() {
     () => ingredientBreakdown.map((ing) => ing.name).join('\u0001'),
     [ingredientBreakdown]
   )
+  const isIngredientDecodePending = ingredientBreakdown.some((ing) => ing.aiDecodePending)
 
   useEffect(() => {
     screenOpenedAtMsRef.current = Date.now()
@@ -698,6 +951,8 @@ export default function ProductScreen() {
     setFeedbackRating(null)
     setExpandedIngredientKeys([])
     setProfileSectionExpanded(false)
+    setAllergenEvidenceExpanded(false)
+    setShowIngredientSearch(false)
     const pid = product?.id
     const bc = product?.barcode
     if (pid && bc) {
@@ -765,27 +1020,10 @@ export default function ProductScreen() {
   ])
 
   useEffect(() => {
-    const pid = product?.id
-    const bc = product?.barcode
-    if (!pid || !bc) return
-    if (uncertainIngredients.length === 0) return
-    if (possibleMatchViewedProductIdRef.current === pid) return
-    possibleMatchViewedProductIdRef.current = pid
-    void trackScanResultMetric({
-      name: 'possible_match_viewed',
-      productId: pid,
-      barcode: bc,
-      payload: {
-        source: viewResult?.scanSource ?? 'barcode',
-        uncertain_count: uncertainIngredients.length,
-      },
-    })
-  }, [product?.id, product?.barcode, uncertainIngredients.length, viewResult?.scanSource])
-
-  useEffect(() => {
+    if (isIngredientDecodePending) return
     if (autoExpandIngredientKeys.length === 0) return
     setExpandedIngredientKeys((prev) => (prev.length === 0 ? autoExpandIngredientKeys : prev))
-  }, [autoExpandIngredientKeys])
+  }, [autoExpandIngredientKeys, isIngredientDecodePending])
 
   useEffect(() => {
     const pid = product?.id
@@ -833,6 +1071,53 @@ export default function ProductScreen() {
       : verificationSeverity === 'caution'
         ? 'Some flagged ingredients are uncertain. Double-check the package label before relying on this result.'
         : profileReasoning.collapsedSubtitle
+
+  const heroTakeaway = useMemo(() => {
+    if (matchedAllergens.length > 0) {
+      const names = [...new Set(matchedAllergens.map((m) => m.allergenName).filter(Boolean))].slice(0, 3)
+      return `Contains ${names.join(', ')} — not safe for your allergy profile.`
+    }
+    if (celiacAvoid) {
+      return 'Gluten signal detected under your strict celiac setting.'
+    }
+    if (matchedSensitivities.length > 0) {
+      const names = matchedSensitivities.map((m) => m.sensitivityName).filter(Boolean).slice(0, 2)
+      return `Matches your ${names.join(' and ')} sensitivit${names.length > 1 ? 'ies' : 'y'}.`
+    }
+    if (displayFillrFit?.reason?.trim()) return displayFillrFit.reason.trim()
+    if (productVerdict?.trim()) return firstSentence(productVerdict)
+    return profileReasoning.collapsedSubtitle
+  }, [
+    matchedAllergens,
+    celiacAvoid,
+    matchedSensitivities,
+    displayFillrFit?.reason,
+    productVerdict,
+    profileReasoning.collapsedSubtitle,
+  ])
+
+  const showProfileSection = useMemo(() => {
+    if (isOnboardingPreview || isIngredientDecodePending) return false
+    return (
+      matchedAllergens.length > 0 ||
+      matchedSensitivities.length > 0 ||
+      verificationRecommended ||
+      profileTone !== 'ok' ||
+      celiacAvoid ||
+      profileReasoning.fit !== 'good'
+    )
+  }, [
+    isOnboardingPreview,
+    isIngredientDecodePending,
+    matchedAllergens.length,
+    matchedSensitivities.length,
+    verificationRecommended,
+    profileTone,
+    celiacAvoid,
+    profileReasoning.fit,
+  ])
+
+  const showProductIntelPanel = productAnalysisHasIntel(productAnalysis)
 
   const shareMessage = useMemo(() => {
     if (!product?.barcode) return ''
@@ -916,29 +1201,6 @@ export default function ProductScreen() {
     [product?.id, product?.barcode]
   )
 
-  const onIngredientUncertaintyAction = useCallback(
-    (ingredientName: string, action: 'verify_label' | 'retake_photo') => {
-      if (product?.id && product?.barcode) {
-        void trackScanResultMetric({
-          name: 'possible_match_action_clicked',
-          productId: product.id,
-          barcode: product.barcode,
-          payload: {
-            source: viewResult?.scanSource ?? 'barcode',
-            ingredient: ingredientName,
-            action,
-          },
-        })
-      }
-      if (action === 'retake_photo') {
-        markDecision('rescanned')
-        const destination = viewResult?.scanSource === 'ocr' ? '/ocr-scanner' : '/(tabs)/scan'
-        router.replace(destination)
-      }
-    },
-    [markDecision, product?.id, product?.barcode, viewResult?.scanSource]
-  )
-
   if (!storedResult || !viewResult || !product) {
     return (
       <SafeAreaView style={[styles.screenRoot, styles.centeredMiss]} edges={['top']}>
@@ -969,8 +1231,14 @@ export default function ProductScreen() {
         allergyMatch={allergyMatch}
         sensitivityMatch={sensitivityMatch}
         celiacMatch={celiacMatch}
-        reasonChipLabel={reasonChipForIngredient(ing, goal ?? '', allergyMatch, sensitivityMatch)}
-        onUncertaintyAction={(action) => onIngredientUncertaintyAction(ing.name, action)}
+        reasonChipLabel={reasonChipForIngredient(
+          ing,
+          goal ?? '',
+          allergyMatch,
+          sensitivityMatch,
+          hasUserAllergies,
+          hasUserSensitivities
+        )}
         compactPreview={isOnboardingPreview}
         onToggleExpanded={() =>
           setExpandedIngredientKeys((prev) => {
@@ -983,7 +1251,15 @@ export default function ProductScreen() {
               payload: {
                 ingredient: ing.name,
                 section: sectionKey ?? 'unknown',
-                reason_chip: reasonChipForIngredient(ing, goal ?? '', allergyMatch, sensitivityMatch) ?? null,
+                reason_chip:
+                  reasonChipForIngredient(
+                    ing,
+                    goal ?? '',
+                    allergyMatch,
+                    sensitivityMatch,
+                    hasUserAllergies,
+                    hasUserSensitivities
+                  ) ?? null,
               },
             })
             const next = [cardKey, ...prev]
@@ -994,7 +1270,6 @@ export default function ProductScreen() {
     )
   }
 
-  const hasAllergenHits = matchedAllergens.length > 0
 
   const feedbackRow = (
     <View style={styles.feedbackRow}>
@@ -1036,38 +1311,50 @@ export default function ProductScreen() {
 
   const ingredientsPanel = (
     <View style={styles.tabPanel}>
-      {!isOnboardingPreview ? (
-        <View style={styles.searchBar}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search ingredients"
-            placeholderTextColor={theme.textFaint}
-            value={ingredientQuery}
-            onChangeText={(t) => {
-              setIngredientQuery(t)
-              setExpandedIngredientKeys([])
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-        </View>
+      <View style={styles.ingredientsSectionHead}>
+        <Text style={styles.ingredientsSectionTitle}>Ingredients</Text>
+        <Text style={styles.ingredientsSectionMeta}>{ingredientListForCards.length} listed</Text>
+      </View>
+
+      {isIngredientDecodePending && !isOnboardingPreview ? (
+        <Text style={styles.decodeStatusLine} accessibilityLiveRegion="polite">
+          Decoding ingredient details…
+        </Text>
       ) : null}
 
-      {!isOnboardingPreview && uncertainIngredients.length > 0 ? (
-        <View style={styles.possibleMatchBanner}>
-          <Ionicons name="help-circle-outline" size={16} color="#92400e" />
-          <Text style={styles.possibleMatchBannerText}>
-            {uncertainIngredients.length === 1
-              ? '1 ingredient may be a possible match. Verify label details before deciding.'
-              : `${uncertainIngredients.length} ingredients may be possible matches. Verify label details before deciding.`}
-          </Text>
-        </View>
+      {!isOnboardingPreview ? (
+        showIngredientSearch ? (
+          <View style={styles.searchBar}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search ingredients"
+              placeholderTextColor={theme.textFaint}
+              value={ingredientQuery}
+              onChangeText={(t) => {
+                setIngredientQuery(t)
+                setExpandedIngredientKeys([])
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+          </View>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.searchToggle, pressed && { opacity: 0.88 }]}
+            onPress={() => setShowIngredientSearch(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Search ingredients"
+          >
+            <Ionicons name="search-outline" size={16} color={theme.textFaint} />
+            <Text style={styles.searchToggleText}>Search</Text>
+          </Pressable>
+        )
       ) : null}
 
       {groupedForIngredientsTab.safety.length > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.flagged.accent} label="ALLERGY / SENSITIVITY CONFLICTS" />
+          <TabSectionHeader dotColor={theme.flagged.accent} label="Conflicts" />
           {groupedForIngredientsTab.safety.map((ing, i) =>
             renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'safety')
           )}
@@ -1076,7 +1363,7 @@ export default function ProductScreen() {
 
       {groupedForIngredientsTab.processing.length > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.additive.accent} label="ADDITIVES / PROCESSING" />
+          <TabSectionHeader dotColor={theme.additive.accent} label="Processing" />
           {groupedForIngredientsTab.processing.map((ing, i) =>
             renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'processing')
           )}
@@ -1089,14 +1376,14 @@ export default function ProductScreen() {
           onPress={() => setShowAllNatural(true)}
         >
           <Text style={styles.showNaturalBtnText}>
-            {`Show all ${naturalCount} natural ingredients ↓`}
+            {`Show ${naturalCount} neutral ingredients`}
           </Text>
         </Pressable>
       ) : null}
 
       {showAllNatural && naturalCount > 0 ? (
         <>
-          <TabSectionHeader dotColor={theme.natural.accent} label="NEUTRAL / NATURAL" />
+          <TabSectionHeader dotColor={theme.natural.accent} label="Neutral" />
           {groupedForIngredientsTab.neutral.map((ing, i) =>
             renderIngredientCard(ing, i, searchTokens.length > 0 ? 'q' : 'i', 'neutral')
           )}
@@ -1107,7 +1394,7 @@ export default function ProductScreen() {
         <Text style={styles.searchEmptyText}>No matching ingredients.</Text>
       ) : null}
 
-      {feedbackRow}
+      {feedbackRating != null ? feedbackRow : null}
       <Text style={styles.tabDisclaimer}>{TAB_DISCLAIMER}</Text>
     </View>
   )
@@ -1195,36 +1482,71 @@ export default function ProductScreen() {
               <Text style={styles.heroBrand}>{displayBrand.toUpperCase()}</Text>
             ) : null}
             {heroTitlePressable}
-            <ScoreDisplay fillrFit={displayFillrFit} isLoading={false} />
-            <View
-              style={[
-                styles.profileUnifiedOuter,
-                profileTone === 'bad'
-                  ? styles.profileUnifiedOuterConflict
-                  : profileTone === 'warn'
-                    ? styles.profileUnifiedOuterWarn
-                    : styles.profileUnifiedOuterOk,
-              ]}
-            >
-              <View style={styles.profileUnifiedClip}>
-                {hasAllergenHits ? (
-                  <AllergenSweepOverlay
-                    playKey={`${String(id)}:${ingredientBreakdownIdentity}`}
-                  />
-                ) : null}
-                <View style={styles.profileUnifiedBody}>
-                    <LinearGradient
-                      colors={
-                        profileTone === 'bad'
-                          ? ['#ffffff', '#fff5f5', '#fffbfb']
-                          : profileTone === 'warn'
-                            ? ['#ffffff', '#fffbeb', '#fff7ed']
-                            : ['#ffffff', '#f4fdfa', '#f0fdf9']
-                      }
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={StyleSheet.absoluteFillObject}
-                    />
+            <ScoreDisplay fillrFit={displayFillrFit} isLoading={!displayFillrFit} showReason={false} />
+            {heroTakeaway.trim() ? (
+              <Text style={styles.heroTakeaway} numberOfLines={3}>
+                {heroTakeaway}
+              </Text>
+            ) : null}
+            {showTrustPanels && matchedAllergens.length > 0 ? (
+              allergenEvidenceExpanded ? (
+                <View style={styles.allergenEvidenceBlock}>
+                  <AllergenEvidenceChips matches={matchedAllergens} compact />
+                  <Pressable
+                    onPress={() => setAllergenEvidenceExpanded(false)}
+                    style={({ pressed }) => [styles.inlineLinkBtn, pressed && { opacity: 0.85 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Hide allergen evidence"
+                  >
+                    <Text style={styles.inlineLinkText}>Hide evidence</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [styles.allergenCompact, pressed && { opacity: 0.92 }]}
+                  onPress={() => setAllergenEvidenceExpanded(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show allergen match evidence"
+                >
+                  <Ionicons name="shield-outline" size={16} color={theme.flagged.text} />
+                  <Text style={styles.allergenCompactText}>View match evidence</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.textFaint} />
+                </Pressable>
+              )
+            ) : null}
+            {showTrustPanels &&
+            viewResult?.productNameHints &&
+            viewResult.productNameHints.length > 0 ? (
+              <View style={styles.nameHintsBanner}>
+                <Text style={styles.nameHintsTitle}>Name-only hints (not confirmed)</Text>
+                {viewResult.productNameHints.map((h, i) => (
+                  <Text key={`hint-${i}`} style={styles.nameHintsLine}>
+                    {h.allergenName}: {h.hintText}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+            {showTrustPanels && showProductIntelPanel && productAnalysis ? (
+              <ProductIntelligenceSection
+                analysis={productAnalysis}
+                productVerdict={productVerdict}
+                personalizedInsight={personalizedProductInsight}
+                hidePersonalizedInsight={showProfileSection}
+              />
+            ) : null}
+            {showProfileSection ? (
+              <View
+                style={[
+                  styles.profileUnifiedOuter,
+                  profileTone === 'bad'
+                    ? styles.profileUnifiedOuterConflict
+                    : profileTone === 'warn'
+                      ? styles.profileUnifiedOuterWarn
+                      : styles.profileUnifiedOuterOk,
+                ]}
+              >
+                <View style={styles.profileUnifiedClip}>
+                  <View style={styles.profileUnifiedBody}>
                     <View style={styles.profileUnifiedBodyContent}>
                       <Pressable
                         onPress={() => setProfileSectionExpanded((v) => !v)}
@@ -1240,7 +1562,7 @@ export default function ProductScreen() {
                         hitSlop={8}
                       >
                         <Text style={[styles.profileUnifiedKicker, styles.profileUnifiedKickerInHeader]}>
-                          YOUR PROFILE
+                          FOR YOU
                         </Text>
                         <Ionicons
                           name={profileSectionExpanded ? 'chevron-up' : 'chevron-down'}
@@ -1262,23 +1584,31 @@ export default function ProductScreen() {
                           >
                             {profileCollapsedTitle}
                           </Text>
-                          <Text style={styles.profileUnifiedBodyText} numberOfLines={3}>
+                          <Text style={styles.profileUnifiedBodyText} numberOfLines={2}>
                             {profileCollapsedSubtitle}
                           </Text>
                         </View>
                       ) : (
-                        <ProfileReasoningCard
-                          model={profileReasoning}
-                          contributors={scoreExplainability.contributors}
-                        />
+                        <>
+                          <ProfileReasoningCard
+                            model={profileReasoning}
+                            contributors={scoreExplainability.contributors}
+                          />
+                          <ScoreDriversBrief
+                            scoringData={displayScoringData}
+                            contributors={scoreExplainability.contributors}
+                          />
+                        </>
                       )}
                     </View>
                   </View>
+                </View>
               </View>
-            </View>
-          </View>
-        </View>
+            ) : null}
 
+          </View>
+          <View style={styles.heroDivider} />
+        </View>
         {ingredientsPanel}
       </ScrollView>
 
@@ -1457,34 +1787,31 @@ const styles = StyleSheet.create({
   heroInner: {
     paddingHorizontal: theme.heroPadding,
   },
-  /** Elevated card + gradient stripe (shadow on outer so radius + blur work). */
   profileUnifiedOuter: {
-    marginTop: 18,
-    marginBottom: 6,
-    borderRadius: 20,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 16,
     backgroundColor: 'transparent',
     shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.17,
-    shadowRadius: 34,
-    elevation: 11,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   profileUnifiedOuterOk: {
-    shadowColor: '#0d9488',
-    shadowOpacity: 0.16,
+    shadowOpacity: 0,
   },
   profileUnifiedOuterConflict: {
-    shadowColor: '#e11d48',
-    shadowOpacity: 0.14,
+    shadowOpacity: 0,
   },
   profileUnifiedOuterWarn: {
-    shadowColor: '#ea580c',
-    shadowOpacity: 0.16,
+    shadowOpacity: 0,
   },
   profileUnifiedClip: {
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     backgroundColor: '#ffffff',
   },
   profileUnifiedBody: {
@@ -1492,10 +1819,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   profileUnifiedBodyContent: {
-    paddingTop: 16,
-    paddingRight: 17,
-    paddingBottom: 18,
-    paddingLeft: 16,
+    paddingTop: 14,
+    paddingRight: 14,
+    paddingBottom: 15,
+    paddingLeft: 14,
     zIndex: 1,
   },
   profileUnifiedKicker: {
@@ -1514,7 +1841,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   profileSectionHeaderPressed: {
     opacity: 0.88,
@@ -1588,10 +1915,154 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     lineHeight: 23,
     letterSpacing: -0.4,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  heroTakeaway: {
+    marginTop: 4,
+    marginBottom: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: theme.textMuted,
+  },
+  heroDivider: {
+    height: 8,
+    marginTop: 16,
+    backgroundColor: '#f1f5f9',
+  },
+  allergenCompact: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#fff5f5',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#fecaca',
+  },
+  allergenCompactText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.flagged.text,
+  },
+  allergenEvidenceBlock: {
+    marginTop: 8,
+    gap: 6,
+  },
+  inlineLinkBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  inlineLinkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.textFaint,
+  },
+  ingredientsSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  ingredientsSectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: theme.textPrimary,
+    letterSpacing: -0.3,
+  },
+  ingredientsSectionMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.textFaint,
+  },
+  decodeStatusLine: {
+    marginBottom: 12,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+    color: theme.textFaint,
+  },
+  searchToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginBottom: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: '#f1f5f9',
+  },
+  searchToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.textFaint,
+  },
+  scoreDriversWrap: {
+    marginTop: -4,
+    marginBottom: 10,
+    gap: 7,
+  },
+  scoreDriversTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
+  scoreDriversRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  scoreDriverPill: {
+    minHeight: 28,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  scoreDriverGood: {
+    backgroundColor: '#ffffff',
+    borderColor: '#d1fae5',
+  },
+  scoreDriverWarn: {
+    backgroundColor: '#ffffff',
+    borderColor: '#fde68a',
+  },
+  scoreDriverBad: {
+    backgroundColor: '#ffffff',
+    borderColor: '#fecdd3',
+  },
+  scoreDriverSign: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+  },
+  scoreDriverText: {
+    maxWidth: 180,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
+  scoreDriverGoodText: {
+    color: '#166534',
+  },
+  scoreDriverWarnText: {
+    color: '#92400e',
+  },
+  scoreDriverBadText: {
+    color: '#9f1239',
   },
   tabPanel: {
-    paddingTop: 20,
+    paddingTop: 16,
     paddingHorizontal: theme.screenPadding,
     paddingBottom: 24,
     backgroundColor: theme.screenBg,
@@ -1829,24 +2300,24 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     padding: 0,
   },
-  possibleMatchBanner: {
-    marginBottom: 14,
+  nameHintsBanner: {
+    marginTop: 12,
+    padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#fcd34d',
     backgroundColor: '#fffbeb',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    gap: 6,
   },
-  possibleMatchBannerText: {
-    flex: 1,
+  nameHintsTitle: {
     fontSize: 12,
-    lineHeight: 17,
+    fontWeight: '800',
     color: '#92400e',
-    fontWeight: '600',
+  },
+  nameHintsLine: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#78350f',
   },
   showNaturalBtn: {
     backgroundColor: theme.green50,

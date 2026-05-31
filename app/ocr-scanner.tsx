@@ -22,8 +22,9 @@ import { parseIngredients } from '../lib/fillrAdapter'
 import {
   backfillBarcodeIngredientData,
   createScanResultFromIngredientText,
-  enrichScanResultWithAI,
+  runScanAiEnrichment,
 } from '../services/productService'
+import type { ScanResult } from '../types'
 import { useUserStore } from '../store/userStore'
 import { useAuthStore } from '../store/authStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
@@ -209,11 +210,11 @@ export default function OcrScannerScreen() {
         } catch (e) {
           console.warn('[Fillr] OCR navigate to product failed', e)
         }
-        void enrichScanResultWithAI(result, dietaryProfile, {
-          fromOcr: true,
-          ingredientParseSource: 'ocr',
-        })
-          .then((enriched) => {
+        void runScanAiEnrichment(
+          result,
+          dietaryProfile,
+          { fromOcr: true, ingredientParseSource: 'ocr' },
+          (enriched) => {
             try {
               const cur = useCurrentScanStore.getState().result
               if (cur?.product.id === productId) {
@@ -222,10 +223,10 @@ export default function OcrScannerScreen() {
             } catch (e) {
               console.warn('[Fillr][decode] apply enrich to current scan failed', e)
             }
-          })
-          .catch((err) => {
-            console.warn('AI enrichment failed:', err)
-          })
+          }
+        ).catch((err) => {
+          console.warn('AI enrichment failed:', err)
+        })
         void incrementScanCount()
         if (userId) {
           void (async () => {
@@ -263,36 +264,45 @@ export default function OcrScannerScreen() {
         barcode: result.product.barcode,
         payload: { source: 'ocr', ingredient_count: result.ingredientBreakdown.length },
       })
-      void enrichScanResultWithAI(result, dietaryProfile, {
-        fromOcr: true,
-        ingredientParseSource: 'ocr',
-      })
-        .then((enriched) => {
-          runAfterInteractionsAndNextFrame(() => {
-            try {
-              const cur = useCurrentScanStore.getState().result
-              if (cur?.product.id === productId) {
-                if (__DEV__) console.log('[Fillr][decode] decode_merged_to_store', { productId })
-                setCurrentScan(enriched)
-              } else if (__DEV__) {
-                console.log('[Fillr][decode] decode_store_mismatch', {
-                  expectedProductId: productId,
-                  currentProductId: cur?.product.id ?? null,
-                })
+      const applyOcrEnriched = (enriched: ScanResult, stage: 'ingredients' | 'product') => {
+        runAfterInteractionsAndNextFrame(() => {
+          try {
+            const cur = useCurrentScanStore.getState().result
+            if (cur?.product.id === productId) {
+              if (__DEV__) {
+                console.log(
+                  stage === 'ingredients'
+                    ? '[Fillr][decode] decode_merged_to_store'
+                    : '[Fillr][decode] product_analysis_merged',
+                  { productId }
+                )
               }
-              runOnNextFrameInTransition(() => {
-                try {
-                  useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
-                } catch (e) {
-                  console.warn('[Fillr][decode] history update after enrich failed', e)
-                }
+              setCurrentScan(enriched)
+            } else if (__DEV__) {
+              console.log('[Fillr][decode] decode_store_mismatch', {
+                expectedProductId: productId,
+                currentProductId: cur?.product.id ?? null,
+                stage,
               })
-            } catch (e) {
-              console.warn('[Fillr][decode] apply enrich to current scan failed', e)
             }
-          })
+            runOnNextFrameInTransition(() => {
+              try {
+                useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+              } catch (e) {
+                console.warn('[Fillr][decode] history update after enrich failed', e)
+              }
+            })
+          } catch (e) {
+            console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+          }
         })
-        .catch(() => {})
+      }
+      void runScanAiEnrichment(
+        result,
+        dietaryProfile,
+        { fromOcr: true, ingredientParseSource: 'ocr' },
+        applyOcrEnriched
+      ).catch(() => {})
       await incrementScanCount()
       if (userId) {
         void (async () => {

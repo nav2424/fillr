@@ -53,13 +53,46 @@ function attachScoringCopy(result: ScanResult, scoringData: FillrScoringInput, f
   }
 }
 
+/** Lock Fillr Fit at first display (barcode fast path, OCR/manual base scan). */
+export function freezeScanScoring(result: ScanResult, profile: DietaryProfile): ScanResult {
+  const withFit = result.fillrFit ? result : attachFillrFitToScanResult(result, profile)
+  if (withFit.scoringFrozenAt) return withFit
+  return { ...withFit, scoringFrozenAt: new Date().toISOString() }
+}
+
+/** Keep the first Fillr Fit when ingredient copy or ratings update after decode. */
+export function preserveFrozenScoring(base: ScanResult, next: ScanResult): ScanResult {
+  if (!base.fillrFit) return next
+  return {
+    ...next,
+    fillrFit: base.fillrFit,
+    scoringData: base.scoringData,
+    processedRating: base.processedRating,
+    scoringFrozenAt: base.scoringFrozenAt ?? new Date().toISOString(),
+  }
+}
+
+/**
+ * Presentation pass after OpenAI merge — ingredient sort/hydration only; score stays from `base`.
+ */
+export function finalizeEnrichedScanPreservingScore(
+  base: ScanResult,
+  merged: ScanResult,
+  profile: DietaryProfile
+): ScanResult {
+  const presented = applyPresentationDefaults(merged)
+  if (base.fillrFit || base.scoringFrozenAt) {
+    return preserveFrozenScoring(base, presented)
+  }
+  return attachFillrFitToScanResult(presented, profile)
+}
+
 /** Attach `fillrFit` + `processedRating` + `scoringData` using current breakdown (no re-presentation). */
 export function attachFillrFitToScanResult(
   result: ScanResult,
   profile: DietaryProfile
 ): ScanResult {
-  const scoringData = buildScoringData(result, result.ingredientBreakdown, profile)
-  const fillrFit = calculateFillrFit(scoringData)
+  const { fillrFit, scoringData } = computeLiveFillrScoring(result, profile)
   const processedRating = calculateProcessedRating(scoringData)
   return attachScoringCopy({ ...result, fillrFit, processedRating, scoringData }, scoringData, fillrFit)
 }

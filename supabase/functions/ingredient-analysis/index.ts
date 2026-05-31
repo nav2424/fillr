@@ -60,7 +60,7 @@ serve(async (req: Request) => {
     })
   }
 
-  const model = body.model?.trim() || 'gpt-4o'
+  const model = body.model?.trim() || 'gpt-4o-mini'
   const temperature = Number.isFinite(body.temperature) ? Number(body.temperature) : 0
   const max_tokens = Number.isFinite(body.maxTokens) ? Number(body.maxTokens) : 4096
 
@@ -128,9 +128,18 @@ serve(async (req: Request) => {
   if (messageContent) {
     try {
       const parsedContent = JSON.parse(messageContent)
-      contentShape =
+      const hasIngredients =
         typeof parsedContent?.productVerdict === 'string' && Array.isArray(parsedContent?.ingredients)
-          ? `valid ingredients=${parsedContent.ingredients.length}`
+      const pa = parsedContent?.productAnalysis
+      const hasProductDeep =
+        typeof parsedContent?.productVerdict === 'string' &&
+        pa &&
+        typeof pa === 'object' &&
+        (typeof pa.viralHook === 'string' || typeof pa.bottomLine === 'string')
+      contentShape = hasIngredients
+        ? `valid ingredients=${parsedContent.ingredients.length}`
+        : hasProductDeep
+          ? 'valid product_deep'
           : `invalid keys=${Object.keys(parsedContent ?? {}).join(',')}`
     } catch {
       contentShape = 'invalid_json'

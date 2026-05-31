@@ -37,7 +37,7 @@ module.exports = {
   expo: {
     name: 'Fillr',
     slug: 'fillr',
-    version: '1.1.0',
+    version: '1.1.1',
     orientation: 'portrait',
     /** Store / home-screen launcher icon. */
     icon: './assets/icon-ios.png',

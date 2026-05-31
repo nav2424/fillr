@@ -1,0 +1,70 @@
+[
+  {
+    "id": "milk_contains_whey",
+    "product_name": "Protein bar",
+    "allergies": ["milk"],
+    "input": {
+      "ingredients_text": "Ingredients: oats, whey protein isolate, cocoa, salt",
+      "contains_text": "Contains: milk",
+      "may_contain_text": "",
+      "allergens_tags": ["en:milk"],
+      "traces_tags": []
+    },
+    "expect": {
+      "overall_status": "CONTAINS",
+      "must_match_allergen_ids": ["milk"],
+      "min_matches": 1
+    }
+  },
+  {
+    "id": "peanut_may_contain",
+    "product_name": "Chocolate cookies",
+    "allergies": ["peanuts"],
+    "input": {
+      "ingredients_text": "wheat flour, sugar, cocoa",
+      "contains_text": "",
+      "may_contain_text": "May contain peanuts and tree nuts",
+      "allergens_tags": [],
+      "traces_tags": []
+    },
+    "expect": {
+      "overall_status": "MAY_CONTAIN",
+      "must_match_allergen_ids": ["peanuts"],
+      "min_matches": 1
+    }
+  },
+  {
+    "id": "non_dairy_cocoa_butter_not_milk",
+    "product_name": "Dark chocolate",
+    "allergies": ["milk"],
+    "input": {
+      "ingredients_text": "cocoa mass, cocoa butter, sugar",
+      "contains_text": "",
+      "may_contain_text": "",
+      "allergens_tags": [],
+      "traces_tags": []
+    },
+    "expect": {
+      "overall_status": "SAFE",
+      "must_match_allergen_ids": [],
+      "min_matches": 0
+    }
+  },
+  {
+    "id": "unknown_without_any_ingredient_data",
+    "product_name": "Mystery snack",
+    "allergies": ["milk"],
+    "input": {
+      "ingredients_text": "",
+      "contains_text": "",
+      "may_contain_text": "",
+      "allergens_tags": [],
+      "traces_tags": []
+    },
+    "expect": {
+      "overall_status": "UNKNOWN",
+      "must_match_allergen_ids": [],
+      "min_matches": 0
+    }
+  }
+]

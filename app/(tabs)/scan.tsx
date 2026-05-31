@@ -24,7 +24,8 @@ import { useUserStore } from '../../store/userStore'
 import { useAuthStore } from '../../store/authStore'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
 import { useCurrentScanStore } from '../../store/currentScanStore'
-import { enrichScanResultWithAI, scanProductFast } from '../../services/productService'
+import { runScanAiEnrichment, scanProductFast } from '../../services/productService'
+import type { ScanResult } from '../../types'
 import { colors, spacing, typography } from '../../constants/theme'
 import { FREE_SCAN_LIMIT } from '../../constants/subscription'
 import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../../lib/authService'
@@ -33,6 +34,10 @@ import { canUserScan, getRemainingScans, incrementScanCount } from '../../store/
 import { showPaywall } from '../../services/paywallService'
 import { isDemoScanBarcode } from '../../services/mockProducts'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
+import { personalizeScanResult } from '../../lib/personalizationEngine'
+import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
+import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
+import { ingredientExplanationFailsQualityGate } from '../../lib/ingredientCopyQuality'
 
 /** Tab bar is `position: 'absolute'` + floating pill — keep sheet + disclaimer above it. */
 const SCAN_TAB_BAR_CLEARANCE = 88
@@ -50,6 +55,37 @@ const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'itf14',
   'codabar',
 ]
+
+function hasReusableIngredientDecode(result: ScanResult): boolean {
+  if (!result.ingredientBreakdown.length) return false
+  if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) return false
+  if (result.ingredientBreakdown.some((ing) => ing.ingredientDecodeStatus === 'unavailable')) return false
+  if (result.ingredientBreakdown.some((ing) => ingredientExplanationFailsQualityGate(ing))) return false
+  return result.ingredientBreakdown.some((ing) => {
+    const text = [ing.whatItIs, ing.whatItDoes, ing.whyItsUsed, ing.labelDecoder, ing.quickSummary]
+      .map((s) => s?.trim() ?? '')
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    if (!text) return false
+    return !(
+      text.includes('explicitly listed on the label and contributes') ||
+      text.includes('contributes to the product recipe, texture, flavor, stability') ||
+      text.includes('decode for') ||
+      text.includes('didn’t load this time') ||
+      text.includes("didn't load this time")
+    )
+  })
+}
+
+function getReusableBarcodeResult(barcode: string): ScanResult | null {
+  const bc = barcode.trim()
+  if (!bc) return null
+  const match = useScanHistoryStore
+    .getState()
+    .scans.find((scan) => scan.barcode === bc && scan.result && hasReusableIngredientDecode(scan.result))
+  return match?.result ?? null
+}
 
 export default function ScanScreen() {
   const insets = useSafeAreaInsets()
@@ -127,6 +163,42 @@ export default function ScanScreen() {
 
       setScanning(true)
       try {
+        const reusable = getReusableBarcodeResult(barcode)
+        if (reusable) {
+          const personalized = personalizeScanResult(reusable, {
+            allergies,
+            sensitivities,
+            preferences,
+            goal,
+            celiacStrictGluten: Boolean(celiacStrictGluten),
+          })
+          const scored = attachFillrFitToScanResult(personalized, getDietProfileSnapshotSync())
+          setCurrentScan(scored)
+          addScan({
+            id: `scan_${Date.now()}`,
+            productId: scored.product.id,
+            productName: scored.product.name,
+            barcode: scored.product.barcode,
+            safetyStatus: scored.safetyStatus,
+            date: new Date().toISOString(),
+            result: scored,
+          })
+          void trackScanResultMetric({
+            name: 'scan_cache_hit',
+            productId: scored.product.id,
+            barcode,
+            payload: {
+              source: 'barcode_history',
+              ingredient_count: scored.ingredientBreakdown.length,
+            },
+          })
+          router.push({
+            pathname: '/product/[id]',
+            params: { id: scored.product.id },
+          })
+          return
+        }
+
         const result = await scanProductFast({
           barcode,
           allergies,
@@ -169,35 +241,44 @@ export default function ScanScreen() {
           })
 
           if (result.result.product.ingredientText.trim()) {
-            void enrichScanResultWithAI(result.result, result.dietaryProfile)
-              .then((enriched) => {
-                runAfterInteractionsAndNextFrame(() => {
-                  try {
-                    const cur = useCurrentScanStore.getState().result
-                    if (cur?.product.id === productId) {
-                      if (__DEV__) console.log('[Fillr][decode] decode_merged_to_store', { productId })
-                      setCurrentScan(enriched)
-                    } else if (__DEV__) {
-                      console.log('[Fillr][decode] decode_store_mismatch', {
-                        expectedProductId: productId,
-                        currentProductId: cur?.product.id ?? null,
-                      })
+            const applyEnrichedToStores = (enriched: ScanResult, stage: 'ingredients' | 'product') => {
+              runAfterInteractionsAndNextFrame(() => {
+                try {
+                  const cur = useCurrentScanStore.getState().result
+                  if (cur?.product.id === productId) {
+                    if (__DEV__) {
+                      console.log(
+                        stage === 'ingredients'
+                          ? '[Fillr][decode] decode_merged_to_store'
+                          : '[Fillr][decode] product_analysis_merged',
+                        { productId }
+                      )
                     }
-                    runOnNextFrameInTransition(() => {
-                      try {
-                        useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
-                      } catch (e) {
-                        console.warn('[Fillr][decode] history update after enrich failed', e)
-                      }
+                    setCurrentScan(enriched)
+                  } else if (__DEV__) {
+                    console.log('[Fillr][decode] decode_store_mismatch', {
+                      expectedProductId: productId,
+                      currentProductId: cur?.product.id ?? null,
+                      stage,
                     })
-                  } catch (e) {
-                    console.warn('[Fillr][decode] apply enrich to current scan failed', e)
                   }
-                })
+                  runOnNextFrameInTransition(() => {
+                    try {
+                      useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+                    } catch (e) {
+                      console.warn('[Fillr][decode] history update after enrich failed', e)
+                    }
+                  })
+                } catch (e) {
+                  console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+                }
               })
-              .catch((err) => {
+            }
+            void runScanAiEnrichment(result.result, result.dietaryProfile, undefined, applyEnrichedToStores).catch(
+              (err) => {
                 console.warn('AI enrichment failed:', err)
-              })
+              }
+            )
           }
           if (!isDemo) {
             await incrementScanCount()

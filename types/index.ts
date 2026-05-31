@@ -200,8 +200,10 @@ export interface IngredientExplanation {
   sourceAmbiguity?: IngredientSourceAmbiguity
   /** True when decode text came from Supabase `ingredient_knowledge` (per-line cache). */
   fromCache?: boolean
-  /** Barcode fast path: AI decode still in flight — show “Decoding…” in the card. */
+  /** Barcode fast path: AI decode still in flight — UI shows one product-level status line until merge. */
   aiDecodePending?: boolean
+  /** Explicitly marks rows where real ingredient intelligence did not load. */
+  ingredientDecodeStatus?: 'decoded' | 'unavailable'
 }
 
 export type ScanIngredientSource = 'barcode' | 'ocr' | 'manual'
@@ -233,8 +235,14 @@ export interface ScanResult {
   processedRating?: ProcessedRatingSnapshot | null
   /** Inputs passed to `calculateFillrFit` (for rescoring / debug). */
   scoringData?: FillrScoringDataSnapshot
+  /** Set when Fillr Fit is locked at first display — enrichment must not recompute the score. */
+  scoringFrozenAt?: string
   /** Every ingredient line was served from Supabase `ingredient_knowledge` (no OpenAI call). */
   ingredientDecodeMeta?: { allFromCache: boolean }
+  /** 0–100 coverage score from allergen engine / heuristics (label completeness). */
+  ingredientDataQualityScore?: number
+  /** Product-name-only hints when status is UNKNOWN (never treated as confirmed contains). */
+  productNameHints?: Array<{ allergenName: string; hintText: string }>
 }
 
 /** Persisted Fillr Fit card payload */
@@ -308,11 +316,19 @@ export interface FillrScoringDataSnapshot {
   labelHaystack?: string
 }
 
+export type AllergenEvidenceSection = 'ingredients' | 'contains' | 'may_contain' | 'open_food_facts'
+
 export interface MatchedAllergen {
   allergenKey: string
   allergenName: string
   matchedIngredient: string
   explanation: string
+  /** CONTAINS vs cross-contact style MAY_CONTAIN from the deterministic engine. */
+  severity?: 'CONTAINS' | 'MAY_CONTAIN'
+  /** Where on the label / OFF record the match was found. */
+  evidenceSection?: AllergenEvidenceSection
+  /** Exact substring or tag matched (for transparency chips). */
+  evidenceText?: string
 }
 
 export interface MatchedSensitivity {

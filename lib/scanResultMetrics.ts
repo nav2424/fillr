@@ -8,6 +8,7 @@ const LOCAL_MAX = 200
 export type ScanResultMetricName =
   | 'onboarding_completed'
   | 'scan_started'
+  | 'scan_cache_hit'
   | 'scan_succeeded'
   | 'scan_failed'
   | 'scan_result_rendered'
@@ -90,4 +91,3 @@ export async function trackScanResultMetric(input: {
   await appendLocalMetric(ev)
   void persistRemoteMetric(ev)
 }
-

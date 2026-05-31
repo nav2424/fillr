@@ -4,9 +4,11 @@
  */
 
 import type { IngredientExplanation, IngredientRating } from '../types'
+import { ensureDistinctIngredientExplanation } from './ingredientProseHydration'
 import { isIngredientCopyBoilerplate } from './fillrAdapter'
 import { buildIngredientTranslationLine, firstSentencePlain } from './ingredientOneLiner'
 import { impactForYouMatchesIngredientProfile } from './ingredientImpactRelevance'
+import { ingredientLevelGoalFocusLabels } from './goalApplicability'
 
 const WEAK_COPY_PATTERNS: RegExp[] = [
   /^here is what ["'“”].+["'“”] usually means on a packaged-?food label\.?$/i,
@@ -170,6 +172,17 @@ function capLen(s: string, max: number): string {
   return clipped.endsWith('…') ? clipped : `${clipped}…`
 }
 
+function stripSentencePunctuation(s: string): string {
+  return s.trim().replace(/[.!?]["']?\s*$/u, '')
+}
+
+function prefixEducationalLine(label: 'What it is' | "Why it's here" | 'What it does', raw: string): string {
+  const line = stripSentencePunctuation(simplifyShopperCopy(raw, ''))
+  if (!line) return ''
+  if (new RegExp(`^${escapeRegex(label)}\\s*:`, 'i').test(line)) return `${line}.`
+  return `${label}: ${line}.`
+}
+
 function endsWithSentencePunctuation(s: string): boolean {
   return /[.!?]["']?\s*$/.test(s.trim())
 }
@@ -285,6 +298,28 @@ function splitIntoCandidateBullets(raw: string): string[] {
   return byPeriod.length ? byPeriod : [t]
 }
 
+function pushEducationalBullet(
+  bullets: string[],
+  label: 'What it is' | "Why it's here" | 'What it does',
+  raw: string | null | undefined,
+  ingredientName: string
+): void {
+  if (bullets.length >= 2) return
+  if (!isUsableIngredientIntelligenceField(raw, 10)) return
+  const simplified = simplifyShopperCopy(String(raw), ingredientName)
+  if (
+    !isUsableIngredientIntelligenceField(simplified, 10) ||
+    isUselessNoConflictText(simplified) ||
+    isConditionalMedicalWarning(simplified)
+  ) {
+    return
+  }
+  const line = capLen(prefixEducationalLine(label, simplified), MAX_BULLET_CHARS)
+  const norm = normalizeCompare(line)
+  if (!norm || bullets.some((b) => normalizeCompare(b) === norm)) return
+  bullets.push(line)
+}
+
 function dedupeJudgmentAndImpact(
   judgment: string | null,
   impact: string | null
@@ -348,9 +383,7 @@ function buildIngredientEvidence(ingredient: IngredientExplanation): Array<{ lab
   const focusLabels = profileFocusLabelsForIngredient(ingredient)
   const explicitConflictWith =
     focusLabels.length > 0 &&
-    (ingredient.personalFlag === 'preference_conflict' ||
-      ingredient.flagDriver === 'goal' ||
-      ingredient.flagDriver === 'preference')
+    (ingredient.personalFlag === 'preference_conflict' || ingredient.flagDriver === 'preference')
       ? `Conflict with "${focusLabels[0]}"`
       : null
 
@@ -442,7 +475,7 @@ function systemJudgmentContradictsDisplayRating(
   )
 }
 
-const PROFILE_FOCUS_LABELS: Record<string, string> = {
+const PREFERENCE_FOCUS_LABELS: Record<string, string> = {
   vegan: 'Vegan',
   vegetarian: 'Vegetarian',
   kosher: 'Kosher',
@@ -456,16 +489,11 @@ const PROFILE_FOCUS_LABELS: Record<string, string> = {
   low_calorie: 'Low calorie',
   diabetic_friendly: 'Diabetic-friendly',
   less_processed: 'Eat cleaner / less processed',
-  more_protein: 'Eat more protein',
-  less_sugar: 'Eat less sugar',
-  lose_weight: 'Lose weight',
-  gain_weight: 'Gain weight',
-  gut_health: 'Improve gut health',
-  eat_cleaner: 'Eat cleaner',
-  balanced_diet: 'Maintain a balanced diet',
-  reduce_upf: 'Reduce ultra-processed foods',
-  lower_sodium: 'Lower sodium',
-  understand: "Understand what I'm eating",
+}
+
+const PROFILE_FOCUS_LABELS: Record<string, string> = {
+  ...PREFERENCE_FOCUS_LABELS,
+  ...ingredientLevelGoalFocusLabels(),
 }
 
 const loggedFallbackFocusMisses = new Set<string>()
@@ -515,15 +543,21 @@ function debugLogFallbackWithoutDetectedFocus(
   })
 }
 
-function synthesizeShortLabel(ingredient: IngredientExplanation, rating: IngredientRating): string {
+function synthesizeShortLabel(
+  ingredient: IngredientExplanation,
+  rating: IngredientRating,
+  allergyHit: boolean,
+  sensitivityHit: boolean
+): string {
   const explicit = String(ingredient.shortLabel ?? '').trim()
   if (explicit && !isWeakIngredientCopy(explicit)) return explicit
   const focus = profileFocusLabelsForIngredient(ingredient)
-  if (ingredient.flagDriver === 'allergy' || ingredient.personalFlag === 'allergy') return 'Allergy-relevant ingredient'
-  if (ingredient.flagDriver === 'sensitivity' || ingredient.personalFlag === 'sensitivity')
-    return 'Sensitivity-relevant ingredient'
+  if (allergyHit) return 'Allergy-relevant ingredient'
+  if (sensitivityHit) return 'Sensitivity-relevant ingredient'
   if (focus.length > 0) return `${focus[0]} conflict`
-  if (ingredient.flagDriver === 'goal' || ingredient.flagDriver === 'preference') return 'Goal-relevant ingredient'
+  if (ingredient.flagDriver === 'preference' || ingredient.personalFlag === 'preference_conflict') {
+    return 'Preference-relevant ingredient'
+  }
   if (rating === 'avoid') return 'Higher-risk ingredient'
   if (rating === 'concerning') return 'Processing concern'
   if (rating === 'okay') return 'Formula ingredient'
@@ -532,18 +566,20 @@ function synthesizeShortLabel(ingredient: IngredientExplanation, rating: Ingredi
 
 function synthesizeSystemJudgment(
   ingredient: IngredientExplanation,
-  rating: IngredientRating
+  rating: IngredientRating,
+  allergyHit: boolean,
+  sensitivityHit: boolean
 ): string {
   const name = ingredient.name.trim() || 'This ingredient'
   const focus = profileFocusLabelsForIngredient(ingredient)
   const focusLead = profileFocusLead(focus)
-  if (ingredient.flagDriver === 'allergy' || ingredient.personalFlag === 'allergy') {
+  if (allergyHit) {
     return `${name} is flagged because it can trigger the allergen profile matched on this scan.`
   }
-  if (ingredient.flagDriver === 'sensitivity' || ingredient.personalFlag === 'sensitivity') {
+  if (sensitivityHit) {
     return `${name} is flagged for your sensitivity profile and should be treated as a caution line.`
   }
-  if (ingredient.flagDriver === 'goal' || ingredient.flagDriver === 'preference') {
+  if (ingredient.flagDriver === 'preference' || ingredient.personalFlag === 'preference_conflict') {
     return `${name} appears to conflict with ${focusLead}.`
   }
   if (rating === 'avoid') {
@@ -573,10 +609,10 @@ function synthesizeImpactForYou(args: {
     debugLogFallbackWithoutDetectedFocus(ingredient, rating)
   }
   const focusLead = profileFocusLead(focus)
-  if (allergyHit || ingredient.personalFlag === 'allergy') {
+  if (allergyHit) {
     return `${name} conflicts with your allergy settings, so this product is not a good fit for your profile.`
   }
-  if (sensitivityHit || ingredient.personalFlag === 'sensitivity') {
+  if (sensitivityHit) {
     return `${name} conflicts with your sensitivity settings, so this product is more likely to bother you.`
   }
   if (celiacHit || ingredient.personalFlag === 'celiac') {
@@ -585,19 +621,19 @@ function synthesizeImpactForYou(args: {
   if (ingredient.personalFlag === 'avoiding' || ingredient.personalFlag === 'preference_conflict') {
     return `${name} does not align with ${focusLead}.`
   }
-  if (hasProfileRiskContext) {
+  if (hasProfileRiskContext && focus.length > 0) {
     return `${name} does not align with ${focusLead} and is one of the lines driving this rating.`
   }
   if (rating === 'avoid') {
-    return `${name} does not align with ${focusLead} and is treated as an avoid line for your scans.`
+    return `${name} is treated as a high-risk line based on Fillr ingredient rules, not your diet goal alone.`
   }
   if (rating === 'concerning') {
-    return `${name} may not align with ${focusLead}, so treat it as an occasional ingredient.`
+    return `${name} is mostly a processing or additive line; see the product score for goal fit.`
   }
-  if (rating === 'okay') {
-    return `${name} can still align with ${focusLead}, but frequency matters for your goals.`
+  if (rating === 'okay' || rating === 'clean') {
+    return `${name} is a typical formula ingredient; your diet goal is reflected in the overall product score.`
   }
-  return `${name} aligns with ${focusLead} in this product.`
+  return `${name} is included for context in your ingredient breakdown.`
 }
 
 /**
@@ -607,7 +643,9 @@ export function buildIngredientCardViewModel(
   ingredient: IngredientExplanation,
   options?: BuildIngredientCardViewModelOptions
 ): IngredientCardViewModel {
-  const rawRating = (options?.displayRating ?? ingredient.ingredientRating ?? 'okay') as string
+  const ingredientResolved = ensureDistinctIngredientExplanation(ingredient)
+
+  const rawRating = (options?.displayRating ?? ingredientResolved.ingredientRating ?? 'okay') as string
   const allergyHit = options?.allergyMatch === true
   const sensitivityHit = options?.sensitivityMatch === true
   const celiacHit = options?.celiacMatch === true
@@ -615,9 +653,9 @@ export function buildIngredientCardViewModel(
     allergyHit ||
     sensitivityHit ||
     celiacHit ||
-    ingredient.personalFlag === 'allergy' ||
-    ingredient.personalFlag === 'sensitivity' ||
-    ingredient.personalFlag === 'celiac'
+    ingredient.personalFlag === 'avoiding' ||
+    ingredient.personalFlag === 'preference_conflict' ||
+    ingredient.flagDriver === 'preference'
   const rating: IngredientRating =
     rawRating === 'safe' || rawRating === 'clean'
       ? 'clean'
@@ -629,33 +667,61 @@ export function buildIngredientCardViewModel(
             ? 'avoid'
             : 'okay'
 
-  const title = (ingredient.name ?? 'Ingredient').trim() || 'Ingredient'
+  const title = (ingredientResolved.name ?? 'Ingredient').trim() || 'Ingredient'
 
-  const shortLabel = pickCollapsedShortLabel(ingredient) ?? synthesizeShortLabel(ingredient, rating)
+  const shortLabel =
+    pickCollapsedShortLabel(ingredientResolved) ??
+    synthesizeShortLabel(ingredientResolved, rating, allergyHit, sensitivityHit)
 
-  const rawBullets = ingredient.whyItMattersBullets
   let bullets: string[] = []
-  if (Array.isArray(rawBullets) && rawBullets.length >= 2) {
-    bullets = rawBullets
-      .map((b) => simplifyShopperCopy(String(b), ingredient.name))
-      .filter((b) => isUsableIngredientIntelligenceField(b, 8) && !isUselessNoConflictText(b))
-      .slice(0, 2)
-      .map((b) => capLen(b, MAX_BULLET_CHARS))
+
+  pushEducationalBullet(
+    bullets,
+    'What it is',
+    pickFirstUsable(
+      10,
+      firstSentencePlain(ingredientResolved.whatItIs || ''),
+      firstSentencePlain(ingredientResolved.labelDecoder || ''),
+      ingredientResolved.headline
+    ),
+    ingredientResolved.name
+  )
+  pushEducationalBullet(
+    bullets,
+    "Why it's here",
+    pickFirstUsable(
+      10,
+      firstSentencePlain(ingredientResolved.whatItDoes || ingredientResolved.whyItsUsed || ''),
+      firstSentencePlain(ingredientResolved.bodyEffect || '')
+    ),
+    ingredientResolved.name
+  )
+
+  if (bullets.length < 2) {
+    const rawBullets = ingredient.whyItMattersBullets
+    if (Array.isArray(rawBullets) && rawBullets.length >= 2) {
+      for (const raw of rawBullets) {
+        if (bullets.length >= 2) break
+        pushEducationalBullet(
+          bullets,
+          bullets.length === 0 ? 'What it is' : "Why it's here",
+          String(raw),
+          ingredient.name
+        )
+      }
+    }
   }
   if (bullets.length < 2) {
     const wim = pickFirstUsable(12, ingredient.whyItMatters)
     const parts = wim ? splitIntoCandidateBullets(wim) : []
     for (const p of parts) {
       if (bullets.length >= 2) break
-      const simp = simplifyShopperCopy(p, ingredient.name)
-      if (
-        isUsableIngredientIntelligenceField(simp, 8) &&
-        !isUselessNoConflictText(simp) &&
-        !bullets.includes(simp) &&
-        !isConditionalMedicalWarning(simp)
-      ) {
-        bullets.push(capLen(simp, MAX_BULLET_CHARS))
-      }
+      pushEducationalBullet(
+        bullets,
+        bullets.length === 0 ? 'What it is' : "Why it's here",
+        p,
+        ingredient.name
+      )
     }
   }
   if (bullets.length < 2) {
@@ -667,18 +733,8 @@ export function buildIngredientCardViewModel(
     )
     const s1 = w1 ? simplifyShopperCopy(w1, ingredient.name) : null
     const s2 = w2 ? simplifyShopperCopy(w2, ingredient.name) : null
-    if (s1 && !isUselessNoConflictText(s1) && !bullets.includes(s1) && !isConditionalMedicalWarning(s1)) {
-      bullets.push(capLen(s1, MAX_BULLET_CHARS))
-    }
-    if (
-      s2 &&
-      !isUselessNoConflictText(s2) &&
-      bullets.length < 2 &&
-      s2 !== s1 &&
-      !isConditionalMedicalWarning(s2)
-    ) {
-      bullets.push(capLen(s2, MAX_BULLET_CHARS))
-    }
+    pushEducationalBullet(bullets, 'What it is', s1, ingredient.name)
+    pushEducationalBullet(bullets, "Why it's here", s2, ingredient.name)
   }
   const shortNorm = normalizeCompare(shortLabel ?? '')
   bullets = bullets
@@ -686,7 +742,16 @@ export function buildIngredientCardViewModel(
       if (!shortNorm) return true
       const bn = normalizeCompare(b)
       if (!bn) return false
-      return bn !== shortNorm && !bn.includes(shortNorm)
+      if (bn === shortNorm) return false
+      // Collapsed subtitle is often the first sentence of "What it is" — keep the labeled bullet.
+      if (
+        shortNorm.length >= 18 &&
+        bn.includes(shortNorm) &&
+        /^(what it is|why it s here)\b/.test(bn)
+      ) {
+        return true
+      }
+      return !bn.includes(shortNorm)
     })
     .slice(0, 2)
 
@@ -733,6 +798,7 @@ export function buildIngredientCardViewModel(
     !impactForYouMatchesIngredientProfile(impactForYou, ingredient, {
       allergyMatch: allergyHit,
       sensitivityMatch: sensitivityHit,
+      celiacMatch: celiacHit,
     })
   ) {
     impactForYou = null
@@ -746,7 +812,10 @@ export function buildIngredientCardViewModel(
   impactForYou = deduped.impactForYou
 
   if (!systemJudgment && (rating === 'avoid' || hasProfileRiskContext)) {
-    systemJudgment = capLen(synthesizeSystemJudgment(ingredient, rating), MAX_SECTION_CHARS)
+    systemJudgment = capLen(
+      synthesizeSystemJudgment(ingredient, rating, allergyHit, sensitivityHit),
+      MAX_SECTION_CHARS
+    )
   }
   if (!impactForYou && hasProfileRiskContext) {
     impactForYou = capLen(
@@ -760,6 +829,16 @@ export function buildIngredientCardViewModel(
       }),
       MAX_SECTION_CHARS
     )
+  }
+  if (
+    impactForYou &&
+    !impactForYouMatchesIngredientProfile(impactForYou, ingredient, {
+      allergyMatch: allergyHit,
+      sensitivityMatch: sensitivityHit,
+      celiacMatch: celiacHit,
+    })
+  ) {
+    impactForYou = null
   }
 
   const impactNorm = normalizeCompare(impactForYou ?? '')

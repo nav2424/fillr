@@ -89,9 +89,11 @@ function ScoreSkeleton() {
 export type ScoreDisplayProps = {
   fillrFit: FillrFitSnapshot | null
   isLoading?: boolean
+  /** When false, hides the reason line (use a separate hero takeaway instead). */
+  showReason?: boolean
 }
 
-export function ScoreDisplay({ fillrFit, isLoading }: ScoreDisplayProps) {
+export function ScoreDisplay({ fillrFit, isLoading, showReason = true }: ScoreDisplayProps) {
   const progressAnim = useRef(new Animated.Value(0)).current
   const [gradLeft, gradRight] = fillrFit
     ? progressGradient(fillrFit.score, fillrFit.verdict)
@@ -159,16 +161,16 @@ export function ScoreDisplay({ fillrFit, isLoading }: ScoreDisplayProps) {
         </Animated.View>
       </View>
 
-      <Text style={styles.reasonText}>{fillrFit.reason}</Text>
+      {showReason ? <Text style={styles.reasonText}>{fillrFit.reason}</Text> : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   root: {
-    paddingVertical: 4,
-    paddingBottom: 16,
-    minHeight: 120,
+    paddingTop: 2,
+    paddingBottom: 8,
+    minHeight: 88,
   },
   scoreLoadingContainer: {
     minHeight: 120,
@@ -222,7 +224,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    marginBottom: 8,
+    marginBottom: 7,
   },
   scoreNumWrap: {
     flexDirection: 'row',
@@ -230,10 +232,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   scoreHuge: {
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: '800',
     letterSpacing: -2,
-    lineHeight: 42,
+    lineHeight: 40,
   },
   scoreDenom: {
     fontSize: 15,
@@ -248,32 +250,32 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: theme.textFaint,
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   fitVerdict: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     letterSpacing: -0.3,
     textAlign: 'right',
   },
   progressTrack: {
-    height: 8,
+    height: 7,
     backgroundColor: 'rgba(15, 23, 42, 0.08)',
     borderRadius: 100,
     marginBottom: 8,
     overflow: 'hidden',
   },
   progressFillWrap: {
-    height: 8,
+    height: 7,
     borderRadius: 100,
     overflow: 'hidden',
   },
   reasonText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '500',
     color: theme.textFaint,
-    lineHeight: 15,
+    lineHeight: 16,
   },
 })

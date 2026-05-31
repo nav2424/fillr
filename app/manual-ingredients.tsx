@@ -13,7 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { createScanResultFromIngredientText, enrichScanResultWithAI } from '../services/productService'
+import { createScanResultFromIngredientText, runScanAiEnrichment } from '../services/productService'
+import type { ScanResult } from '../types'
 import { useUserStore } from '../store/userStore'
 import { useAuthStore } from '../store/authStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
@@ -98,33 +99,40 @@ export default function ManualIngredientsScreen() {
         barcode: result.product.barcode,
         payload: { source: 'manual', ingredient_count: result.ingredientBreakdown.length },
       })
-      void enrichScanResultWithAI(result, dietaryProfile)
-        .then((enriched) => {
-          runAfterInteractionsAndNextFrame(() => {
-            try {
-              const cur = useCurrentScanStore.getState().result
-              if (cur?.product.id === productId) {
-                if (__DEV__) console.log('[Fillr][decode] decode_merged_to_store', { productId })
-                setCurrentScan(enriched)
-              } else if (__DEV__) {
-                console.log('[Fillr][decode] decode_store_mismatch', {
-                  expectedProductId: productId,
-                  currentProductId: cur?.product.id ?? null,
-                })
+      const applyEnrichedToStores = (enriched: ScanResult, stage: 'ingredients' | 'product') => {
+        runAfterInteractionsAndNextFrame(() => {
+          try {
+            const cur = useCurrentScanStore.getState().result
+            if (cur?.product.id === productId) {
+              if (__DEV__) {
+                console.log(
+                  stage === 'ingredients'
+                    ? '[Fillr][decode] decode_merged_to_store'
+                    : '[Fillr][decode] product_analysis_merged',
+                  { productId }
+                )
               }
-              runOnNextFrameInTransition(() => {
-                try {
-                  useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
-                } catch (e) {
-                  console.warn('[Fillr][decode] history update after enrich failed', e)
-                }
+              setCurrentScan(enriched)
+            } else if (__DEV__) {
+              console.log('[Fillr][decode] decode_store_mismatch', {
+                expectedProductId: productId,
+                currentProductId: cur?.product.id ?? null,
+                stage,
               })
-            } catch (e) {
-              console.warn('[Fillr][decode] apply enrich to current scan failed', e)
             }
-          })
+            runOnNextFrameInTransition(() => {
+              try {
+                useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+              } catch (e) {
+                console.warn('[Fillr][decode] history update after enrich failed', e)
+              }
+            })
+          } catch (e) {
+            console.warn('[Fillr][decode] apply enrich to current scan failed', e)
+          }
         })
-        .catch(() => {})
+      }
+      void runScanAiEnrichment(result, dietaryProfile, undefined, applyEnrichedToStores).catch(() => {})
       await incrementScanCount()
       if (userId) {
         void (async () => {

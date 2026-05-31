@@ -19,6 +19,7 @@ import { getCeliacInsight } from './smartInsights'
 import { englishPrimarySegment } from './bilingualDisplay'
 import { dedupeBilingualIngredientNames } from './bilingualIngredients'
 import {
+  isBareAllergenDisclosureName,
   parseIngredientListFromPlain,
   stripHtmlForIngredients,
 } from './ingredientTextParsing'
@@ -478,7 +479,7 @@ export function buildFallbackIngredientExplanation(name: string): IngredientExpl
       'Used in small amounts; not a source of meaningful calories or nutrients.',
       'Some people avoid all preservatives; if you have medical restrictions, check with your clinician.'
     )
-  } else if (/\b(natural flavor|natural flavour|artificial flavor|artificial flavour)\b/.test(lower)) {
+  } else if (/\b(natural flavors?|natural flavours?|artificial flavors?|artificial flavours?)\b/.test(lower)) {
     commonName = 'Flavoring'
     set(
       lower.includes('natural')
@@ -732,7 +733,10 @@ export function buildFallbackIngredientExplanation(name: string): IngredientExpl
   )
 
   const firstSentence = whatItIs.split('.')[0]?.trim() || whatItIs.trim()
-  const labelDecoder = `${firstSentence}${/[.!?]$/.test(firstSentence) ? '' : '.'}`
+  const labelDecoder =
+    firstSentence.length >= 20 && firstSentence.length < whatItIs.trim().length - 10
+      ? `${firstSentence}${/[.!?]$/.test(firstSentence) ? '' : '.'}`
+      : `On the label, “${commonName}” names this part of the recipe in plain language.`
 
   return {
     name: clean,
@@ -761,7 +765,17 @@ function enrichFromDatabaseOrFallback(base: IngredientExplanation): IngredientEx
     base.explanation ??
     `${base.whatItIs.replace(/\.$/, '')} ${base.whyItsUsed}`.replace(/\s+/g, ' ').trim()
   const whatItDoes = base.whatItDoes ?? base.whyItsUsed
-  const bodyEffect = base.bodyEffect ?? base.whyItMatters ?? base.whatToKnow
+  const whatItIsNorm = (base.whatItIs ?? '').trim().toLowerCase()
+  const pickDistinct = (...candidates: (string | undefined)[]) => {
+    for (const c of candidates) {
+      const t = (c ?? '').trim()
+      if (!t) continue
+      if (t.toLowerCase() === whatItIsNorm) continue
+      return t
+    }
+    return ''
+  }
+  const bodyEffect = pickDistinct(base.bodyEffect, base.whyItMatters, base.whatToKnow)
   const headline =
     base.headline ??
     explanation
@@ -937,6 +951,22 @@ function getSensitivityLabel(key: string): string {
   return SENSITIVITY_OPTIONS.find((o) => o.key === key)?.label ?? key
 }
 
+function isAllergenDisclosurePseudoIngredient(name: string): boolean {
+  if (isBareAllergenDisclosureName(name)) return true
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[.:;]+$/g, '')
+    .replace(/\s+/g, ' ')
+  if (!normalized) return true
+  if (/^allergen (info|information)$/.test(normalized)) return true
+  if (/^(contains|may contain|allergen[s]?)[\s:]+/.test(normalized)) return true
+  if (/^tree nuts?$/.test(normalized)) {
+    return true
+  }
+  return false
+}
+
 export function mapDetectionToFillrResult(
   barcode: string,
   productName: string,
@@ -947,18 +977,33 @@ export function mapDetectionToFillrResult(
   const safetyStatus = mapOverallStatus(output.overall_status)
 
   const matchedAllergens: FillrMatchedAllergen[] = output.matched_allergens.map(
-    (m: MatchedAllergen) => ({
-      allergenKey: m.allergen_id,
-      allergenName: m.allergen_name,
-      matchedIngredient: englishPrimarySegment(m.match_text),
-      explanation: getIngredientExplanation(m.match_text)?.whatToKnow ?? 
-        `⚠️ Contains ${m.allergen_name} from your allergy list — not safe for you.`,
-    })
+    (m: MatchedAllergen) => {
+      const evidenceSection =
+        m.section === 'may_contain'
+          ? 'may_contain'
+          : m.section === 'contains'
+            ? 'contains'
+            : 'ingredients'
+      const offStyle = /^en:|^fr:/i.test(m.match_text)
+      return {
+        allergenKey: m.allergen_id,
+        allergenName: m.allergen_name,
+        matchedIngredient: englishPrimarySegment(m.match_text),
+        explanation:
+          getIngredientExplanation(m.match_text)?.whatToKnow ??
+          `⚠️ Contains ${m.allergen_name} from your allergy list — not safe for you.`,
+        severity: m.severity,
+        evidenceSection: offStyle ? 'open_food_facts' : evidenceSection,
+        evidenceText: m.match_text,
+      }
+    }
   )
 
   const ingredientsTextRaw = output.scan_log?.ingredients_text_used || ''
   const parseSource = params.ingredientParseSource ?? 'barcode'
-  const ingredientNames = parseIngredients(ingredientsTextRaw, parseSource)
+  const ingredientNames = parseIngredients(ingredientsTextRaw, parseSource).filter(
+    (name) => !isAllergenDisclosurePseudoIngredient(name)
+  )
   const ingredientsText =
     ingredientNames.length > 0
       ? ingredientNames.join(', ')
@@ -1254,6 +1299,11 @@ export function mapDetectionToFillrResult(
     updatedAt: new Date().toISOString(),
   }
 
+  const productNameHints = output.product_name_hints?.map((h) => ({
+    allergenName: h.allergen_name,
+    hintText: h.hint_text,
+  }))
+
   return {
     product,
     safetyStatus,
@@ -1263,6 +1313,10 @@ export function mapDetectionToFillrResult(
     smartSummary,
     ingredientBreakdown,
     insights,
+    ...(output.scan_log?.source_coverage_score != null
+      ? { ingredientDataQualityScore: output.scan_log.source_coverage_score }
+      : {}),
+    ...(productNameHints?.length ? { productNameHints } : {}),
     ...(meta?.crossContactWarnings?.length
       ? { crossContactWarnings: [...meta.crossContactWarnings] }
       : {}),
