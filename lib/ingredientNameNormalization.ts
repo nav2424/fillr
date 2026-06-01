@@ -28,6 +28,13 @@ export const canonicalIngredientMap: Record<string, string> = {
   creme: 'cream',
   'creme a cafe': 'coffee cream',
   lait: 'milk',
+  'modified starch': 'modified food starch',
+  'modified corn starch': 'modified food starch',
+  'soluble corn fibre': 'soluble corn fiber',
+  'mono and diglycerides': 'mono- and diglycerides',
+  flavour: 'flavouring',
+  flavors: 'flavoring',
+  flavor: 'flavoring',
 }
 
 function basicNormalize(raw: string): string {

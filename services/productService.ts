@@ -843,7 +843,7 @@ export async function enrichScanResultWithAI(
     return clearPendingDecodeState(base)
   }
   try {
-    const skipIngredientRepair = aiOptions?.skipIngredientRepair ?? true
+    const skipIngredientRepair = aiOptions?.skipIngredientRepair ?? false
     devDecodeLog('decode_enrich_started', {
       ingredientTextChars: text.length,
       fromOcr: Boolean(aiOptions?.fromOcr),
@@ -1154,7 +1154,7 @@ export async function createScanResultFromIngredientText(
     try {
       const ai = await analyzeIngredientsWithTimeout(pasted, dietaryProfile, {
         fromOcr: params.scanSource === 'ocr',
-        skipIngredientRepair: params.scanSource === 'ocr' ? false : true,
+        skipIngredientRepair: false,
         ingredientParseSource: parseSource,
       })
       if (ai) {

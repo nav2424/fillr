@@ -1646,7 +1646,23 @@ function buildLocalFallbackAnalysisItem(labelName: string): IngredientAnalysisIt
     contextStat: '',
     ratingSource: 'deterministic',
     from_cache: false,
-    decodeStatus: 'unavailable',
+    ...(ingredientAnalysisItemFailsGenericGate({
+      name,
+      ingredient_name: name,
+      shortLabel,
+      headline,
+      labelDecoder,
+      whatItIs,
+      whatItDoes,
+      bodyEffect,
+      funFact: '',
+      whyItMattersYou,
+      ratingReason,
+      contextStat: '',
+      rating,
+    })
+      ? { decodeStatus: 'unavailable' as const }
+      : {}),
   }
 }
 
@@ -1722,7 +1738,7 @@ export async function analyzeIngredientsWithOpenAI(
   const parseSource: IngredientTextParseSource =
     options?.ingredientParseSource ?? (options?.fromOcr ? 'ocr' : 'barcode')
   const cleanedLabel = prepareIngredientTextForAnalysis(ingredientsList)
-  const ingredientNames = parseIngredients(cleanedLabel, parseSource)
+  const ingredientNames = parseIngredients(ingredientsList, parseSource)
   devDecodeLog('decode_request_started', {
     parseSource,
     ingredientCount: ingredientNames.length,
@@ -2024,7 +2040,7 @@ export async function repairScanIngredientBreakdownGaps(
   const cleanedLabel = prepareIngredientTextForAnalysis(ingredientsList)
   const productCategory = detectProductCategoryFromSignals(
     cleanedLabel,
-    parseIngredients(cleanedLabel, 'barcode').map((n) => normalizeIngredientName(n))
+    parseIngredients(ingredientsList, 'barcode').map((n) => normalizeIngredientName(n))
   )
   const breakdown = [...scan.ingredientBreakdown]
   let repairedCount = 0

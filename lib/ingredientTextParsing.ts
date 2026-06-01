@@ -526,6 +526,31 @@ export function expandOcrIngredientSeparators(blob: string): string {
   return s.replace(/\s+/g, ' ').trim()
 }
 
+/** Split on comma/semicolon only outside `(...)` / `[...]` so oil-source sub-lists stay on one line. */
+export function splitIngredientBlobOutsideParens(blob: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < blob.length; i++) {
+    const c = blob[i]
+    if (c === '(' || c === '[') depth++
+    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1)
+    else if ((c === ',' || c === ';') && depth === 0) {
+      parts.push(blob.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(blob.slice(start))
+  return parts
+}
+
+/** Bare seed names split out of oil parentheticals — not useful as standalone decode rows. */
+export function isOrphanOilSourceSeedToken(name: string): boolean {
+  const t = name.trim().toLowerCase()
+  if (!t || /\boil\b/.test(t)) return false
+  return /^(soybean|cottonseed|rapeseed|canola|corn|palm|sunflower|safflower|peanut|grapeseed)$/.test(t)
+}
+
 /** Split on comma/semicolon, pick English segment per chunk, then dedupe. */
 export function chunkIngredientBlobToEnglishNames(
   blob: string,
@@ -533,8 +558,7 @@ export function chunkIngredientBlobToEnglishNames(
 ): string[] {
   const mode: 'bilingual' | 'exact' =
     dedupe === 'auto' ? (frenchLikelihood(blob) >= 2 ? 'bilingual' : 'exact') : dedupe
-  const chunks = blob
-    .split(/[,;]/)
+  const chunks = splitIngredientBlobOutsideParens(blob)
     .map((s) => sanitizeIngredientToken(s.trim().replace(/\.\s*$/, '')))
     .filter(Boolean)
   const picked = chunks
@@ -572,10 +596,11 @@ export function parseIngredientListFromPlain(
   const englishSliced = sliceToEnglishIngredientSection(htmlStripped, { ocr: false })
   const withoutPackagingTail = truncateIngredientBlobAtPackagingTail(englishSliced)
   const advisoryStripped = stripAllergenAdvisoryClausesFromBlob(withoutPackagingTail)
-  const stripped = prepareIngredientTextForAnalysis(advisoryStripped)
-  return chunkIngredientBlobToEnglishNames(stripped, 'auto')
+  const normalized = advisoryStripped.replace(/\s+/g, ' ').trim()
+  return chunkIngredientBlobToEnglishNames(normalized, 'auto')
     .filter(isPlausibleIngredientToken)
     .filter((name) => !isBareAllergenDisclosureName(name))
+    .filter((name) => !isOrphanOilSourceSeedToken(name))
 }
 
 /**
