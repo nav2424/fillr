@@ -6,7 +6,11 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "channel": "development"
     },
     "development-simulator": {
       "developmentClient": true,
@@ -30,6 +34,7 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "development": {}
   }
 }
