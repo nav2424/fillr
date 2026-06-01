@@ -19,7 +19,6 @@ import { getCeliacInsight } from './smartInsights'
 import { englishPrimarySegment } from './bilingualDisplay'
 import { dedupeBilingualIngredientNames } from './bilingualIngredients'
 import {
-  isBareAllergenDisclosureName,
   parseIngredientListFromPlain,
   stripHtmlForIngredients,
 } from './ingredientTextParsing'
@@ -952,7 +951,6 @@ function getSensitivityLabel(key: string): string {
 }
 
 function isAllergenDisclosurePseudoIngredient(name: string): boolean {
-  if (isBareAllergenDisclosureName(name)) return true
   const normalized = name
     .trim()
     .toLowerCase()
