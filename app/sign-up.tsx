@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Linking from 'expo-linking'
 import { Link, router, useGlobalSearchParams, useLocalSearchParams } from 'expo-router'
 import { FillrButton } from '../components'
+import { REFERRAL_INVITEE_BONUS } from '../constants/subscription'
 import { colors, spacing, typography } from '../constants/theme'
 import { looksLikeReferralCode, normalizeReferralCode, getRefFromUrl } from '../lib/referrals'
 import {
@@ -214,7 +215,7 @@ export default function SignUpScreen() {
         {referralLocked && (
           <View style={styles.invitedBanner}>
             <Text style={styles.invitedTitle}>🎁 You were invited to Fillr</Text>
-            <Text style={styles.invitedSub}>Sign up to claim your 3 bonus scans</Text>
+            <Text style={styles.invitedSub}>Sign up to claim your {REFERRAL_INVITEE_BONUS} bonus scans</Text>
           </View>
         )}
         <View style={styles.header}>
@@ -267,7 +268,7 @@ export default function SignUpScreen() {
 
           <View style={styles.referralWrap}>
             <Text style={styles.referralPrompt}>
-              🎁 Get 3 bonus scans when you sign up with a friend's code
+              🎁 Get {REFERRAL_INVITEE_BONUS} bonus scans when you sign up with a friend's code
             </Text>
             <Text style={styles.referralLabel}>Have a referral code? (optional)</Text>
             <View
@@ -305,7 +306,7 @@ export default function SignUpScreen() {
             {referralLocked ? (
               <Text style={styles.referralValid}>Applied automatically</Text>
             ) : referralFormatValid ? (
-              <Text style={styles.referralValid}>✓ Valid code — you'll get 3 bonus scans on signup</Text>
+              <Text style={styles.referralValid}>✓ Valid code — you'll get {REFERRAL_INVITEE_BONUS} bonus scans on signup</Text>
             ) : referralTouched && normalizedRef.length > 0 ? (
               <Text style={styles.referralInvalid}>Invalid code format — check and try again</Text>
             ) : null}

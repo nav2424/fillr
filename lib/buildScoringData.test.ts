@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { DietaryProfile, IngredientExplanation, ScanResult } from '../types'
-import { buildScoringData, effectiveTierForScoringCounts } from './buildScoringData'
+import { buildScoringData, detectProductCategoryFromSignals, effectiveTierForScoringCounts } from './buildScoringData'
+import { calculateFillrFit } from './fillrScoring'
 import { calculateProcessedRating } from './processedRating'
 
 const emptyProfile: DietaryProfile = {
@@ -74,6 +75,68 @@ test('processed rating drops when many clean lines are industrial by name', () =
   assert.ok(naiveHigh && naiveHigh.score >= 85)
   assert.ok(fixed && fixed.score < naiveHigh!.score)
   assert.ok(fixed && fixed.score < 75, `expected materially lower processing score, got ${fixed?.score}`)
+})
+
+test('detectProductCategory classifies Kit Kat as candy not clean_snack', () => {
+  const kitKatNames = [
+    'sugar',
+    'wheat flour',
+    'cocoa butter',
+    'cocoa mass',
+    'vegetable fats',
+    'whey powder',
+    'milk fat',
+    'milk solids',
+    'emulsifier',
+    'yeast',
+    'raising agent',
+    'salt',
+    'flavouring',
+  ]
+  const category = detectProductCategoryFromSignals('Kit Kat', kitKatNames)
+  assert.equal(category, 'candy')
+})
+
+test('detectProductCategory uses candy lane for Kit Kat-style scoring ceiling', () => {
+  const scan: ScanResult = {
+    ...minimalScan,
+    product: {
+      ...minimalScan.product,
+      name: 'Kit Kat',
+      ingredientText:
+        'Sugar, wheat flour, cocoa butter, cocoa mass, vegetable fats, whey powder, milk fat, milk solids, emulsifier, yeast, raising agent, salt, flavouring.',
+    },
+  }
+  const list: IngredientExplanation[] = [
+    ing('Sugar', 'okay'),
+    ing('Wheat flour', 'okay'),
+    ing('Cocoa butter', 'clean'),
+    ing('Cocoa mass', 'clean'),
+    ing('Vegetable fats', 'okay'),
+    ing('Whey powder', 'okay'),
+    ing('Milk fat', 'okay'),
+    ing('Milk solids', 'okay'),
+    ing('Emulsifier', 'okay'),
+    ing('Yeast', 'okay'),
+    ing('Raising agent', 'okay'),
+    ing('Salt', 'clean'),
+    ing('Flavouring', 'okay'),
+  ]
+  const data = buildScoringData(scan, list, emptyProfile)
+  assert.equal(data.productCategory, 'candy')
+  const fit = calculateFillrFit(data)
+  assert.ok(fit.score <= 50, `expected candy ceiling <= 50, got ${fit.score}`)
+  assert.match(fit.reason, /candy/i)
+})
+
+test('detectProductCategory keeps protein bars out of candy lane', () => {
+  const category = detectProductCategoryFromSignals('Chocolate Protein Bar', [
+    'milk protein isolate',
+    'sugar',
+    'cocoa butter',
+    'chocolate',
+  ])
+  assert.equal(category, 'protein_bar')
 })
 
 test('ingredient-level sensitivity flags are always included in sensitivity matches', () => {

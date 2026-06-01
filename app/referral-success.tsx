@@ -2,30 +2,29 @@ import { View, Text, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { FillrButton } from '../components'
-import { colors, spacing } from '../constants/theme'
+import { REFERRAL_INVITEE_STARTING_SCANS } from '../constants/subscription'
+import { colors, radius, spacing, typography } from '../constants/theme'
 
 export default function ReferralSuccessScreen() {
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.content}>
-          <Text style={styles.emoji}>🎉</Text>
-          <Text style={styles.title}>You're in!</Text>
-          <Text style={styles.subtitle}>Your account is ready</Text>
+          <Text style={styles.title}>You&apos;re all set</Text>
+          <Text style={styles.subtitle}>Your profile is ready to personalize every scan.</Text>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>🎁 Bonus scans added</Text>
-            <Text style={styles.cardBody}>You have 8 scans to start with</Text>
-            <View style={styles.divider} />
-            <Text style={styles.referredBy}>Referred by a friend</Text>
+            <Text style={styles.cardLabel}>Starting balance</Text>
+            <Text style={styles.cardValue}>{REFERRAL_INVITEE_STARTING_SCANS} scans</Text>
+            <Text style={styles.cardHint}>Includes your referral bonus</Text>
           </View>
         </View>
 
         <FillrButton
-          title="Start scanning →"
+          title="Start scanning"
           onPress={() => router.replace('/')}
           fullWidth
-          variant="primary"
+          variant="liquid"
         />
       </SafeAreaView>
     </View>
@@ -33,23 +32,46 @@ export default function ReferralSuccessScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fdf9' },
-  container: { flex: 1, paddingHorizontal: spacing.xxl, justifyContent: 'space-between' },
-  content: { alignItems: 'center', paddingTop: spacing.xxxl * 1.25 },
-  emoji: { fontSize: 64, marginBottom: spacing.md },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: 6 },
-  subtitle: { fontSize: 15, color: colors.textSecondary, marginBottom: spacing.xxl },
-  card: {
-    width: '100%',
-    backgroundColor: '#f0fdf4',
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-    borderRadius: 20,
-    padding: 20,
+  screen: { flex: 1, backgroundColor: colors.background },
+  container: {
+    flex: 1,
+    paddingHorizontal: spacing.xxl,
+    justifyContent: 'space-between',
+    paddingBottom: spacing.lg,
   },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 8 },
-  cardBody: { fontSize: 14, color: '#6b7280', marginBottom: 14 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#bbf7d0', marginBottom: 10 },
-  referredBy: { fontSize: 13, color: '#16a34a', fontWeight: '600' },
+  content: { paddingTop: spacing.xxxl },
+  title: {
+    ...typography.h1,
+    fontSize: 26,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xxl,
+  },
+  card: {
+    backgroundColor: colors.backgroundElevated,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+    padding: spacing.xl,
+    gap: spacing.xs,
+  },
+  cardLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  cardValue: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: colors.text,
+    letterSpacing: -0.5,
+  },
+  cardHint: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
 })
-

@@ -36,6 +36,42 @@ const EMULSIFIER_RE =
 const PRO_INFLAMMATORY_RE =
   /\b(high fructose corn syrup|\bhfcs\b|partially hydrogenated|hydrogenated oil|carrageenan|tbhq|bht|bha|sodium nitrite|sodium nitrate|artificial color|artificial colour|red\s*40|yellow\s*5|yellow\s*6|soybean oil|corn oil|sunflower oil|canola oil)\b/i
 
+/** Well-known confection brands / product lines (name often omits "chocolate bar"). */
+const CANDY_BRAND_OR_PRODUCT_RE =
+  /\b(kit\s*kat|snickers|twix|m\s*&\s*m'?s?|m\s+and\s+m|reeses?|hershey'?s?|skittles|starburst|milky\s+way|butterfinger|junior\s+mints|nerds|jolly\s+rancher|airheads|sour\s+patch|warheads|smarties|maltesers|bounty|mars\s+bar|3\s*musketeers|payday|almond\s+joy|mounds|rolos|whoppers|heath\s+bar|crunch\s+bar|100\s+grand|take\s*5|baby\s+ruth|toblerone|ferrero|lindt|ghirardelli|godiva|cadbury|haribo|sour\s+strips|peeps|jelly\s+beans?|jellybean)\b/i
+
+const CONFECTION_LABEL_RE =
+  /\b(candy|chocolate bar|chocolatier|confectionery|confectioner'?s?\s+glaze|gummy|gummies|caramel|lollipop|sour candy|hard candy|fudge|toffee|nougat|praline|bonbon|truffle|marshmallow treat|wafer bar)\b/i
+
+const CHOCOLATE_PRODUCT_RE =
+  /\b(milk chocolate|dark chocolate|white chocolate|chocolate coating|chocolate flavou?r(?:ing)?)\b/i
+
+const CHOCOLATE_FORM_RE =
+  /\bchocolate\b.*\b(bar|wafer|finger|bites?|minis?|pieces|drops|truffles?)\b|\b(bar|wafer|finger|bites?|minis?|pieces|drops|truffles?)\b.*\bchocolate\b/i
+
+function looksLikeSugarFirstConfection(normalizedNames: string[], hay: string): boolean {
+  if (normalizedNames.length < 2 || normalizedNames.length > 15) return false
+  if (/\b(protein bar|protein brownie|protein cookie|whey protein|pea protein|protein isolate|protein concentrate)\b/.test(hay)) {
+    return false
+  }
+  const first = normalizedNames[0] ?? ''
+  const sugarFirst = /^(sugar|sucrose|glucose|fructose|dextrose|invert sugar|brown sugar|icing sugar)/.test(first)
+  if (!sugarFirst) return false
+  return normalizedNames.some((n) =>
+    /\b(cocoa mass|cocoa butter|chocolate|wafer|fudge|toffee|caramel|confectioner|nougat|praline|ganache|glucose syrup|invert sugar)\b/.test(n)
+  )
+}
+
+function isCandyCategory(hay: string, normalizedNames: string[]): boolean {
+  return (
+    CONFECTION_LABEL_RE.test(hay) ||
+    CANDY_BRAND_OR_PRODUCT_RE.test(hay) ||
+    CHOCOLATE_PRODUCT_RE.test(hay) ||
+    CHOCOLATE_FORM_RE.test(hay) ||
+    looksLikeSugarFirstConfection(normalizedNames, hay)
+  )
+}
+
 export function detectProductCategoryFromSignals(
   sourceText: string,
   normalizedNames: string[]
@@ -47,14 +83,16 @@ export function detectProductCategoryFromSignals(
   if (/\b(protein bar|protein brownie|protein cookie|whey protein|pea protein|protein isolate|protein concentrate)\b/.test(hay)) {
     return 'protein_bar'
   }
+  // Candy before dairy — chocolate bars often list milk fat / milk solids as ingredients.
+  if (isCandyCategory(hay, normalizedNames)) return 'candy'
   if (
-    /\b(cream|coffee cream|creamer|creamers|half[\s-]and[\s-]half|table cream|coffee whitener|whitener|whole milk|milk|skim milk|yogurt|yoghurt|kefir|fromage|lait|creme|cr[eè]me fraiche)\b/.test(
+    /\b(cream|coffee cream|creamer|creamers|half[\s-]and[\s-]half|table cream|coffee whitener|whitener|whole milk|skim milk|yogurt|yoghurt|kefir|fromage|lait|creme|cr[eè]me fraiche)\b/.test(
       hay
-    )
+    ) ||
+    /\b(?<!milk\s)(?<!non-)\bmilk\b(?! fat)(?! solids)(?! powder)\b/.test(hay)
   ) {
     return 'dairy'
   }
-  if (/\b(candy|chocolate bar|gummy|gummies|caramel|lollipop|sour candy|hard candy)\b/.test(hay)) return 'candy'
   if (/\b(soda|soft drink|energy drink|sports drink|juice drink|sparkling water|beverage)\b/.test(hay)) return 'drink'
   if (/\b(ketchup|mustard|mayonnaise|mayo|dressing|sauce|dip|spread|salsa|condiment)\b/.test(hay)) return 'condiment'
   if (

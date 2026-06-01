@@ -420,7 +420,7 @@ begin
   where id = target_user_id;
 
   update public.profiles
-  set bonus_scans_earned = least(max_bonus, coalesce(bonus_scans_earned, 0) + 5),
+  set bonus_scans_earned = least(max_bonus, coalesce(bonus_scans_earned, 0) + 3),
       updated_at = now()
   where id = referrer_id;
 
