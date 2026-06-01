@@ -2,7 +2,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import type { DietaryProfile, IngredientExplanation, ScanResult } from '../types'
-import { attachFillrFitToScanResult, getFillrScoringProfileHash } from './attachFillrFit'
 
 function ing(name: string): IngredientExplanation {
   return {
@@ -44,7 +43,10 @@ const emptyProfile: DietaryProfile = {
   celiacStrictGluten: false,
 }
 
-test('attachFillrFitToScanResult computes live scoring without throwing', () => {
+test('attachFillrFitToScanResult computes live scoring without throwing', async () => {
+  process.env.EXPO_PUBLIC_SUPABASE_URL ??= 'https://example.supabase.co'
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??= 'test-anon-key'
+  const { attachFillrFitToScanResult, getFillrScoringProfileHash } = await import('./attachFillrFit')
   const scored = attachFillrFitToScanResult(scan(), emptyProfile)
 
   assert.ok(scored.fillrFit)
