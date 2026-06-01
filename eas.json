@@ -6,7 +6,11 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "channel": "development"
     },
     "development-simulator": {
       "developmentClient": true,
@@ -27,9 +31,20 @@
       "ios": {
         "resourceClass": "m-medium"
       }
+    },
+    "development-testflight": {
+      "extends": "development",
+      "developmentClient": true,
+      "distribution": "store",
+      "ios": {
+        "simulator": false
+      },
+      "channel": "development"
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "development": {},
+    "development-testflight": {}
   }
 }

@@ -13,6 +13,9 @@ export type GrowthDashboardModel = {
     paywallShown: number
     paywallPurchased: number
     paywallPurchaseRate: number
+    scanLimitReached: number
+    lastFreeScanUsed: number
+    limitToPurchaseRate: number
   }
   quality: {
     renderedScans: number
@@ -56,6 +59,8 @@ export function buildGrowthDashboardModel(rows: EventRow[], days: number): Growt
   const scanSucceeded = count('scan_succeeded')
   const paywallShown = count('paywall_shown')
   const paywallPurchased = count('paywall_purchased')
+  const scanLimitReached = count('scan_limit_reached')
+  const lastFreeScanUsed = count('last_free_scan_used')
   const restoreTapped = count('restore_purchases_tapped')
   const restoreSucceeded = count('restore_purchases_succeeded')
 
@@ -68,6 +73,9 @@ export function buildGrowthDashboardModel(rows: EventRow[], days: number): Growt
       paywallShown,
       paywallPurchased,
       paywallPurchaseRate: pct(paywallPurchased, paywallShown),
+      scanLimitReached,
+      lastFreeScanUsed,
+      limitToPurchaseRate: pct(paywallPurchased, Math.max(scanLimitReached, lastFreeScanUsed)),
     },
     quality: {
       renderedScans: renderedRows.length,

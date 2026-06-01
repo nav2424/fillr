@@ -29,8 +29,7 @@ export default function NotificationsSettingsScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.intro}>
-            Choose what Fillr can notify you about. Delivery depends on your device settings and future email/push
-            support.
+            Choose what we can notify you about. Delivery uses your device&apos;s notification settings.
           </Text>
 
           <View style={styles.card}>

@@ -25,6 +25,7 @@ interface UserState {
   notifyWeeklyDigest: boolean
   /** Tips and product updates from Fillr. */
   notifyProductTips: boolean
+  notifyScanLimitReminders: boolean
   setAllergies: (allergies: string[]) => void
   setSensitivities: (sensitivities: string[]) => void
   setPreferences: (preferences: string[]) => void
@@ -58,6 +59,7 @@ interface UserState {
     notifyAllergenAlerts?: boolean
     notifyWeeklyDigest?: boolean
     notifyProductTips?: boolean
+    notifyScanLimitReminders?: boolean
   }) => void
 }
 
@@ -79,6 +81,7 @@ export const useUserStore = create<UserState>()(
       notifyAllergenAlerts: true,
       notifyWeeklyDigest: true,
       notifyProductTips: false,
+      notifyScanLimitReminders: true,
       setAllergies: (allergies) => set({ allergies }),
       setSensitivities: (sensitivities) => set({ sensitivities }),
       setPreferences: (preferences) => set({ preferences }),

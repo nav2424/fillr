@@ -20,7 +20,9 @@ import { useAuthStore } from '../store/authStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
 import { useCurrentScanStore } from '../store/currentScanStore'
 import { canUserScan, incrementScanCount } from '../store/scanStore'
-import { showPaywall } from '../services/paywallService'
+import { buildPaywallContextAtLimit } from '../lib/buildPaywallContext'
+import { handlePostScanConversion } from '../lib/handlePostScanConversion'
+import { showPaywall, trackUpgradeCtaTapped } from '../services/paywallService'
 import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../lib/authService'
 import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '../lib/scheduleUIWork'
 import { trackScanResultMetric } from '../lib/scanResultMetrics'
@@ -51,7 +53,9 @@ export default function ManualIngredientsScreen() {
     })
     const allowed = await canUserScan()
     if (!allowed) {
-      const purchased = await showPaywall()
+      const ctx = buildPaywallContextAtLimit('scan_blocked')
+      await trackUpgradeCtaTapped('scan_blocked_manual', ctx)
+      const purchased = await showPaywall({ context: ctx, metricSource: 'scan_blocked_manual' })
       if (!purchased) {
         void trackScanResultMetric({
           name: 'scan_failed',
@@ -134,6 +138,7 @@ export default function ManualIngredientsScreen() {
       }
       void runScanAiEnrichment(result, dietaryProfile, undefined, applyEnrichedToStores).catch(() => {})
       await incrementScanCount()
+      void handlePostScanConversion(result)
       if (userId) {
         void (async () => {
           await incrementScanUsageOnServer(userId)
