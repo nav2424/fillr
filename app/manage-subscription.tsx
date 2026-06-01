@@ -7,7 +7,7 @@ import Constants from 'expo-constants'
 import { Ionicons } from '@expo/vector-icons'
 import { GradientBackground, FillrButton } from '../components'
 import { colors, spacing, typography, radius } from '../constants/theme'
-import { FREE_SCAN_LIMIT } from '../constants/subscription'
+import { FREE_SCAN_LIMIT, REFERRAL_REFERRER_BONUS } from '../constants/subscription'
 import { useUserStore } from '../store/userStore'
 import { showPaywall } from '../services/paywallService'
 import {
@@ -354,7 +354,7 @@ export default function ManageSubscriptionScreen() {
                   style={({ pressed }) => [styles.referralNudge, pressed && { opacity: 0.85 }]}
                 >
                   <Text style={styles.referralNudgeText}>
-                    Invite a friend instead — earn 5 free scans →
+                    Invite a friend instead — earn {REFERRAL_REFERRER_BONUS} free scans →
                   </Text>
                 </Pressable>
               </>
