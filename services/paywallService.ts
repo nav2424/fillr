@@ -29,7 +29,7 @@ export async function showPaywall(options?: ShowPaywallOptions): Promise<boolean
     await new Promise<void>((resolve) => {
       Alert.alert(context.headline, context.body, [
         { text: 'Not now', style: 'cancel', onPress: () => resolve() },
-        { text: 'See plans', onPress: () => resolve() },
+        { text: 'Continue', onPress: () => resolve() },
       ])
     })
   }

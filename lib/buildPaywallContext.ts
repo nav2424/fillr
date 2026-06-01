@@ -60,6 +60,7 @@ export function buildPaywallContextFromScan(
     `You've scanned ${allowance.used} product${allowance.used === 1 ? '' : 's'} on the free plan.`,
     profileLine,
   ].filter(Boolean) as string[]
+  const body = bodyParts.join(' ')
 
   return {
     trigger,
@@ -69,7 +70,7 @@ export function buildPaywallContextFromScan(
         : trigger === 'one_scan_left'
           ? `1 free scan left`
           : `Fillr Premium`,
-    body: bodyParts.join('\n\n'),
+    body,
     productName,
     safetyStatus,
     verdict: verdict || undefined,

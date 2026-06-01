@@ -1,8 +1,8 @@
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native'
-import { useState } from 'react'
-import { Ionicons } from '@expo/vector-icons'
+import { View, Text, StyleSheet, Pressable } from 'react-native'
 import type { PaywallContext } from '../lib/buildPaywallContext'
-import { colors, radius, spacing, typography } from '../constants/theme'
+import { colors, spacing } from '../constants/theme'
+import { conversionUi } from './conversion/conversionUi'
+import { FillrButton } from './FillrButton'
 import { showPaywall, trackUpgradeCtaTapped } from '../services/paywallService'
 
 type Props = {
@@ -11,125 +11,81 @@ type Props = {
 }
 
 export function LastScanConversionCard({ context, onDismiss }: Props) {
-  const [loading, setLoading] = useState(false)
-
-  const onUpgrade = async () => {
-    setLoading(true)
-    try {
-      await trackUpgradeCtaTapped('last_scan_product_card', context)
-      await showPaywall({
-        context,
-        skipContextAlert: true,
-        metricSource: 'last_scan_product_card',
-      })
-    } finally {
-      setLoading(false)
-    }
+  const productName = context.productName ?? 'this product'
+  const detailParts: string[] = []
+  if (context.verdict) detailParts.push(context.verdict)
+  if ((context.flaggedIngredientCount ?? 0) > 0) {
+    detailParts.push(
+      `${context.flaggedIngredientCount} flagged for your profile`
+    )
   }
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <Ionicons name="diamond-outline" size={22} color={colors.accent} />
-        <Text style={styles.kicker}>Free scans used</Text>
+    <View style={[styles.wrap, conversionUi.lightCard]}>
+      <View style={styles.topRow}>
+        <Text style={conversionUi.caption}>All free scans used</Text>
         {onDismiss ? (
-          <Pressable onPress={onDismiss} hitSlop={10} accessibilityLabel="Dismiss">
-            <Ionicons name="close" size={20} color={colors.textMuted} />
+          <Pressable onPress={onDismiss} hitSlop={12} accessibilityLabel="Dismiss">
+            <Text style={styles.dismiss}>×</Text>
           </Pressable>
         ) : null}
       </View>
       <Text style={styles.headline}>
-        You decoded {context.productName ?? 'this product'} — keep going with Premium
+        You decoded {productName}
       </Text>
-      {context.verdict ? <Text style={styles.verdict}>{context.verdict}</Text> : null}
-      {(context.flaggedIngredientCount ?? 0) > 0 ? (
-        <Text style={styles.stat}>
-          {context.flaggedIngredientCount} ingredient
-          {context.flaggedIngredientCount === 1 ? '' : 's'} flagged for your profile
-        </Text>
-      ) : null}
+      <Text style={conversionUi.body}>
+        {detailParts.length > 0 ? detailParts.join(' · ') : 'Keep decoding every label with Premium.'}
+      </Text>
       {context.profileLabels && context.profileLabels.length > 0 ? (
-        <Text style={styles.profile}>
-          Unlock unlimited scans for {context.profileLabels.join(', ')}
+        <Text style={styles.profile} numberOfLines={2}>
+          Unlimited scans for {context.profileLabels.join(', ')}
         </Text>
       ) : null}
-      <Pressable
-        onPress={() => void onUpgrade()}
-        disabled={loading}
-        style={({ pressed }) => [styles.cta, pressed && { opacity: 0.9 }, loading && { opacity: 0.7 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Upgrade to Fillr Premium"
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <>
-            <Ionicons name="diamond" size={16} color="#fff" />
-            <Text style={styles.ctaText}>Upgrade to Fillr Premium</Text>
-          </>
-        )}
-      </Pressable>
+      <FillrButton
+        title="Continue with Premium"
+        onPress={() => {
+          void trackUpgradeCtaTapped('last_scan_product_card', context)
+          void showPaywall({
+            context,
+            skipContextAlert: true,
+            metricSource: 'last_scan_product_card',
+          })
+        }}
+        variant="liquid"
+        fullWidth
+        style={styles.cta}
+      />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  card: {
+  wrap: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: '#f0fdf4',
-    borderWidth: 1,
-    borderColor: '#86efac',
+    gap: spacing.sm,
   },
-  header: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    justifyContent: 'space-between',
   },
-  kicker: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.accent,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  dismiss: {
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '300',
+    color: colors.textMuted,
   },
   headline: {
-    ...typography.h3,
-    fontSize: 18,
-    color: colors.text,
-    marginBottom: spacing.sm,
-    lineHeight: 24,
-  },
-  verdict: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#166534',
-    marginBottom: 6,
-  },
-  stat: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
+    lineHeight: 24,
+    letterSpacing: -0.2,
   },
   profile: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: spacing.md,
+    ...conversionUi.body,
+    marginTop: -2,
   },
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: radius.lg,
-  },
-  ctaText: { fontSize: 15, fontWeight: '800', color: '#fff' },
+  cta: { marginTop: spacing.xs },
 })

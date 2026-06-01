@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
 import { REFERRAL_REFERRER_BONUS } from '../constants/subscription'
+import { colors, spacing } from '../constants/theme'
+import { conversionUi } from './conversion/conversionUi'
 import { buildPaywallContextAtLimit } from '../lib/buildPaywallContext'
 import { ensureReferralCodeForUser } from '../lib/authService'
 import { shareReferralLink } from '../lib/referrals'
@@ -51,37 +52,39 @@ export function ScanLimitWall({ variant = 'glass' }: Props) {
   }
 
   return (
-    <View style={[styles.card, glass && styles.cardGlass]}>
-      <Text style={[styles.title, glass && styles.titleGlass]}>No scans left</Text>
-      <Text style={[styles.body, glass && styles.bodyGlass]}>
-        Upgrade for unlimited decoding, or invite a friend for {REFERRAL_REFERRER_BONUS} bonus scans each.
+    <View style={[styles.wrap, glass && styles.wrapGlass]}>
+      <Text style={[conversionUi.title, glass && conversionUi.titleOnDark]}>Out of scans</Text>
+      <Text style={[conversionUi.body, glass && conversionUi.bodyOnDark]}>
+        Go Premium for unlimited decoding, or invite a friend for {REFERRAL_REFERRER_BONUS} bonus scans.
       </Text>
       <Pressable
         onPress={() => void onUpgrade()}
         disabled={upgrading}
-        style={({ pressed }) => [styles.primaryCta, pressed && { opacity: 0.9 }, upgrading && { opacity: 0.7 }]}
+        style={({ pressed }) => [
+          styles.primaryBtn,
+          glass && styles.primaryBtnGlass,
+          pressed && { opacity: 0.92 },
+          upgrading && { opacity: 0.6 },
+        ]}
         accessibilityRole="button"
-        accessibilityLabel="Get Fillr Premium"
+        accessibilityLabel="View Premium plans"
       >
         {upgrading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={glass ? colors.text : '#fff'} size="small" />
         ) : (
-          <>
-            <Ionicons name="diamond-outline" size={16} color="#ffffff" />
-            <Text style={styles.primaryCtaText}>Get Fillr Premium</Text>
-          </>
+          <Text style={[styles.primaryBtnText, glass && styles.primaryBtnTextGlass]}>Premium</Text>
         )}
       </Pressable>
       <Pressable
         onPress={() => void onShareReferral()}
         disabled={sharing}
-        style={({ pressed }) => [styles.secondaryCta, pressed && { opacity: 0.9 }, sharing && { opacity: 0.7 }]}
+        hitSlop={6}
+        style={({ pressed }) => [pressed && { opacity: 0.7 }, sharing && { opacity: 0.5 }]}
         accessibilityRole="button"
-        accessibilityLabel="Share referral link"
+        accessibilityLabel="Share invite link"
       >
-        <Ionicons name="gift-outline" size={16} color={glass ? '#ffffff' : '#166534'} />
-        <Text style={[styles.secondaryCtaText, glass && styles.secondaryCtaTextGlass]}>
-          {sharing ? 'Opening share…' : `Share invite — +${REFERRAL_REFERRER_BONUS} scans per friend`}
+        <Text style={[conversionUi.textLink, glass && conversionUi.textLinkOnDark]}>
+          {sharing ? 'Opening…' : `Invite a friend (+${REFERRAL_REFERRER_BONUS} scans)`}
         </Text>
       </Pressable>
     </View>
@@ -89,43 +92,29 @@ export function ScanLimitWall({ variant = 'glass' }: Props) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 20,
-    padding: 18,
-    gap: 12,
-    backgroundColor: '#f0fdf4',
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
+  wrap: {
+    gap: spacing.md,
+    padding: 0,
   },
-  cardGlass: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderColor: 'rgba(255,255,255,0.22)',
+  wrapGlass: {
+    padding: 0,
   },
-  title: { fontSize: 18, fontWeight: '800', color: '#0a0a0a' },
-  titleGlass: { color: '#ffffff' },
-  body: { fontSize: 14, fontWeight: '500', color: '#4b5563', lineHeight: 20 },
-  bodyGlass: { color: 'rgba(255,255,255,0.88)' },
-  primaryCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#16a34a',
-    paddingVertical: 14,
-    borderRadius: 14,
+  primaryBtn: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
   },
-  primaryCtaText: { fontSize: 15, fontWeight: '800', color: '#fff' },
-  secondaryCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#86efac',
-    backgroundColor: '#ecfdf5',
+  primaryBtnGlass: {
+    backgroundColor: colors.backgroundElevated,
   },
-  secondaryCtaText: { fontSize: 14, fontWeight: '700', color: '#166534' },
-  secondaryCtaTextGlass: { color: '#ffffff' },
+  primaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  primaryBtnTextGlass: {
+    color: colors.text,
+  },
 })

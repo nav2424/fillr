@@ -475,19 +475,12 @@ export default function ScanScreen() {
         </View>
 
         {!outOfScans && !isPro && scanAllowance.remaining === 1 && showOneScanLeftBanner ? (
-          <OneScanLeftBanner
-            variant="dark"
-            onDismiss={() => setShowOneScanLeftBanner(false)}
-          />
-        ) : null}
-
-        {!outOfScans && !isPro && scanAllowance.remaining === 1 && showOneScanLeftBanner ? (
           <OneScanLeftBanner variant="dark" onDismiss={() => setShowOneScanLeftBanner(false)} />
         ) : null}
 
         <View style={[styles.bottomStack, { paddingBottom: bottomPad }]}>
           {outOfScans ? (
-            <View style={styles.glassCard}>
+            <View style={styles.limitWallWrap}>
               <ScanLimitWall variant="glass" />
             </View>
           ) : permissionLoading ? (
@@ -541,8 +534,8 @@ export default function ScanScreen() {
                   accessibilityLabel="Scan ingredients with camera instead of barcode"
                 >
                   <View style={styles.bottomSheetTextCol}>
-                    <Text style={styles.bottomSheetKicker}>CAN&apos;T SCAN THE BARCODE?</Text>
-                    <Text style={styles.bottomSheetTitle}>Scan ingredients instead</Text>
+                    <Text style={styles.bottomSheetKicker}>No barcode visible?</Text>
+                    <Text style={styles.bottomSheetTitle}>Scan the ingredient list</Text>
                   </View>
                   <View style={styles.chevronGlass}>
                     <Ionicons name="chevron-forward" size={22} color="#ffffff" />
@@ -688,6 +681,13 @@ const styles = StyleSheet.create({
   bottomStack: {
     paddingHorizontal: 16,
     gap: 10,
+  },
+  limitWallWrap: {
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
+    padding: spacing.lg,
   },
   glassCard: {
     backgroundColor: 'rgba(255,255,255,0.18)',
