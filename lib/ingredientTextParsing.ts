@@ -566,7 +566,6 @@ export function parseIngredientListFromPlain(
       .map((name) => name.replace(/\s+(?:ch|cmd|opt|del|delele|delete)$/i, '').trim())
       .filter(isPlausibleIngredientToken)
       .filter((s) => !isJunkOcrIngredientToken(s))
-      .filter((name) => !isBareAllergenDisclosureName(name))
   }
 
   const englishSliced = sliceToEnglishIngredientSection(htmlStripped, { ocr: false })
@@ -575,7 +574,6 @@ export function parseIngredientListFromPlain(
   const stripped = prepareIngredientTextForAnalysis(advisoryStripped)
   return chunkIngredientBlobToEnglishNames(stripped, 'auto')
     .filter(isPlausibleIngredientToken)
-    .filter((name) => !isBareAllergenDisclosureName(name))
 }
 
 /**

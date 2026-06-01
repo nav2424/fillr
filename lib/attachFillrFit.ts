@@ -53,11 +53,40 @@ function attachScoringCopy(result: ScanResult, scoringData: FillrScoringInput, f
   }
 }
 
+function normalizeProfileList(values: readonly string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((v) => String(v || '').toLowerCase().trim()).filter(Boolean))].sort()
+}
+
+export function getFillrScoringProfileHash(profile: DietaryProfile): string {
+  return JSON.stringify({
+    allergies: normalizeProfileList(profile.allergies),
+    sensitivities: normalizeProfileList(profile.sensitivities),
+    avoiding: normalizeProfileList(profile.avoiding),
+    preferences: normalizeProfileList(
+      profile.scoringPreferenceKeys?.length ? profile.scoringPreferenceKeys : profile.preferences
+    ),
+    goal: String(profile.goal ?? '').toLowerCase().trim(),
+    celiacStrictGluten: Boolean(profile.celiacStrictGluten),
+  })
+}
+
+function computeLiveFillrScoring(
+  result: ScanResult,
+  profile: DietaryProfile
+): { fillrFit: FillrFitComputed; scoringData: FillrScoringInput } {
+  const scoringData = buildScoringData(result, result.ingredientBreakdown, profile)
+  return { scoringData, fillrFit: calculateFillrFit(scoringData) }
+}
+
 /** Lock Fillr Fit at first display (barcode fast path, OCR/manual base scan). */
 export function freezeScanScoring(result: ScanResult, profile: DietaryProfile): ScanResult {
   const withFit = result.fillrFit ? result : attachFillrFitToScanResult(result, profile)
   if (withFit.scoringFrozenAt) return withFit
-  return { ...withFit, scoringFrozenAt: new Date().toISOString() }
+  return {
+    ...withFit,
+    scoringFrozenAt: new Date().toISOString(),
+    scoringProfileHash: withFit.scoringProfileHash ?? getFillrScoringProfileHash(profile),
+  }
 }
 
 /** Keep the first Fillr Fit when ingredient copy or ratings update after decode. */
@@ -69,6 +98,7 @@ export function preserveFrozenScoring(base: ScanResult, next: ScanResult): ScanR
     scoringData: base.scoringData,
     processedRating: base.processedRating,
     scoringFrozenAt: base.scoringFrozenAt ?? new Date().toISOString(),
+    scoringProfileHash: base.scoringProfileHash,
   }
 }
 
@@ -94,7 +124,17 @@ export function attachFillrFitToScanResult(
 ): ScanResult {
   const { fillrFit, scoringData } = computeLiveFillrScoring(result, profile)
   const processedRating = calculateProcessedRating(scoringData)
-  return attachScoringCopy({ ...result, fillrFit, processedRating, scoringData }, scoringData, fillrFit)
+  return attachScoringCopy(
+    {
+      ...result,
+      fillrFit,
+      processedRating,
+      scoringData,
+      scoringProfileHash: getFillrScoringProfileHash(profile),
+    },
+    scoringData,
+    fillrFit
+  )
 }
 
 /** Deterministic ratings sort + Fillr Fit for a fresh scan. */

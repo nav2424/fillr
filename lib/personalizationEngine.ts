@@ -12,6 +12,14 @@ import type {
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
 import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
+import {
+  buildUserAllergenConfig,
+  detectAllergensEvidenceBased,
+  type MatchedAllergen as EngineMatchedAllergen,
+} from './allergenEngine'
+import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
+import { englishPrimarySegment } from './bilingualDisplay'
+import { getIngredientExplanation } from '../services/ingredientExplanations'
 
 export interface UserProfile {
   allergies: string[]
@@ -235,6 +243,85 @@ function buildSmartSummary(
   }
 
   return parts.length > 0 ? parts.join(' ') : base.smartSummary
+}
+
+function mapEngineAllergen(m: EngineMatchedAllergen): MatchedAllergen {
+  const evidenceSection =
+    m.section === 'may_contain'
+      ? 'may_contain'
+      : m.section === 'contains'
+        ? 'contains'
+        : 'ingredients'
+  const offStyle = /^en:|^fr:/i.test(m.match_text)
+  return {
+    allergenKey: m.allergen_id,
+    allergenName: m.allergen_name,
+    matchedIngredient: englishPrimarySegment(m.match_text),
+    explanation:
+      getIngredientExplanation(m.match_text)?.whatToKnow ??
+      `Contains ${m.allergen_name} from your allergy list — not safe for you.`,
+    severity: m.severity,
+    evidenceSection: offStyle ? 'open_food_facts' : evidenceSection,
+    evidenceText: m.match_text,
+  }
+}
+
+/**
+ * Re-run deterministic profile-sensitive safety signals over stored label text before
+ * applying personalization. Cached/history results may have been scanned under an old profile.
+ */
+export function refreshScanProfileSafety(base: ScanResult, profile: Pick<UserProfile, 'allergies' | 'celiacStrictGluten'>): ScanResult {
+  const ingredientText = base.product.ingredientText ?? ''
+  const safetyHaystack = base.product.ingredientTextSafetyHaystack?.trim() || ingredientText
+  const containsText = base.declaredAllergensLabel ?? ''
+  const mayContainText = (base.crossContactWarnings ?? []).join(' ')
+  const output = detectAllergensEvidenceBased(
+    {
+      product_name: base.product.name,
+      ingredients_text: ingredientText,
+      ingredients_text_safety: safetyHaystack,
+      contains_text: containsText,
+      may_contain_text: mayContainText,
+      allergens_tags: base.product.allergensTags ?? [],
+      traces_tags: base.product.tracesTags ?? [],
+    },
+    buildUserAllergenConfig(profile.allergies ?? [])
+  )
+
+  let celiac: CeliacResult | undefined
+  if (profile.celiacStrictGluten) {
+    const fullText = [safetyHaystack, containsText, mayContainText].filter(Boolean).join(' ')
+    const celiacMatches = runCeliacCheck(
+      (safetyHaystack || ingredientText).split(/[,;]/).map((s) => s.trim()).filter(Boolean),
+      fullText || safetyHaystack || ingredientText
+    )
+    celiac = {
+      celiacModeEnabled: true,
+      matchedGlutenSignals: celiacMatches.map((m) => ({
+        ingredient: m.ingredient,
+        signalType: m.signalType,
+        severity: m.severity,
+        reason: m.reason,
+      })),
+      celiacSeverity: getCeliacSeverity(celiacMatches),
+    }
+  }
+
+  const productNameHints = output.product_name_hints?.map((h) => ({
+    allergenName: h.allergen_name,
+    hintText: h.hint_text,
+  }))
+
+  const { celiac: _oldCeliac, productNameHints: _oldHints, ...rest } = base
+  return {
+    ...rest,
+    matchedAllergens: output.matched_allergens.map(mapEngineAllergen),
+    ...(celiac ? { celiac } : {}),
+    ...(output.scan_log?.source_coverage_score != null
+      ? { ingredientDataQualityScore: output.scan_log.source_coverage_score }
+      : {}),
+    ...(productNameHints?.length ? { productNameHints } : {}),
+  }
 }
 
 /** Personalize a scan result for a specific user */

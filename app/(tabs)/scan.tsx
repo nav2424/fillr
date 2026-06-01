@@ -34,7 +34,7 @@ import { canUserScan, getRemainingScans, incrementScanCount } from '../../store/
 import { showPaywall } from '../../services/paywallService'
 import { isDemoScanBarcode } from '../../services/mockProducts'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
-import { personalizeScanResult } from '../../lib/personalizationEngine'
+import { personalizeScanResult, refreshScanProfileSafety } from '../../lib/personalizationEngine'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
 import { ingredientExplanationFailsQualityGate } from '../../lib/ingredientCopyQuality'
@@ -137,6 +137,27 @@ export default function ScanScreen() {
       })
 
       const isDemo = isDemoScanBarcode(barcode)
+      const consumeScanCredit = async () => {
+        if (isDemo) return
+        await incrementScanCount()
+        if (userId) {
+          void (async () => {
+            await incrementScanUsageOnServer(userId)
+            await finalizeReferralBonusIfEligible(userId).catch(() => {
+              // Retry flag is handled inside finalizeReferralBonusIfEligible.
+            })
+            const latest = await fetchProfile(userId)
+            if (latest) {
+              setReferralData({
+                bonusScansEarned: latest.bonus_scans_earned ?? 0,
+                totalScansUsed: latest.total_scans_used ?? 0,
+                referredBy: latest.referred_by ?? null,
+                referralCode: latest.referral_code ?? '',
+              })
+            }
+          })()
+        }
+      }
 
       if (!isDemo) {
         const allowed = await canUserScan()
@@ -165,13 +186,15 @@ export default function ScanScreen() {
       try {
         const reusable = getReusableBarcodeResult(barcode)
         if (reusable) {
-          const personalized = personalizeScanResult(reusable, {
+          const userProfile = {
             allergies,
             sensitivities,
             preferences,
             goal,
             celiacStrictGluten: Boolean(celiacStrictGluten),
-          })
+          }
+          const refreshed = refreshScanProfileSafety(reusable, userProfile)
+          const personalized = personalizeScanResult(refreshed, userProfile)
           const scored = attachFillrFitToScanResult(personalized, getDietProfileSnapshotSync())
           setCurrentScan(scored)
           addScan({
@@ -192,6 +215,7 @@ export default function ScanScreen() {
               ingredient_count: scored.ingredientBreakdown.length,
             },
           })
+          await consumeScanCredit()
           router.push({
             pathname: '/product/[id]',
             params: { id: scored.product.id },
@@ -280,26 +304,7 @@ export default function ScanScreen() {
               }
             )
           }
-          if (!isDemo) {
-            await incrementScanCount()
-            if (userId) {
-              void (async () => {
-                await incrementScanUsageOnServer(userId)
-                await finalizeReferralBonusIfEligible(userId).catch(() => {
-                  // Retry flag is handled inside finalizeReferralBonusIfEligible.
-                })
-                const latest = await fetchProfile(userId)
-                if (latest) {
-                  setReferralData({
-                    bonusScansEarned: latest.bonus_scans_earned ?? 0,
-                    totalScansUsed: latest.total_scans_used ?? 0,
-                    referredBy: latest.referred_by ?? null,
-                    referralCode: latest.referral_code ?? '',
-                  })
-                }
-              })()
-            }
-          }
+          await consumeScanCredit()
           void trackScanResultMetric({
             name: 'scan_succeeded',
             productId: productId,
