@@ -1,6 +1,6 @@
 {
   "name": "fillr",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "main": "expo-router/entry",
   "scripts": {
     "test": "node --test lib/ingredientMatcher.test.js && tsx --test lib/ingredientAmbiguity.test.ts && tsx --test lib/allergenEngine/matcher.celiac.test.ts && tsx --test lib/allergenEngine/matcher.celiac.effectiveness.test.ts && tsx --test lib/fillrScoring.test.ts && tsx --test lib/processedRating.test.ts && tsx --test lib/buildScoringData.test.ts && tsx --test lib/buildScoreExplainability.test.ts && tsx --test lib/buildIngredientCardViewModel.test.ts && tsx --test lib/ingredientCopyQuality.test.ts && tsx --test lib/ingredientProseHydration.test.ts && tsx --test lib/ingredientDecodePlaceholder.test.ts && tsx --test lib/ingredientLabelAiMerge.test.ts && tsx --test lib/ingredientNameNormalization.test.ts && tsx --test lib/productPatternDetection.test.ts && tsx --test lib/ingredientAnalysisValidation.test.ts && tsx --test lib/profileReasoningPipeline.test.ts && tsx --test lib/processingSummarySplit.test.ts && tsx --test lib/offNormalizer.flattenIngredients.test.ts && tsx --test lib/ingredientOcrParse.test.ts && tsx --test lib/buildProfileMatches.test.ts",
