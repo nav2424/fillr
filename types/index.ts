@@ -237,6 +237,8 @@ export interface ScanResult {
   scoringData?: FillrScoringDataSnapshot
   /** Set when Fillr Fit is locked at first display — enrichment must not recompute the score. */
   scoringFrozenAt?: string
+  /** Stable hash of profile inputs used for the frozen Fillr Fit. */
+  scoringProfileHash?: string
   /** Every ingredient line was served from Supabase `ingredient_knowledge` (no OpenAI call). */
   ingredientDecodeMeta?: { allFromCache: boolean }
   /** 0–100 coverage score from allergen engine / heuristics (label completeness). */

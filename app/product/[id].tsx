@@ -49,14 +49,17 @@ import {
   type ScanResult,
 } from '../../types'
 import { ingredientSortRank } from '../../lib/scanResultHook'
-import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
+import {
+  attachFillrFitToScanResult,
+  getFillrScoringProfileHash,
+} from '../../lib/attachFillrFit'
 import {
   isIngredientEnrichInFlight,
   runScanAiEnrichment,
   scanNeedsIngredientDecode,
 } from '../../services/productService'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
-import { personalizeScanResult } from '../../lib/personalizationEngine'
+import { personalizeScanResult, refreshScanProfileSafety } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
 import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
 import { playSafeScanSound } from '../../lib/playSafeScanSound'
@@ -499,7 +502,6 @@ export default function ProductScreen() {
 
   const storedResult =
     currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
-  const isIosStabilityMode = Platform.OS === 'ios'
 
   const userProfileForPersonalize: UserProfile = useMemo(
     () => ({
@@ -514,9 +516,11 @@ export default function ProductScreen() {
 
   const viewResult = useMemo(() => {
     if (!storedResult) return null
-    if (isIosStabilityMode) return storedResult
-    return personalizeScanResult(storedResult, userProfileForPersonalize)
-  }, [storedResult, userProfileForPersonalize, isIosStabilityMode])
+    return personalizeScanResult(
+      refreshScanProfileSafety(storedResult, userProfileForPersonalize),
+      userProfileForPersonalize
+    )
+  }, [storedResult, userProfileForPersonalize])
 
   const openProductNameModal = useCallback(() => {
     const r = currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
@@ -548,9 +552,10 @@ export default function ProductScreen() {
 
   const displayScoredResult = useMemo((): ScanResult | null => {
     if (!viewResult) return null
-    // Frozen or stored score — never recompute when profile or ingredient copy changes.
-    if (viewResult.fillrFit || viewResult.scoringFrozenAt) return viewResult
-    return attachFillrFitToScanResult(viewResult, getDietProfileSnapshotSync())
+    const profile = getDietProfileSnapshotSync()
+    const profileHash = getFillrScoringProfileHash(profile)
+    if (viewResult.fillrFit && viewResult.scoringProfileHash === profileHash) return viewResult
+    return attachFillrFitToScanResult(viewResult, profile)
   }, [viewResult, allergies, zSensitivities, preferences, goal, celiacStrictGluten])
 
   const displayFillrFit = displayScoredResult?.fillrFit ?? null
@@ -558,7 +563,12 @@ export default function ProductScreen() {
 
   useEffect(() => {
     if (!displayScoredResult || !displayScoredResult.fillrFit || !viewResult) return
-    if (viewResult.fillrFit) return
+    if (
+      viewResult.fillrFit &&
+      viewResult.scoringProfileHash === displayScoredResult.scoringProfileHash
+    ) {
+      return
+    }
     // Persist one-time hydration so reopening from history never loses score again.
     updateScanResultByProductId(displayScoredResult.product.id, displayScoredResult)
     if (currentResult?.product.id === displayScoredResult.product.id) {
@@ -574,12 +584,17 @@ export default function ProductScreen() {
     decodeRetryStartedRef.current = true
     void (async () => {
       try {
+        const applyEnrichedToStores = (scan: ScanResult) => {
+          setCurrentScan(scan)
+          updateScanResultByProductId(productId, scan)
+        }
         const enriched = await runScanAiEnrichment(
           displayScoredResult,
-          getDietProfileSnapshotSync()
+          getDietProfileSnapshotSync(),
+          undefined,
+          applyEnrichedToStores
         )
-        setCurrentScan(enriched)
-        updateScanResultByProductId(productId, enriched)
+        applyEnrichedToStores(enriched)
       } catch (err) {
         console.warn('[Fillr] product screen ingredient decode retry failed', err)
       }
