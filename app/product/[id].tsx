@@ -37,6 +37,10 @@ import { toTitleCase } from '../../lib/formatProductTitle'
 import { buildIngredientCardViewModel } from '../../lib/buildIngredientCardViewModel'
 import { buildScoreExplainability, type ScoreContributor } from '../../lib/buildScoreExplainability'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
+import { getScanAllowance } from '../../lib/scanAllowance'
+import { LastScanConversionCard } from '../../components/LastScanConversionCard'
+import { OneScanLeftBanner } from '../../components/OneScanLeftBanner'
+import { useConversionStore } from '../../store/conversionStore'
 import { useCurrentScanStore } from '../../store/currentScanStore'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
 import { useUserStore } from '../../store/userStore'
@@ -473,6 +477,13 @@ export default function ProductScreen() {
   const hasUserSensitivities = (zSensitivities?.length ?? 0) > 0
   const preferences = useUserStore((s) => s.preferences)
   const goal = useUserStore((s) => s.goal)
+  const isPro = useUserStore((s) => s.isPro)
+  const totalScansUsed = useUserStore((s) => s.totalScansUsed ?? 0)
+  const bonusScansEarned = useUserStore((s) => s.bonusScansEarned ?? 0)
+  const pendingLastScanPaywall = useConversionStore((s) => s.pendingLastScanPaywall)
+  const setPendingLastScanPaywall = useConversionStore((s) => s.setPendingLastScanPaywall)
+  const showOneScanLeftBanner = useConversionStore((s) => s.showOneScanLeftBanner)
+  const setShowOneScanLeftBanner = useConversionStore((s) => s.setShowOneScanLeftBanner)
   const currentResult = useCurrentScanStore((s) => s.result)
   const setCurrentScan = useCurrentScanStore((s) => s.setResult)
   const getResultByProductId = useScanHistoryStore((s) => s.getResultByProductId)
@@ -617,6 +628,11 @@ export default function ProductScreen() {
   const productAnalysis = viewResult?.productAnalysis
   const showTrustPanels = !isOnboardingPreview && Boolean(viewResult)
   const safetyStatus = viewResult?.safetyStatus ?? 'UNKNOWN'
+  const scanAllowance = getScanAllowance({ isPro, totalScansUsed, bonusScansEarned })
+  const showLastScanCard =
+    !isPro && !isOnboardingPreview && pendingLastScanPaywall?.productId === id && Boolean(viewResult)
+  const showOneScanLeftOnProduct =
+    !isPro && !isOnboardingPreview && !showLastScanCard && scanAllowance.remaining === 1 && showOneScanLeftBanner
   const product = viewResult?.product
 
   const safetyFlashOpacity = useRef(new Animated.Value(0)).current

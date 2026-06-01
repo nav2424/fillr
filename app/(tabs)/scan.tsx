@@ -29,9 +29,15 @@ import type { ScanResult } from '../../types'
 import { colors, spacing, typography } from '../../constants/theme'
 import { FREE_SCAN_LIMIT } from '../../constants/subscription'
 import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../../lib/authService'
+import { buildPaywallContextAtLimit } from '../../lib/buildPaywallContext'
+import { handlePostScanConversion } from '../../lib/handlePostScanConversion'
+import { getScanAllowance } from '../../lib/scanAllowance'
 import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '../../lib/scheduleUIWork'
 import { canUserScan, getRemainingScans, incrementScanCount } from '../../store/scanStore'
-import { showPaywall } from '../../services/paywallService'
+import { showPaywall, trackUpgradeCtaTapped } from '../../services/paywallService'
+import { useConversionStore } from '../../store/conversionStore'
+import { OneScanLeftBanner } from '../../components/OneScanLeftBanner'
+import { ScanLimitWall } from '../../components/ScanLimitWall'
 import { isDemoScanBarcode } from '../../services/mockProducts'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
@@ -106,6 +112,22 @@ export default function ScanScreen() {
   const addScan = useScanHistoryStore((s) => s.addScan)
   const setCurrentScan = useCurrentScanStore((s) => s.setResult)
   const outOfScans = !isPro && totalScansUsed >= FREE_SCAN_LIMIT + bonusScansEarned
+  const scanAllowance = getScanAllowance({ isPro, totalScansUsed, bonusScansEarned })
+  const showOneScanLeftBanner = useConversionStore((s) => s.showOneScanLeftBanner)
+  const setShowOneScanLeftBanner = useConversionStore((s) => s.setShowOneScanLeftBanner)
+  const limitReachedTrackedRef = useRef(false)
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!outOfScans) {
+        limitReachedTrackedRef.current = false
+        return
+      }
+      if (limitReachedTrackedRef.current) return
+      limitReachedTrackedRef.current = true
+      void trackScanResultMetric({ name: 'scan_limit_reached', payload: { used: totalScansUsed } })
+    }, [outOfScans, totalScansUsed]),
+  )
 
   useFocusEffect(
     useCallback(() => {
@@ -141,7 +163,9 @@ export default function ScanScreen() {
       if (!isDemo) {
         const allowed = await canUserScan()
         if (!allowed) {
-          const purchased = await showPaywall()
+          const ctx = buildPaywallContextAtLimit('scan_blocked')
+          await trackUpgradeCtaTapped('scan_blocked_barcode', ctx)
+          const purchased = await showPaywall({ context: ctx, metricSource: 'scan_blocked_barcode' })
           if (!purchased) {
             const remaining = await getRemainingScans()
             setScanError(
@@ -282,6 +306,7 @@ export default function ScanScreen() {
           }
           if (!isDemo) {
             await incrementScanCount()
+            void handlePostScanConversion(result.result)
             if (userId) {
               void (async () => {
                 await incrementScanUsageOnServer(userId)
@@ -449,24 +474,21 @@ export default function ScanScreen() {
           )}
         </View>
 
+        {!outOfScans && !isPro && scanAllowance.remaining === 1 && showOneScanLeftBanner ? (
+          <OneScanLeftBanner
+            variant="dark"
+            onDismiss={() => setShowOneScanLeftBanner(false)}
+          />
+        ) : null}
+
+        {!outOfScans && !isPro && scanAllowance.remaining === 1 && showOneScanLeftBanner ? (
+          <OneScanLeftBanner variant="dark" onDismiss={() => setShowOneScanLeftBanner(false)} />
+        ) : null}
+
         <View style={[styles.bottomStack, { paddingBottom: bottomPad }]}>
           {outOfScans ? (
             <View style={styles.glassCard}>
-              <Text style={styles.stateTitle}>No scans left</Text>
-              <Text style={styles.stateBody}>
-                No free scans left. Invite a friend or upgrade to keep scanning.
-              </Text>
-              <Pressable
-                onPress={() => {
-                  void showPaywall()
-                }}
-                style={({ pressed }) => [styles.primaryCta, pressed && { opacity: 0.9 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Get Fillr premium"
-              >
-                <Ionicons name="diamond-outline" size={16} color="#ffffff" />
-                <Text style={styles.primaryCtaText}>Get Fillr Premium</Text>
-              </Pressable>
+              <ScanLimitWall variant="glass" />
             </View>
           ) : permissionLoading ? (
             <View style={styles.glassCard}>

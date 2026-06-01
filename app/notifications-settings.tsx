@@ -10,6 +10,7 @@ export default function NotificationsSettingsScreen() {
   const notifyAllergenAlerts = useUserStore((s) => s.notifyAllergenAlerts)
   const notifyWeeklyDigest = useUserStore((s) => s.notifyWeeklyDigest)
   const notifyProductTips = useUserStore((s) => s.notifyProductTips)
+  const notifyScanLimitReminders = useUserStore((s) => s.notifyScanLimitReminders)
   const setNotificationPrefs = useUserStore((s) => s.setNotificationPrefs)
 
   return (

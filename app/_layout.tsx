@@ -10,6 +10,7 @@ import { getRefFromUrl } from '../lib/referrals'
 import { initializeRevenueCat, isRevenueCatConfigured } from '../services/revenuecatService'
 import { updatePremiumStatus } from '../store/scanStore'
 import { supabase } from '../lib/supabase'
+import { registerScanLimitNotificationResponseHandler } from '../lib/scanLimitNotifications'
 
 const queryClient = new QueryClient()
 

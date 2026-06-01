@@ -25,6 +25,13 @@ const plugins = [
   ],
   'expo-sharing',
   [
+    'expo-notifications',
+    {
+      icon: './assets/icon.png',
+      color: '#16a34a',
+    },
+  ],
+  [
     'expo-camera',
     {
       cameraPermission:
