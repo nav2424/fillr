@@ -13,22 +13,31 @@ const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? ''
 const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN ?? ''
 const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'usefillrapp'
 
+const facebookSdkPlugin =
+  facebookAppId && facebookClientToken
+    ? [
+        [
+          'react-native-fbsdk-next',
+          {
+            appID: facebookAppId,
+            clientToken: facebookClientToken,
+            displayName: facebookDisplayName,
+            scheme: `fb${facebookAppId}`,
+            advertiserIDCollectionEnabled: true,
+            autoLogAppEventsEnabled: true,
+            isAutoInitEnabled: true,
+            iosUserTrackingPermission:
+              'Allow Fillr to use your device identifier to measure ad performance and improve marketing.',
+          },
+        ],
+      ]
+    : []
+
 const plugins = [
   'expo-router',
   'expo-font',
   ...(includeDevClient ? ['expo-dev-client'] : []),
-  [
-    'react-native-fbsdk-next',
-    {
-      appID: facebookAppId,
-      clientToken: facebookClientToken,
-      displayName: facebookDisplayName,
-      scheme: `fb${facebookAppId}`,
-      advertiserIDCollectionEnabled: true,
-      autoLogAppEventsEnabled: true,
-      isAutoInitEnabled: true,
-    },
-  ],
+  ...facebookSdkPlugin,
   [
     'expo-build-properties',
     {

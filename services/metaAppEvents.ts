@@ -9,8 +9,13 @@ const isIOS = Platform.OS === 'ios'
  */
 export async function initializeMetaAppEvents(): Promise<void> {
   if (!isIOS) return
+
+  const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency')
   const { Settings } = await import('react-native-fbsdk-next')
+
+  const { status } = await requestTrackingPermissionsAsync()
   Settings.initializeSDK()
+  await Settings.setAdvertiserTrackingEnabled(status === 'granted')
 }
 
 /**
