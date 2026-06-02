@@ -150,6 +150,18 @@ export function stripAllergenAdvisoryClausesFromBlob(raw: string): string {
   return s.replace(/\s{2,}/g, ' ').trim()
 }
 
+/**
+ * Drop bare allergen tokens only when the parse looks like advisory noise, not a real formula.
+ * e.g. keep "Milk" in "Milk, Cream, Carrageenan…" but drop a lone "milk" from "Contains: milk".
+ */
+export function filterBareAllergenTokensFromParsedList(names: string[]): string[] {
+  if (names.length === 0) return names
+  const nonBare = names.filter((n) => !isBareAllergenDisclosureName(n))
+  if (nonBare.length === 0) return []
+  if (nonBare.length < names.length && nonBare.length >= 2) return names
+  return nonBare
+}
+
 /** Single-token rows like "milk" / "eggs" from advisory lines — not real ingredients. */
 export function isBareAllergenDisclosureName(name: string): boolean {
   const n = normalizeText(name)
@@ -597,10 +609,11 @@ export function parseIngredientListFromPlain(
   const withoutPackagingTail = truncateIngredientBlobAtPackagingTail(englishSliced)
   const advisoryStripped = stripAllergenAdvisoryClausesFromBlob(withoutPackagingTail)
   const normalized = advisoryStripped.replace(/\s+/g, ' ').trim()
-  return chunkIngredientBlobToEnglishNames(normalized, 'auto')
-    .filter(isPlausibleIngredientToken)
-    .filter((name) => !isBareAllergenDisclosureName(name))
-    .filter((name) => !isOrphanOilSourceSeedToken(name))
+  return filterBareAllergenTokensFromParsedList(
+    chunkIngredientBlobToEnglishNames(normalized, 'auto')
+      .filter(isPlausibleIngredientToken)
+      .filter((name) => !isOrphanOilSourceSeedToken(name))
+  )
 }
 
 /**

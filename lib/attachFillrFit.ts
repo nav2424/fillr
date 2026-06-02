@@ -2,8 +2,7 @@ import type { DietaryProfile, ScanResult } from '../types'
 import { applyPresentationDefaults } from '../services/openaiIngredientAnalysis'
 import { buildScoringData } from './buildScoringData'
 import { CATEGORY_BASELINES, calculateFillrFit } from './fillrScoring'
-import type { FillrFitComputed } from './fillrScoring'
-import type { FillrScoringInput } from './fillrScoring'
+import type { FillrFitComputed, FillrScoringInput } from './fillrScoring'
 import { calculateProcessedRating } from './processedRating'
 
 export type { FillrFitComputed, FillrScoringInput }
@@ -85,6 +84,16 @@ export function finalizeEnrichedScanPreservingScore(
     return preserveFrozenScoring(base, presented)
   }
   return attachFillrFitToScanResult(presented, profile)
+}
+
+function computeLiveFillrScoring(
+  result: ScanResult,
+  profile: DietaryProfile
+): { fillrFit: FillrFitComputed; scoringData: FillrScoringInput } {
+  const ingredients = result.ingredientBreakdown ?? []
+  const scoringData = buildScoringData(result, ingredients, profile)
+  const fillrFit = calculateFillrFit(scoringData)
+  return { fillrFit, scoringData }
 }
 
 /** Attach `fillrFit` + `processedRating` + `scoringData` using current breakdown (no re-presentation). */
