@@ -10,6 +10,7 @@ import { getRefFromUrl } from '../lib/referrals'
 import { initializeRevenueCat, isRevenueCatConfigured } from '../services/revenuecatService'
 import { updatePremiumStatus } from '../store/scanStore'
 import { supabase } from '../lib/supabase'
+import { initializeMetaAppEvents } from '../services/metaAppEvents'
 
 const queryClient = new QueryClient()
 
@@ -18,6 +19,8 @@ export default function RootLayout() {
   useEffect(() => {
     /** Keep auth tokens fresh when returning from background (Supabase RN guidance). */
     void supabase.auth.startAutoRefresh()
+    void initializeMetaAppEvents()
+
     const onAppState = (state: AppStateStatus) => {
       if (state === 'active') {
         void supabase.auth.startAutoRefresh()

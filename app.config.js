@@ -9,11 +9,26 @@ try {
 // EAS sets EAS_BUILD_PROFILE during cloud builds (e.g. "production", "development").
 const easProfile = process.env.EAS_BUILD_PROFILE
 const includeDevClient = easProfile !== 'production'
+const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? ''
+const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN ?? ''
+const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'Fillr'
 
 const plugins = [
   'expo-router',
   'expo-font',
   ...(includeDevClient ? ['expo-dev-client'] : []),
+  [
+    'react-native-fbsdk-next',
+    {
+      appID: facebookAppId,
+      clientToken: facebookClientToken,
+      displayName: facebookDisplayName,
+      scheme: `fb${facebookAppId}`,
+      advertiserIDCollectionEnabled: true,
+      autoLogAppEventsEnabled: true,
+      isAutoInitEnabled: true,
+    },
+  ],
   [
     'expo-build-properties',
     {
@@ -55,6 +70,11 @@ module.exports = {
       icon: './assets/icon-ios.png',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        FacebookAppID: facebookAppId,
+        FacebookClientToken: facebookClientToken,
+        FacebookDisplayName: facebookDisplayName,
+        FacebookAutoLogAppEventsEnabled: true,
+        FacebookAdvertiserIDCollectionEnabled: true,
       },
     },
     android: {
