@@ -11,7 +11,7 @@ const easProfile = process.env.EAS_BUILD_PROFILE
 const includeDevClient = easProfile !== 'production'
 const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? ''
 const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN ?? ''
-const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'Fillr'
+const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'usefillrapp'
 
 const plugins = [
   'expo-router',
