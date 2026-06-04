@@ -1,6 +1,6 @@
 // Load .env before Expo reads config (optional - EAS injects env vars during build)
 try {
-  require('dotenv').config();
+  require('dotenv').config({ quiet: true });
 } catch {
   // dotenv not available when EAS CLI reads config
 }
