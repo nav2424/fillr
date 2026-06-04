@@ -150,41 +150,14 @@ export function stripAllergenAdvisoryClausesFromBlob(raw: string): string {
   return s.replace(/\s{2,}/g, ' ').trim()
 }
 
-/** Single-token rows like "milk" / "eggs" from advisory lines — not real ingredients. */
+/** Disclosure headers or fragments that are not real ingredient formula rows. */
 export function isBareAllergenDisclosureName(name: string): boolean {
   const n = normalizeText(name)
     .replace(/[.:;]+$/g, '')
     .trim()
   if (!n) return true
-  const bare = new Set([
-    'milk',
-    'dairy',
-    'egg',
-    'eggs',
-    'wheat',
-    'gluten',
-    'soy',
-    'soya',
-    'peanut',
-    'peanuts',
-    'tree nut',
-    'tree nuts',
-    'nuts',
-    'fish',
-    'shellfish',
-    'sesame',
-    'mustard',
-    'sulfites',
-    'sulphites',
-    'celery',
-    'lupin',
-    'lupine',
-    'allergen',
-    'allergens',
-    'allergen information',
-    'allergen info',
-  ])
-  if (bare.has(n)) return true
+  const disclosureOnly = new Set(['allergen', 'allergens', 'allergen information', 'allergen info'])
+  if (disclosureOnly.has(n)) return true
   if (/^(contains|may contain|allergen)/.test(n)) return true
   if (n === 'may') return true
   return false

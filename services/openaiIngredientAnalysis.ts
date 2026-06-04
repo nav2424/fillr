@@ -950,10 +950,10 @@ function mergeIntelligenceIntoLegacyItem(item: IngredientAnalysisItem): Ingredie
     next.whatItDoes = padShortProse(b?.[1] || local.whatItDoes || local.whyItsUsed, [], name)
   }
   if (proseFieldInvalid(next.bodyEffect)) {
-    next.bodyEffect = padShortProse(local.bodyEffect, [], name)
+    next.bodyEffect = padShortProse(local.bodyEffect ?? '', [], name)
   }
   if (proseFieldInvalid(next.funFact)) {
-    next.funFact = padShortProse(local.funFact, [ify ?? ''], name)
+    next.funFact = padShortProse(local.funFact ?? '', [ify ?? ''], name)
   }
 
   const merged = ingredientExplanationToAnalysisItem(
