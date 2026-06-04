@@ -105,7 +105,7 @@ for (const name of COMMON_INGREDIENTS) {
     const fb = buildFallbackIngredientExplanation(name)
     assert.ok(fb.whatItIs.trim().length >= 24, 'whatItIs too short')
     assert.ok((fb.whatItDoes ?? fb.whyItsUsed).trim().length >= 24, 'whatItDoes too short')
-    assert.ok(fb.bodyEffect.trim().length >= 24, 'bodyEffect too short')
+    assert.ok((fb.bodyEffect ?? '').trim().length >= 24, 'bodyEffect too short')
     assert.notEqual(norm(fb.whatItIs), norm(fb.whatItDoes ?? fb.whyItsUsed))
     assert.equal(textMatchesIngredientGenericPattern(fb.whatItIs), false)
     assert.equal(textMatchesIngredientGenericPattern(fb.whatItDoes ?? ''), false)

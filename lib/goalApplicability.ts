@@ -61,7 +61,7 @@ export function isProductLevelGoalImpactBlurb(
   if (!t || !/\b(your|you)\b/i.test(t)) return false
 
   const label = (getGoalDisplayLabel(goal) ?? '').toLowerCase()
-  const keyPhrase = normalizeGoalKey(goal).replace(/_/g, ' ')
+  const keyPhrase = normalizeGoalKey(goal ?? '').replace(/_/g, ' ')
   const mentionsGoal =
     /\b(goal|current goal)\b/i.test(t) ||
     (label.length > 0 && t.toLowerCase().includes(label)) ||

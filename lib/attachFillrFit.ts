@@ -53,6 +53,17 @@ function attachScoringCopy(result: ScanResult, scoringData: FillrScoringInput, f
   }
 }
 
+function computeLiveFillrScoring(
+  result: ScanResult,
+  profile: DietaryProfile
+): { fillrFit: FillrFitComputed; scoringData: FillrScoringInput } {
+  const scoringData = buildScoringData(result, result.ingredientBreakdown, profile)
+  return {
+    fillrFit: calculateFillrFit(scoringData),
+    scoringData,
+  }
+}
+
 /** Lock Fillr Fit at first display (barcode fast path, OCR/manual base scan). */
 export function freezeScanScoring(result: ScanResult, profile: DietaryProfile): ScanResult {
   const withFit = result.fillrFit ? result : attachFillrFitToScanResult(result, profile)
