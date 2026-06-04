@@ -1,3 +1,7 @@
+/**
+ * RevenueCat purchases are not mirrored to Meta manually — iOS auto app events
+ * (`FacebookAutoLogAppEventsEnabled`) logs App Store purchases/subscriptions/trials.
+ */
 import { Alert } from 'react-native'
 import Purchases, { CustomerInfo, LOG_LEVEL } from 'react-native-purchases'
 import { updatePremiumStatus } from '../store/scanStore'

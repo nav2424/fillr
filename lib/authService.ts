@@ -3,6 +3,7 @@ import * as Application from 'expo-application'
 import { storage } from './storage'
 import { supabase } from './supabase'
 import { normalizeReferralCode } from './referrals'
+import { logMetaCompletedRegistration } from '../services/metaAppEvents'
 
 const DEVICE_ID_KEY = 'fillr-device-id'
 const REFERRAL_PENDING_KEY = 'fillr-referral-pending'
@@ -206,6 +207,7 @@ export async function signUpWithEmail(args: {
   if (error) throw error
   const userId = data.user?.id
   if (!userId) throw new Error('Signup succeeded but user is missing')
+  void logMetaCompletedRegistration()
   const profile = await fetchProfile(userId)
   return { userId, profile }
 }

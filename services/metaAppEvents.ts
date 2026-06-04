@@ -19,7 +19,9 @@ export async function initializeMetaAppEvents(): Promise<void> {
 }
 
 /**
- * Logs a purchase conversion event to Meta App Events.
+ * Manual purchase logging. Do not call while `FacebookAutoLogAppEventsEnabled` is true —
+ * Meta auto-logs App Store purchases/subscriptions/trials and duplicates will skew attribution.
+ * Use only if auto-log is turned off and RevenueCat confirms the transaction.
  */
 export async function logMetaPurchase(amount: number, currency = 'USD'): Promise<void> {
   if (!isIOS) return
@@ -28,7 +30,7 @@ export async function logMetaPurchase(amount: number, currency = 'USD'): Promise
 }
 
 /**
- * Logs completed registration conversion.
+ * Signup / account creation — not auto-captured by Meta; call once after successful registration.
  */
 export async function logMetaCompletedRegistration(): Promise<void> {
   if (!isIOS) return
