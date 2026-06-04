@@ -74,7 +74,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      buildNumber: '8',
+      buildNumber: '15',
       bundleIdentifier: 'com.nav004.fillr',
       icon: './assets/icon-ios.png',
       infoPlist: {
