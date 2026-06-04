@@ -1,5 +1,6 @@
 import { Share } from 'react-native'
 import * as Linking from 'expo-linking'
+import { REFERRAL_INVITEE_BONUS } from '../constants/subscription'
 import { IOS_APP_STORE_URL } from './appStoreLinks'
 
 export const REFERRAL_CODE_RE = /^FLR-[A-Z2-9]{4}$/
@@ -39,7 +40,7 @@ It tells you what every ingredient actually is, what it does to your body, and f
 
 Some of what it found in my snacks was wild.
 
-Get 3 free bonus scans when you sign up with my code ${normalizedCode}:
+Get ${REFERRAL_INVITEE_BONUS} free bonus scans when you sign up with my code ${normalizedCode}:
 ${link}`
   await Share.share({
     title: "I've been using this app to decode food labels",
