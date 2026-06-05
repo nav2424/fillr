@@ -1,4 +1,5 @@
 type MetaAppEventsEnv = {
+  [key: string]: string | undefined
   EXPO_PUBLIC_FACEBOOK_APP_ID?: string
   EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN?: string
 }
