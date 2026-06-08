@@ -50,7 +50,10 @@ import {
   extractEnglishIngredientHaystackForSafetyFromBlob,
   extractEnglishIngredients,
 } from '../lib/ingredientTextParsing'
-import { extractAllergenAdvisorySectionsFromBlob } from '../lib/allergenAdvisorySections'
+import {
+  buildCeliacSafetyText,
+  extractAllergenAdvisorySectionsFromBlob,
+} from '../lib/allergenAdvisorySections'
 import type { IngredientTextParseSource } from '../lib/ingredientParseSource'
 import type { OFFProductLike } from '../lib/allergenEngine/offNormalizer'
 import { supabase } from '../lib/supabase'
@@ -335,13 +338,10 @@ async function buildScanFromCachedBarcodeProduct(
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean)
-    const celiacHaystack = [
-      ingredientsTextSafety,
-      detectionFields.contains_text,
-      detectionFields.may_contain_text,
-    ]
-      .filter(Boolean)
-      .join(' ')
+    const celiacHaystack = buildCeliacSafetyText(ingredientsTextSafety, {
+      contains_text: detectionFields.contains_text,
+      may_contain_text: detectionFields.may_contain_text,
+    })
     const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || ingredientText)
     output.celiac = {
       celiacModeEnabled: true,
@@ -973,13 +973,7 @@ export async function rescanWithManualIngredients(
 
   if (celiac) {
     const ingredientSafetyText = ingredients_text_safety.trim() || ingredients_text
-    const celiacHaystack = [
-      ingredientSafetyText,
-      advisorySections.contains_text,
-      advisorySections.may_contain_text,
-    ]
-      .filter(Boolean)
-      .join(' ')
+    const celiacHaystack = buildCeliacSafetyText(ingredientSafetyText, advisorySections)
     const ingredients = ingredientSafetyText
       .split(/[,;]/)
       .map((s) => s.trim())
@@ -1117,13 +1111,7 @@ export async function createScanResultFromIngredientText(
 
   if (celiac) {
     const ingredientSafetyText = ingredients_text_safety.trim() || ingredients_text
-    const celiacHaystack = [
-      ingredientSafetyText,
-      advisorySections.contains_text,
-      advisorySections.may_contain_text,
-    ]
-      .filter(Boolean)
-      .join(' ')
+    const celiacHaystack = buildCeliacSafetyText(ingredientSafetyText, advisorySections)
     const ingredients = ingredientSafetyText.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
     const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || ingredientSafetyText)
     output.celiac = {

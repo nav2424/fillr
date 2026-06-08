@@ -4,7 +4,10 @@ import {
   extractEnglishIngredientHaystackForSafetyFromBlob,
   parseIngredientListFromPlain,
 } from './ingredientTextParsing'
-import { extractAllergenAdvisorySectionsFromBlob } from './allergenAdvisorySections'
+import {
+  buildCeliacSafetyText,
+  extractAllergenAdvisorySectionsFromBlob,
+} from './allergenAdvisorySections'
 import { buildUserAllergenConfig, detectAllergensEvidenceBased } from './allergenEngine'
 import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
 import { shouldTranslateFrenchOnlyIngredientLabel } from '../services/ocrLabelTranslation'
@@ -63,7 +66,7 @@ test('OCR keeps stripped may-contain wheat available for celiac matching', () =>
   const raw = 'Ingredients: rice flour, sugar, salt. May contain wheat.'
   const ingredientSafetyText = extractEnglishIngredientHaystackForSafetyFromBlob(raw, 'ocr')
   const advisory = extractAllergenAdvisorySectionsFromBlob(raw)
-  const celiacHaystack = [ingredientSafetyText, advisory.may_contain_text].filter(Boolean).join(' ')
+  const celiacHaystack = buildCeliacSafetyText(ingredientSafetyText, advisory)
   const ingredients = ingredientSafetyText.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
   const matches = runCeliacCheck(ingredients, celiacHaystack)
 

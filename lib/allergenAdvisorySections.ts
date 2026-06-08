@@ -59,3 +59,18 @@ export function extractAllergenAdvisorySectionsFromBlobs(
     ...rawTexts.map((rawText) => extractAllergenAdvisorySectionsFromBlob(rawText))
   )
 }
+
+export function buildCeliacSafetyText(
+  ingredientSafetyText: string | undefined | null,
+  advisorySections: AllergenAdvisorySections
+): string {
+  const containsText = advisorySections.contains_text.trim()
+  const mayContainText = advisorySections.may_contain_text.trim()
+  return [
+    String(ingredientSafetyText ?? '').trim(),
+    containsText ? `Contains ${containsText}` : '',
+    mayContainText ? `May contain ${mayContainText}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
