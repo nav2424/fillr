@@ -7,6 +7,7 @@ import {
   extractEnglishIngredients,
   extractEnglishIngredientHaystackForSafety,
 } from '../ingredientTextParsing'
+import { extractAllergenAdvisorySectionsFromBlobs } from '../allergenAdvisorySections'
 import { englishPrimarySegment } from '../bilingualDisplay'
 import { buildProductName } from '../buildProductName'
 
@@ -171,11 +172,22 @@ export function normalizeOFFProduct(
     ingredients_text_en: offProduct.ingredients_text_en,
     allergens: typeof offProduct.allergens === 'string' ? offProduct.allergens : undefined,
   })
+  const embeddedAdvisories = extractAllergenAdvisorySectionsFromBlobs(
+    offProduct.ingredients_text_en,
+    offProduct.ingredients_text,
+    typeof offProduct.ingredients_text_with_allergens === 'string'
+      ? offProduct.ingredients_text_with_allergens
+      : undefined,
+    offProduct.ingredients_text_fr
+  )
 
   // 2) Contains (explicit allergen statement)
   const contains_text_raw =
     typeof offProduct.allergens === 'string' ? offProduct.allergens.trim() : ''
-  const contains_text = englishPrimarySegment(stripBilingualSlashes(contains_text_raw))
+  const contains_text = mergeMayContainParts(
+    englishPrimarySegment(stripBilingualSlashes(contains_text_raw)),
+    embeddedAdvisories.contains_text
+  )
   const allergens_tags = Array.isArray(offProduct.allergens_tags)
     ? offProduct.allergens_tags
     : []
@@ -185,6 +197,7 @@ export function normalizeOFFProduct(
   const traces_stripped = englishPrimarySegment(stripBilingualSlashes(traces_raw))
   const may_contain_text = mergeMayContainParts(
     traces_stripped,
+    embeddedAdvisories.may_contain_text,
     cross_contact_warnings.length ? cross_contact_warnings.join('. ') : undefined
   )
   const traces_tags = Array.isArray(offProduct.traces_tags)
