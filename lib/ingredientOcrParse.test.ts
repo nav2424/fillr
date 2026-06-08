@@ -1,6 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseIngredientListFromPlain } from './ingredientTextParsing'
+import {
+  extractEnglishIngredientHaystackForSafetyFromBlob,
+  parseIngredientListFromPlain,
+} from './ingredientTextParsing'
+import {
+  buildCeliacSafetyText,
+  extractAllergenAdvisorySectionsFromBlob,
+} from './allergenAdvisorySections'
+import { buildUserAllergenConfig, detectAllergensEvidenceBased } from './allergenEngine'
+import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
 import { shouldTranslateFrenchOnlyIngredientLabel } from '../services/ocrLabelTranslation'
 
 test('OCR with no ingredients header — full blob parses', () => {
@@ -30,6 +39,40 @@ test('OCR strips may contain clause', () => {
   const result = parseIngredientListFromPlain(raw, 'ocr')
   assert.ok(!result.some((s) => /peanuts/i.test(s)))
   assert.equal(result.length, 3)
+})
+
+test('OCR keeps stripped advisory text available for allergen safety matching', () => {
+  const raw = 'Ingredients: sugar, rice flour, salt. May contain peanuts.'
+  const cards = parseIngredientListFromPlain(raw, 'ocr')
+  const advisory = extractAllergenAdvisorySectionsFromBlob(raw)
+  const output = detectAllergensEvidenceBased(
+    {
+      product_name: 'OCR snack',
+      ingredients_text: cards.join(', '),
+      ingredients_text_safety: extractEnglishIngredientHaystackForSafetyFromBlob(raw, 'ocr'),
+      contains_text: advisory.contains_text,
+      may_contain_text: advisory.may_contain_text,
+    },
+    buildUserAllergenConfig(['peanuts'])
+  )
+
+  assert.ok(!cards.some((s) => /peanuts/i.test(s)))
+  assert.equal(advisory.may_contain_text, 'peanuts')
+  assert.equal(output.overall_status, 'MAY_CONTAIN')
+  assert.equal(output.matched_allergens[0]?.section, 'may_contain')
+})
+
+test('OCR keeps stripped may-contain wheat available for celiac matching', () => {
+  const raw = 'Ingredients: rice flour, sugar, salt. May contain wheat.'
+  const ingredientSafetyText = extractEnglishIngredientHaystackForSafetyFromBlob(raw, 'ocr')
+  const advisory = extractAllergenAdvisorySectionsFromBlob(raw)
+  const celiacHaystack = buildCeliacSafetyText(ingredientSafetyText, advisory)
+  const ingredients = ingredientSafetyText.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
+  const matches = runCeliacCheck(ingredients, celiacHaystack)
+
+  assert.equal(advisory.may_contain_text, 'wheat')
+  assert.equal(getCeliacSeverity(matches), 'CAUTION')
+  assert.equal(matches[0]?.signalType, 'MAY_CONTAIN')
 })
 
 test('barcode strips facility cross-contact and bare allergen tokens', () => {

@@ -4,6 +4,7 @@ import type { DetectionOutput } from './allergenEngine'
 import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
 import { fetchOpenFoodFactsProduct } from './openFoodFactsFetch'
 import { buildProductName } from './buildProductName'
+import { buildCeliacSafetyText } from './allergenAdvisorySections'
 
 function pickNutrimentsForProduct(raw: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== 'object') return undefined
@@ -121,13 +122,10 @@ export async function scanBarcodeForAllergens(params: {
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean)
-    const fullProductText = [
-      safety,
-      norm?.contains_text || '',
-      norm?.may_contain_text || '',
-    ]
-      .join(' ')
-      .trim()
+    const fullProductText = buildCeliacSafetyText(safety, {
+      contains_text: norm?.contains_text || '',
+      may_contain_text: norm?.may_contain_text || '',
+    })
     const celiacMatches = runCeliacCheck(ingredients, fullProductText)
     output.celiac = {
       celiacModeEnabled: true,

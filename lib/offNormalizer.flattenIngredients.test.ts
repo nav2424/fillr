@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { OFFIngredientNode } from './allergenEngine/offNormalizer'
 import { normalizeOFFProduct, flattenOffIngredientsPreorder } from './allergenEngine/offNormalizer'
+import { buildUserAllergenConfig, detectAllergensEvidenceBased } from './allergenEngine'
 import { parseIngredients } from './fillrAdapter'
 
 /** Minimal OFF-style tree matching Kraft Smooth–style nesting (11 analyzed lines). */
@@ -37,4 +38,32 @@ test('normalizeOFFProduct prefers structured tree when it expands the list', () 
   assert.ok(n)
   const cards = parseIngredients(n!.ingredients_text, 'barcode')
   assert.equal(cards.length, 11)
+})
+
+test('normalizeOFFProduct preserves embedded contains advisory for matching', () => {
+  const norm = normalizeOFFProduct({
+    product_name: 'Chocolate snack',
+    ingredients_text_en: 'Ingredients: sugar, cocoa, salt. Contains: milk.',
+    allergens: '',
+    allergens_tags: [],
+  })
+
+  assert.ok(norm)
+  assert.equal(norm!.contains_text, 'milk')
+
+  const output = detectAllergensEvidenceBased(
+    {
+      product_name: norm!.product_name,
+      ingredients_text: norm!.ingredients_text,
+      ingredients_text_safety: norm!.ingredients_text_safety,
+      contains_text: norm!.contains_text,
+      may_contain_text: norm!.may_contain_text,
+      allergens_tags: norm!.allergens_tags,
+      traces_tags: norm!.traces_tags,
+    },
+    buildUserAllergenConfig(['milk'])
+  )
+
+  assert.equal(output.overall_status, 'CONTAINS')
+  assert.equal(output.matched_allergens[0]?.section, 'contains')
 })
