@@ -222,7 +222,7 @@ drop policy if exists "Users can view own referrals" on public.referrals;
 create policy "Users can view own profile" on public.profiles
   for select using (auth.uid() = id);
 create policy "Users can update own profile" on public.profiles
-  for update using (auth.uid() = id);
+  for update using (auth.uid() = id) with check (auth.uid() = id);
 create policy "Users can insert own profile" on public.profiles
   for insert with check (auth.uid() = id);
 create policy "Users can view own referral basics" on public.profiles
@@ -243,10 +243,6 @@ create policy "Users can manage own sensitivities" on public.user_sensitivities
 -- Products: read for all (cached data)
 create policy "Products are readable" on public.products
   for select using (true);
-create policy "Products can be inserted" on public.products
-  for insert with check (true);
-create policy "Products can be updated" on public.products
-  for update using (true) with check (true);
 
 -- Ingredients: read for all
 create policy "Ingredients are readable" on public.ingredients
@@ -273,6 +269,17 @@ create policy "Users can view own disclaimer acknowledgments" on public.user_ack
 
 create policy "Users can view own referrals" on public.referrals
   for select using (auth.uid() = new_user_id);
+
+-- Privileges: keep entitlement/quota and shared product cache writes server-managed.
+revoke insert, update on public.profiles from anon, authenticated;
+revoke insert, update on public.products from anon, authenticated;
+
+grant select on public.profiles to authenticated;
+grant insert (id, email, full_name, updated_at) on public.profiles to authenticated;
+grant update (email, full_name, onboarding_completed, referral_code, updated_at)
+  on public.profiles to authenticated;
+
+grant select on public.products to anon, authenticated;
 
 -- Utility: generate FLR-XXXX code with safe alphabet.
 create or replace function public.generate_referral_code()
@@ -432,6 +439,31 @@ begin
   return query select true, 'granted';
 end;
 $$;
+
+-- Authenticated scan counter increment. Clients must not be able to lower or
+-- arbitrarily set quota counters through direct profile updates.
+create or replace function public.increment_my_scan_usage()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception 'not authenticated' using errcode = '28000';
+  end if;
+
+  update public.profiles
+  set total_scans_used = coalesce(total_scans_used, 0) + 1,
+      updated_at = now()
+  where id = uid;
+end;
+$$;
+
+revoke all on function public.increment_my_scan_usage() from public;
+grant execute on function public.increment_my_scan_usage() to authenticated;
 
 -- Public-safe referral code validator used during signup.
 create or replace function public.validate_referral_code(code text)

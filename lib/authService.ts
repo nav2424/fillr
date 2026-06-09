@@ -271,13 +271,9 @@ export async function setOnboardingCompletedOnServer(userId: string): Promise<vo
 }
 
 export async function incrementScanUsageOnServer(userId: string): Promise<void> {
-  const profile = await fetchProfile(userId)
-  if (!profile) return
-  const next = (profile.total_scans_used ?? 0) + 1
-  await supabase
-    .from('profiles')
-    .update({ total_scans_used: next, updated_at: new Date().toISOString() })
-    .eq('id', userId)
+  const currentUserId = await getCurrentAuthUserId()
+  if (currentUserId !== userId) return
+  await supabase.rpc('increment_my_scan_usage')
 }
 
 export async function setReferralFinalizationPending(pending: boolean): Promise<void> {

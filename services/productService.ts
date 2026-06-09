@@ -52,6 +52,7 @@ import {
 } from '../lib/ingredientTextParsing'
 import type { IngredientTextParseSource } from '../lib/ingredientParseSource'
 import type { OFFProductLike } from '../lib/allergenEngine/offNormalizer'
+import { isTrustedSharedProductSource } from '../lib/sharedProductSourceTrust'
 import { supabase } from '../lib/supabase'
 import { yieldToMainThread } from '../lib/yieldToMainThread'
 import { enqueueNonCriticalWrite } from '../lib/nonCriticalWriteQueue'
@@ -64,11 +65,21 @@ function supabaseClientConfigured(): boolean {
   )
 }
 
+function clientSharedProductWritesEnabled(): boolean {
+  return false
+}
+
 /**
  * After OFF product data is fetched and parsed, upsert into `public.products`.
- * Non-blocking for scan UX — callers should `void … .catch(() => {})`.
+ * Shared cache writes are restricted to trusted backend/admin paths; mobile
+ * clients must not publish globally reusable ingredient data.
  */
 async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: string): Promise<void> {
+  if (!clientSharedProductWritesEnabled()) {
+    void offProduct
+    void barcode
+    return
+  }
   if (!supabaseClientConfigured()) return
   const bc = barcode.trim()
   if (!bc) return
@@ -132,7 +143,8 @@ async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: stri
 
 /**
  * Backfill missing barcode ingredient data from user-provided label capture (OCR/manual).
- * This lets future barcode scans reuse the learned ingredient text.
+ * User-provided label text is intentionally not written to the shared barcode
+ * cache because that cache can affect safety verdicts for other users.
  */
 export async function backfillBarcodeIngredientData(params: {
   barcode: string
@@ -140,6 +152,10 @@ export async function backfillBarcodeIngredientData(params: {
   productDisplayName?: string
   source: 'photo_ocr' | 'manual_entry'
 }): Promise<boolean> {
+  if (!clientSharedProductWritesEnabled()) {
+    void params
+    return false
+  }
   if (!supabaseClientConfigured()) return false
   const barcode = String(params.barcode ?? '').trim()
   const ingredientText = String(params.ingredientText ?? '').trim()
@@ -302,7 +318,12 @@ async function buildScanFromCachedBarcodeProduct(
 ): Promise<ScanProductFastResult | null> {
   const cached = cachedInput ?? (await getCachedProductByBarcode(barcode))
   const ingredientText = String(cached?.ingredient_text ?? '').trim()
-  if (!cached || ingredientText.length < 20 || parseIngredients(ingredientText, 'barcode').length < 3) {
+  if (
+    !cached ||
+    !isTrustedSharedProductSource(cached.source) ||
+    ingredientText.length < 20 ||
+    parseIngredients(ingredientText, 'barcode').length < 3
+  ) {
     return null
   }
 
@@ -649,7 +670,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
       void upsertProductToDatabase(offResult.offProduct, offResult.barcode).catch(() => {})
 
       const cached = await getCachedProductByBarcode(offResult.barcode)
-      if (cached?.ingredient_text) {
+      if (cached?.ingredient_text && isTrustedSharedProductSource(cached.source)) {
         const offScore = scoreIngredientSource(
           ingredientText,
           'openfoodfacts',
