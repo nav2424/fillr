@@ -95,7 +95,7 @@ test('adds fallback personalized impact for flagged ingredient when missing', ()
     })
   )
 
-  const out = enforcePersonalizedCopy(input, BASE_PROFILE)
+  const out = enforcePersonalizedCopy(input, { ...BASE_PROFILE, allergies: ['milk'] })
   assert.match(out.ingredients[0].impactForYou ?? '', /your saved allergy profile/i)
   assert.equal(out.ingredients[0].whyItMattersYou, out.ingredients[0].impactForYou)
 })
