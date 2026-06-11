@@ -158,7 +158,7 @@ export function filterBareAllergenTokensFromParsedList(names: string[]): string[
   if (names.length === 0) return names
   const nonBare = names.filter((n) => !isBareAllergenDisclosureName(n))
   if (nonBare.length === 0) return []
-  if (nonBare.length < names.length && nonBare.length >= 2) return names
+  if (nonBare.length < names.length && nonBare.length >= 1) return names
   return nonBare
 }
 

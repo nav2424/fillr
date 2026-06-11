@@ -1,8 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { DietaryProfile } from '../types'
+import type { DietaryProfile, ScanResult } from '../types'
 import type { IngredientAnalysisItem, ProductIngredientAnalysisResponse } from '../services/openaiIngredientAnalysisPrompt'
 import { enforcePersonalizedCopy } from '../services/openaiIngredientAnalysis'
+import { personalizeScanResult, refreshScanSafetyForProfile, type UserProfile } from './personalizationEngine'
 
 const BASE_PROFILE: DietaryProfile = {
   allergies: [],
@@ -39,6 +40,32 @@ function makeResponse(ingredient: IngredientAnalysisItem): ProductIngredientAnal
     },
     ingredients: [ingredient],
   }
+}
+
+function makeStoredScanResult(ingredientText: string): ScanResult {
+  return {
+    product: {
+      id: 'prod_test',
+      barcode: '000000000000',
+      name: 'Test product',
+      brand: '',
+      ingredientText,
+      ingredientTextSafetyHaystack: ingredientText,
+      source: 'openfoodfacts',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    safetyStatus: 'SAFE',
+    matchedAllergens: [],
+    matchedSensitivities: [],
+    smartSummary: 'Previously safe.',
+    ingredientBreakdown: [],
+    insights: [],
+  }
+}
+
+function refreshAndPersonalize(scan: ScanResult, profile: UserProfile): ScanResult {
+  return personalizeScanResult(refreshScanSafetyForProfile(scan, profile), profile)
 }
 
 test('replaces generic cohort phrases with second-person framing', () => {
@@ -88,4 +115,31 @@ test('product-level goals do not stamp per-ingredient goal conflict copy', () =>
   const out = enforcePersonalizedCopy(input, profile)
   assert.doesNotMatch(out.ingredients[0].impactForYou ?? '', /your current goal: eat more protein/i)
   assert.notEqual(out.ingredients[0].flagDriver, 'goal')
+})
+
+test('refreshScanSafetyForProfile detects newly added allergy on stored safe result', () => {
+  const profile: UserProfile = {
+    allergies: ['peanuts'],
+    sensitivities: [],
+    preferences: [],
+    goal: '',
+  }
+  const out = refreshAndPersonalize(makeStoredScanResult('Peanut flour, salt'), profile)
+
+  assert.equal(out.safetyStatus, 'UNSAFE')
+  assert.equal(out.matchedAllergens[0]?.allergenKey, 'peanuts')
+})
+
+test('refreshScanSafetyForProfile detects newly enabled strict gluten mode on stored safe result', () => {
+  const profile: UserProfile = {
+    allergies: [],
+    sensitivities: [],
+    preferences: [],
+    goal: '',
+    celiacStrictGluten: true,
+  }
+  const out = refreshAndPersonalize(makeStoredScanResult('Wheat flour, salt'), profile)
+
+  assert.equal(out.safetyStatus, 'UNSAFE')
+  assert.equal(out.celiac?.celiacSeverity, 'AVOID')
 })
