@@ -12,9 +12,10 @@ const includeDevClient = easProfile !== 'production'
 const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? ''
 const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN ?? ''
 const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'usefillrapp'
+const facebookSdkConfigured = Boolean(facebookAppId && facebookClientToken)
 
 const facebookSdkPlugin =
-  facebookAppId && facebookClientToken
+  facebookSdkConfigured
     ? [
         [
           'react-native-fbsdk-next',
@@ -23,9 +24,9 @@ const facebookSdkPlugin =
             clientToken: facebookClientToken,
             displayName: facebookDisplayName,
             scheme: `fb${facebookAppId}`,
-            advertiserIDCollectionEnabled: true,
-            autoLogAppEventsEnabled: true,
-            isAutoInitEnabled: true,
+            advertiserIDCollectionEnabled: false,
+            autoLogAppEventsEnabled: false,
+            isAutoInitEnabled: false,
             iosUserTrackingPermission:
               'Allow Fillr to use your device identifier to measure ad performance and improve marketing.',
           },
@@ -79,11 +80,15 @@ module.exports = {
       icon: './assets/icon-ios.png',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
-        FacebookAppID: facebookAppId,
-        FacebookClientToken: facebookClientToken,
-        FacebookDisplayName: facebookDisplayName,
-        FacebookAutoLogAppEventsEnabled: true,
-        FacebookAdvertiserIDCollectionEnabled: true,
+        ...(facebookSdkConfigured
+          ? {
+              FacebookAppID: facebookAppId,
+              FacebookClientToken: facebookClientToken,
+              FacebookDisplayName: facebookDisplayName,
+              FacebookAutoLogAppEventsEnabled: false,
+              FacebookAdvertiserIDCollectionEnabled: false,
+            }
+          : {}),
       },
     },
     android: {

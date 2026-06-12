@@ -89,6 +89,7 @@ export default function OcrScannerScreen() {
   const [productNameDraft, setProductNameDraft] = useState('')
   const [liveCaptureHint, setLiveCaptureHint] = useState<string>(LIVE_CAPTURE_HINTS[0])
   const scanLineAnim = useRef(new Animated.Value(0)).current
+  const finalizeInFlightRef = useRef(false)
 
   const allergies = useUserStore((s) => s.allergies)
   const sensitivities = useUserStore((s) => s.sensitivities)
@@ -201,7 +202,24 @@ export default function OcrScannerScreen() {
         })
       }
       const productId = result.product.id
+      const scanId = `scan_ocr_${Date.now()}`
       setCurrentScan(result)
+      addScan({
+        id: scanId,
+        productId,
+        productName: result.product.name,
+        barcode: result.product.barcode,
+        safetyStatus: result.safetyStatus,
+        date: new Date().toISOString(),
+        result,
+        source: 'ocr',
+      })
+      void trackScanResultMetric({
+        name: 'scan_succeeded',
+        productId: result.product.id,
+        barcode: result.product.barcode,
+        payload: { source: 'ocr', ingredient_count: result.ingredientBreakdown.length },
+      })
       if (Platform.OS === 'ios') {
         // iOS stability path: navigate immediately, then enrich in background.
         const productRouteId = result.product.id
@@ -220,6 +238,13 @@ export default function OcrScannerScreen() {
               if (cur?.product.id === productId) {
                 setCurrentScan(enriched)
               }
+              runOnNextFrameInTransition(() => {
+                try {
+                  useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+                } catch (e) {
+                  console.warn('[Fillr][decode] history update after enrich failed', e)
+                }
+              })
             } catch (e) {
               console.warn('[Fillr][decode] apply enrich to current scan failed', e)
             }
@@ -247,23 +272,6 @@ export default function OcrScannerScreen() {
         }
         return
       }
-      const scanId = `scan_ocr_${Date.now()}`
-      addScan({
-        id: scanId,
-        productId,
-        productName: result.product.name,
-        barcode: result.product.barcode,
-        safetyStatus: result.safetyStatus,
-        date: new Date().toISOString(),
-        result,
-        source: 'ocr',
-      })
-      void trackScanResultMetric({
-        name: 'scan_succeeded',
-        productId: result.product.id,
-        barcode: result.product.barcode,
-        payload: { source: 'ocr', ingredient_count: result.ingredientBreakdown.length },
-      })
       const applyOcrEnriched = (enriched: ScanResult, stage: 'ingredients' | 'product') => {
         runAfterInteractionsAndNextFrame(() => {
           try {
@@ -349,19 +357,9 @@ export default function OcrScannerScreen() {
   const submitOcrName = useCallback(async () => {
     const productName = productNameDraft.trim()
     const blob = pendingIngredientsBlob.trim()
-    if (!productName || !blob) return
+    if (!productName || !blob || finalizeInFlightRef.current) return
+    finalizeInFlightRef.current = true
     setNameModalVisible(false)
-    if (Platform.OS === 'ios') {
-      // iOS emergency mode: never block touches with the loading modal.
-      setPendingIngredientsBlob('')
-      setProductNameDraft('')
-      setBusy(false)
-      void finalizeOcrScan(blob, productName).catch((err) => {
-        console.warn('[Fillr] OCR scan finalization failed:', err)
-        setToast('Could not create scan result. Please try again.')
-      })
-      return
-    }
     setBusy(true)
     try {
       await finalizeOcrScan(blob, productName)
@@ -372,6 +370,7 @@ export default function OcrScannerScreen() {
       setPendingIngredientsBlob('')
       setProductNameDraft('')
       setBusy(false)
+      finalizeInFlightRef.current = false
     }
   }, [finalizeOcrScan, pendingIngredientsBlob, productNameDraft])
 
