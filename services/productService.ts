@@ -42,6 +42,7 @@ import { ingredientExplanationFailsQualityGate } from '../lib/ingredientCopyQual
 import { applyDemoScanProfileTailoring } from '../lib/demoScanPersonalize'
 import { DEFAULT_OCR_PRODUCT_NAME } from '../lib/historyDisplayLabel'
 import type { DietaryProfile, ScanResult } from '../types'
+import { barcodeLookupCandidates } from '../lib/openFoodFactsFetch'
 import {
   shouldTranslateFrenchOnlyIngredientLabel,
   translateIngredientLabelToEnglish,
@@ -144,13 +145,25 @@ export async function backfillBarcodeIngredientData(params: {
   const barcode = String(params.barcode ?? '').trim()
   const ingredientText = String(params.ingredientText ?? '').trim()
   if (!barcode || ingredientText.length < 20) return false
+  const lookupBarcodes = barcodeLookupCandidates(barcode)
+  const barcodeCandidates = lookupBarcodes.length ? lookupBarcodes : [barcode]
   try {
     const queued = await enqueueNonCriticalWrite(`product_backfill_${barcode}`, async () => {
-      const { data: existing } = await supabase
+      const { data: existingRows } = await supabase
         .from('products')
-        .select('name, brand, image_url, nutrition_json, source')
-        .eq('barcode', barcode)
-        .maybeSingle()
+        .select('barcode, name, brand, image_url, ingredient_text, nutrition_json, source')
+        .in('barcode', barcodeCandidates)
+      const existing = Array.isArray(existingRows)
+        ? (existingRows.find((row) => row.barcode === barcode) ?? existingRows[0] ?? null)
+        : null
+
+      const existingIngredientText = String(existing?.ingredient_text ?? '').trim()
+      if (
+        existingIngredientText.length >= 20 &&
+        parseIngredients(existingIngredientText, 'barcode').length >= 3
+      ) {
+        return false
+      }
 
       const nextName =
         (typeof existing?.name === 'string' && existing.name.trim()) ||
@@ -227,14 +240,16 @@ async function getCachedProductByBarcode(barcode: string): Promise<CachedBarcode
   if (!supabaseClientConfigured()) return null
   const bc = String(barcode ?? '').trim()
   if (!bc) return null
+  const candidates = barcodeLookupCandidates(bc)
+  const lookupBarcodes = candidates.length ? candidates : [bc]
   try {
     const { data, error } = await supabase
       .from('products')
       .select('barcode, name, brand, ingredient_text, nutrition_json, source, updated_at')
-      .eq('barcode', bc)
-      .maybeSingle()
-    if (error || !data) return null
-    return data as CachedBarcodeProduct
+      .in('barcode', lookupBarcodes)
+    if (error || !Array.isArray(data) || data.length === 0) return null
+    const rows = data as CachedBarcodeProduct[]
+    return rows.find((row) => row.barcode === bc) ?? rows[0] ?? null
   } catch {
     return null
   }
