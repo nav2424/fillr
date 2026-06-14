@@ -37,7 +37,7 @@ import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
-import { ingredientExplanationFailsQualityGate } from '../../lib/ingredientCopyQuality'
+import { canReuseBarcodeHistoryResult, type ScanHistoryReuseProfile } from '../../lib/scanHistoryReuse'
 
 /** Tab bar is `position: 'absolute'` + floating pill — keep sheet + disclaimer above it. */
 const SCAN_TAB_BAR_CLEARANCE = 88
@@ -56,34 +56,20 @@ const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'codabar',
 ]
 
-function hasReusableIngredientDecode(result: ScanResult): boolean {
-  if (!result.ingredientBreakdown.length) return false
-  if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) return false
-  if (result.ingredientBreakdown.some((ing) => ing.ingredientDecodeStatus === 'unavailable')) return false
-  if (result.ingredientBreakdown.some((ing) => ingredientExplanationFailsQualityGate(ing))) return false
-  return result.ingredientBreakdown.some((ing) => {
-    const text = [ing.whatItIs, ing.whatItDoes, ing.whyItsUsed, ing.labelDecoder, ing.quickSummary]
-      .map((s) => s?.trim() ?? '')
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    if (!text) return false
-    return !(
-      text.includes('explicitly listed on the label and contributes') ||
-      text.includes('contributes to the product recipe, texture, flavor, stability') ||
-      text.includes('decode for') ||
-      text.includes('didn’t load this time') ||
-      text.includes("didn't load this time")
-    )
-  })
-}
-
-function getReusableBarcodeResult(barcode: string): ScanResult | null {
+function getReusableBarcodeResult(
+  barcode: string,
+  profile: ScanHistoryReuseProfile
+): ScanResult | null {
   const bc = barcode.trim()
   if (!bc) return null
   const match = useScanHistoryStore
     .getState()
-    .scans.find((scan) => scan.barcode === bc && scan.result && hasReusableIngredientDecode(scan.result))
+    .scans.find(
+      (scan) =>
+        scan.barcode === bc &&
+        scan.result &&
+        canReuseBarcodeHistoryResult(scan.result, profile)
+    )
   return match?.result ?? null
 }
 
@@ -163,7 +149,10 @@ export default function ScanScreen() {
 
       setScanning(true)
       try {
-        const reusable = getReusableBarcodeResult(barcode)
+        const reusable = getReusableBarcodeResult(barcode, {
+          allergies,
+          celiacStrictGluten: Boolean(celiacStrictGluten),
+        })
         if (reusable) {
           const personalized = personalizeScanResult(reusable, {
             allergies,
