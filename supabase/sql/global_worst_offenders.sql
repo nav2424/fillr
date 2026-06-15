@@ -59,7 +59,7 @@ as $$
   from counts c
   join display_pick p on p.norm_key = c.norm_key
   order by c.cnt desc, p.display_name asc
-  limit greatest(1, least(coalesce(nullif(p_limit, 0), 4), 50));
+  limit greatest(1, least(coalesce(nullif(p_limit, 0), 4), 20));
 $$;
 
 revoke all on function public.get_global_worst_offenders(timestamptz, timestamptz, int) from public;

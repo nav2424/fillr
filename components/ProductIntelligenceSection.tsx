@@ -46,7 +46,7 @@ function listText(items: string[] | undefined, limit = 3): string {
   return cleaned.slice(0, limit).join(', ')
 }
 
-function formulaType(analysis: ProductAnalysis): string {
+export function formulaType(analysis: ProductAnalysis): string {
   const rc = analysis.ratingCounts
   const sugarCount = analysis.sugarSources?.length ?? 0
   const hiddenCount = analysis.hiddenIngredients?.length ?? 0
@@ -61,7 +61,7 @@ function formulaType(analysis: ProductAnalysis): string {
   return 'Packaged-food formula'
 }
 
-function mainTradeoff(analysis: ProductAnalysis): string {
+export function mainTradeoff(analysis: ProductAnalysis): string {
   const hidden = listText(analysis.hiddenIngredients?.map((h) => h.name), 2)
   const sugars = listText(analysis.sugarSources, 2)
   if (hidden && sugars) return `Recognizable base plus ${sugars} and ${hidden}.`
@@ -71,7 +71,7 @@ function mainTradeoff(analysis: ProductAnalysis): string {
   return 'Judge it by the ingredient order and repeat-use fit.'
 }
 
-function watchOuts(analysis: ProductAnalysis): string {
+export function watchOuts(analysis: ProductAnalysis): string {
   const regulatory = listText(analysis.regulatoryFlags?.map((r) => r.ingredient), 2)
   if (regulatory) return regulatory
   const sugars = listText(analysis.sugarSources, 3)
@@ -82,7 +82,7 @@ function watchOuts(analysis: ProductAnalysis): string {
   return 'No major formula watch-outs found.'
 }
 
-function bestUse(analysis: ProductAnalysis): string {
+export function bestUse(analysis: ProductAnalysis): string {
   const rc = analysis.ratingCounts
   const avoid = rc?.avoid ?? 0
   const concerning = rc?.concerning ?? 0
@@ -94,7 +94,7 @@ function bestUse(analysis: ProductAnalysis): string {
 
 type LabelRealityRow = NonNullable<ProductAnalysis['labelVsReality']>[number]
 
-function firstSentence(text: string | undefined): string {
+export function firstSentence(text: string | undefined): string {
   const clean = text?.trim()
   if (!clean) return ''
   return clean.split(/(?<=[.!?])\s+/)[0]?.trim() ?? clean
@@ -115,7 +115,7 @@ function isWeakLabelReality(row: LabelRealityRow): boolean {
   ].some((phrase) => reality.includes(phrase))
 }
 
-function concreteLabelRealityRows(analysis: ProductAnalysis): LabelRealityRow[] {
+export function concreteLabelRealityRows(analysis: ProductAnalysis): LabelRealityRow[] {
   const rawRows = (analysis.labelVsReality ?? [])
     .filter((row) => !isWeakLabelReality(row))
     .map((row) => ({

@@ -61,7 +61,7 @@ module.exports = {
   expo: {
     name: 'Fillr',
     slug: 'fillr',
-    version: '1.2.0',
+    version: '1.3',
     orientation: 'portrait',
     /** Store / home-screen launcher icon. */
     icon: './assets/icon-ios.png',
@@ -74,7 +74,7 @@ module.exports = {
     },
     ios: {
       supportsTablet: true,
-      buildNumber: '7',
+      buildNumber: '8',
       bundleIdentifier: 'com.nav004.fillr',
       icon: './assets/icon-ios.png',
       infoPlist: {

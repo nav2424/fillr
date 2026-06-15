@@ -122,6 +122,8 @@ export type BuildProfileReasoningInput = {
   celiac: CeliacResult | null | undefined
   scoringData: FillrScoringDataSnapshot | null | undefined
   fillrFit: FillrFitSnapshot | null
+  /** Personalized fit score (nutrition / profile lens) — not universal ingredient quality. */
+  profileScore?: number | null
   userGoalKey: string
 }
 
@@ -133,13 +135,14 @@ export function buildProfileReasoningModel(input: BuildProfileReasoningInput): P
     celiac,
     scoringData,
     fillrFit,
+    profileScore,
     userGoalKey,
   } = input
 
   const allergyNames = [
     ...new Map(matchedAllergens.map((m) => [m.allergenKey.toLowerCase(), m.allergenName])).values(),
   ]
-  const score = fillrFit?.score ?? 50
+  const score = profileScore ?? fillrFit?.score ?? 50
   const celiacEnabled = Boolean(celiac?.celiacModeEnabled)
   const celiacAvoid = celiacEnabled && celiac?.celiacSeverity === 'AVOID'
   const celiacCaution = celiacEnabled && celiac?.celiacSeverity === 'CAUTION'
@@ -401,7 +404,7 @@ function buildSummarySentence(args: {
     if (sensitivityStrings.length) {
       return 'This product fits your allergy profile, but includes sensitivity cues worth a second read.'
     }
-    return `Fillr scores this around ${score}/100 for your profile — worth a quick scan of the ingredient list.`
+    return `Your nutrition fit is around ${score}/100 for your profile — ingredient quality is scored separately above.`
   }
 
   if (fit === 'good') {

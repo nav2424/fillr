@@ -497,13 +497,47 @@ export function buildFallbackIngredientExplanation(name: string): IngredientExpl
       'Most gums are fermented or digested partially; they add fiber-like bulk in the gut.',
       'Carrageenan is debated for gut comfort in some people; others tolerate it well—context and portion matter.'
     )
-  } else if (/\b(palm oil|canola oil|sunflower oil|soybean oil|vegetable oil)\b/.test(lower)) {
+  } else if (/\b(palm oil|canola oil|sunflower oil|soybean oil|vegetable oil|expeller pressed)\b/.test(lower)) {
+    commonName = clean.replace(/\s+(?:and\/or|and|or)\s*$/i, '').trim() || clean
+    set(
+      /\bexpeller pressed\b/.test(lower)
+        ? 'Oil pressed from seeds without chemical solvents—still a refined cooking fat, often from canola, sunflower, or soy.'
+        : 'A refined cooking fat pressed or solvent-extracted from seeds or fruits.',
+      'Provides crunch after frying, mouthfeel, and a medium for fat-soluble flavors in chips and snacks.',
+      'Dense source of calories and essential fatty acids depending on the oil profile.',
+      'Refined seed oils are common in snacks; many shoppers compare omega-6 load to olive or avocado oil.'
+    )
+  } else if (/\b(sweet potato|yam)\b/.test(lower)) {
     commonName = clean
     set(
-      'A refined cooking fat pressed or solvent-extracted from seeds or fruits.',
-      'Provides tenderness, crunch after frying, mouthfeel, and a medium for fat-soluble flavors.',
-      'Dense source of calories and essential fatty acids depending on the oil profile.',
-      'Saturated fat level varies (e.g., palm vs canola); processing and reuse of frying oil can form undesirable compounds if overheated.'
+      'A starchy root vegetable—naturally sweet, orange-fleshed tuber used whole or as powder in snacks.',
+      'Primary base in veggie chips and fries; adds color, fiber, and carbohydrate structure.',
+      'Supplies complex carbs and beta-carotene (vitamin A precursor) from the flesh.',
+      'Whole-food base ingredient—very different from refined oil or maltodextrin fillers on the same label.'
+    )
+  } else if (/\b(red bell pepper|bell pepper|capsicum)\b/.test(lower)) {
+    commonName = clean
+    set(
+      'A sweet pepper—mild capsicum with bright color and natural sweetness when dried or powdered.',
+      'Adds color, mild sweetness, and savory depth in seasoning blends and veggie chips.',
+      'Source of vitamin C and carotenoids; negligible heat compared with chili peppers.',
+      'Dried or powdered pepper is a whole-food seasoning, not a synthetic dye or preservative.'
+    )
+  } else if (/\b(dried\s+)?(oregano|rosemary|thyme|basil|parsley|sage|dill|marjoram|tarragon)\b/.test(lower)) {
+    commonName = clean
+    set(
+      'A dried culinary herb—whole plant leaves or tops dehydrated for shelf-stable flavor.',
+      'Seasons savory snacks and chips with aroma without adding salt or synthetic flavor systems.',
+      'Minimal calories; mainly volatile oils and plant polyphenols in small amounts.',
+      'Simple dried herbs are closer to a kitchen spice jar than an industrial additive.'
+    )
+  } else if (/\bdried herbs?\b/.test(lower)) {
+    commonName = clean
+    set(
+      'A blend of dried culinary herbs listed together on the label.',
+      'Seasons the product with plant-based aroma and savory notes.',
+      'Negligible calories—mostly flavor compounds from dehydrated leaves.',
+      'Check the parenthetical list when brands group several herbs on one line.'
     )
   } else if (/\b(whey|casein|milk powder|skim milk)\b/.test(lower)) {
     commonName = clean

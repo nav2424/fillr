@@ -6,7 +6,7 @@
 /** Scan result & product screen tokens (approved mockup). */
 export const theme = {
   // Background
-  screenBg: '#f7fcf8',
+  screenBg: '#f2f4f7',
 
   // Text
   textPrimary: '#0f172a',

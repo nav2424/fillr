@@ -19,6 +19,12 @@ export { LabelVsRealityCard } from './LabelVsRealityCard'
 export { AllergenEvidenceChips } from './AllergenEvidenceChips'
 export { ScanDataQualityBanner } from './ScanDataQualityBanner'
 export { ProductIntelligenceSection } from './ProductIntelligenceSection'
+export { ScanResultCard } from './ScanResultCard'
+export { ProductForYouSection } from './ProductForYouSection'
+export { ProductNutritionSection } from './ProductNutritionSection'
+export { FormulaConcernsSection } from './FormulaConcernsSection'
+export { DualScoreDisplay } from './DualScoreDisplay'
+export { ProfileFitHeroScore, IngredientQualityBadge } from './ScanScoreViews'
 export {
   ScanShareCardVisual,
   buildScanShareCardModel,

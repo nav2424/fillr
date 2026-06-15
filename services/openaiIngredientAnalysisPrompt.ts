@@ -663,6 +663,39 @@ export function formatNutritionJsonForPrompt(
   add('proteins_100g', 'Protein', ' g per 100g')
   add('salt_100g', 'Salt', ' g per 100g')
   add('sodium_100g', 'Sodium', ' g per 100g')
+  add('energy-kcal_serving', 'Calories (per serving)', ' kcal')
+  add('fat_serving', 'Fat (per serving)', ' g')
+  add('saturated-fat_serving', 'Saturated fat (per serving)', ' g')
+  add('carbohydrates_serving', 'Carbohydrates (per serving)', ' g')
+  add('fiber_serving', 'Fiber (per serving)', ' g')
+  add('sugars_serving', 'Sugars (per serving)', ' g')
+  add('proteins_serving', 'Protein (per serving)', ' g')
+  add('sodium_serving_mg', 'Sodium (per serving)', ' mg')
+  const servingSize = typeof n.serving_size === 'string' ? n.serving_size.trim() : ''
+  if (servingSize) lines.push(`- Serving size: ${servingSize}`)
+  const visionBlock = n.fillr_vision
+  if (visionBlock && typeof visionBlock === 'object') {
+    const facts = (visionBlock as { nutrition_facts?: Record<string, unknown> }).nutrition_facts
+    if (facts && typeof facts === 'object') {
+      const f = facts
+      const addFact = (key: string, label: string, suffix: string) => {
+        const v = f[key]
+        if (v === undefined || v === null || v === '' || v === 0) return
+        lines.push(`- ${label}: ${v}${suffix}`)
+      }
+      if (typeof f.serving_size === 'string' && f.serving_size.trim() && !servingSize) {
+        lines.push(`- Serving size: ${String(f.serving_size).trim()}`)
+      }
+      addFact('calories', 'Calories (per serving)', ' kcal')
+      addFact('fat_g', 'Fat (per serving)', ' g')
+      addFact('saturated_fat_g', 'Saturated fat (per serving)', ' g')
+      addFact('carbohydrates_g', 'Carbohydrates (per serving)', ' g')
+      addFact('fibre_g', 'Fiber (per serving)', ' g')
+      addFact('sugars_g', 'Sugars (per serving)', ' g')
+      addFact('protein_g', 'Protein (per serving)', ' g')
+      addFact('sodium_mg', 'Sodium (per serving)', ' mg')
+    }
+  }
   if (!lines.length) return ''
   return `
 

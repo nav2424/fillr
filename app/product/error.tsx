@@ -42,14 +42,27 @@ export default function ProductErrorScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: '/ocr-scanner',
+              pathname: '/vision-scanner',
               ...(typeof barcode === 'string' && barcode.trim() ? { params: { barcode } } : {}),
             })
           }
           style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
         >
           <Ionicons name="camera-outline" size={20} color="#ffffff" />
-          <Text style={styles.primaryBtnText}>Photo ingredients label</Text>
+          <Text style={styles.primaryBtnText}>Take a photo of package</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: '/ocr-scanner',
+              ...(typeof barcode === 'string' && barcode.trim() ? { params: { barcode } } : {}),
+            })
+          }
+          style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
+        >
+          <Ionicons name="document-text-outline" size={20} color="#0f766e" />
+          <Text style={styles.secondaryBtnText}>Photo ingredients label</Text>
         </Pressable>
 
         <View style={styles.disclaimerCard}>
@@ -166,6 +179,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  secondaryBtn: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cfe8d8',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f766e',
   },
   disclaimerCard: {
     backgroundColor: '#e7f2ec',

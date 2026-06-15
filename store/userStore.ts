@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { storage } from '../lib/storage'
 import { FREE_SCAN_LIMIT } from '../constants/subscription'
+import type { NutritionTargets } from '../lib/nutritionTargets'
 
 interface UserState {
   allergies: string[]
   sensitivities: string[]
   preferences: string[]
   goal: string
+  nutritionTargets: NutritionTargets
   celiacStrictGluten: boolean
   /** Fillr Pro — unlocks Label vs Reality and related premium sections. */
   isPro: boolean
@@ -29,6 +31,7 @@ interface UserState {
   setSensitivities: (sensitivities: string[]) => void
   setPreferences: (preferences: string[]) => void
   setGoal: (goal: string) => void
+  setNutritionTargets: (targets: NutritionTargets) => void
   setCeliacMode: (enabled: boolean) => void
   setIsPro: (isPro: boolean) => void
   setReferralData: (data: {
@@ -68,6 +71,7 @@ export const useUserStore = create<UserState>()(
       sensitivities: [],
       preferences: [],
       goal: '',
+      nutritionTargets: {},
       celiacStrictGluten: false,
       isPro: false,
       lifetimePro: false,
@@ -83,6 +87,7 @@ export const useUserStore = create<UserState>()(
       setSensitivities: (sensitivities) => set({ sensitivities }),
       setPreferences: (preferences) => set({ preferences }),
       setGoal: (goal) => set({ goal }),
+      setNutritionTargets: (nutritionTargets) => set({ nutritionTargets }),
       setCeliacMode: (enabled) => set({ celiacStrictGluten: enabled }),
       setIsPro: (isPro) => set({ isPro }),
       setReferralData: (data) =>
@@ -126,6 +131,7 @@ export const useUserStore = create<UserState>()(
           sensitivities: [],
           preferences: [],
           goal: '',
+          nutritionTargets: {},
           celiacStrictGluten: false,
           isPro: false,
           lifetimePro: false,
@@ -144,6 +150,7 @@ export const useUserStore = create<UserState>()(
           sensitivities: [],
           preferences: [],
           goal: '',
+          nutritionTargets: {},
           celiacStrictGluten: false,
         }),
       setFromOnboarding: (data) => set(data),

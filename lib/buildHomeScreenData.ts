@@ -4,6 +4,8 @@ import { GOAL_OPTIONS, PREFERENCE_OPTIONS, SENSITIVITY_OPTIONS } from '../types'
 import { getAllergyLabel } from './knownAllergens'
 import { getWeekBounds, formatWeekRangeLabel, isInWeek } from './overviewAnalytics'
 import { parseScanHistoryDate, scanHistoryRecordHasReliableTime } from './parseScanHistoryDate'
+import { countScansOverSugarTarget, nutritionScanTags } from './buildNutritionViewModel'
+import { isNutritionFocusedGoal, mergedNutritionTargets } from './nutritionTargets'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -52,6 +54,7 @@ export type HomeScreenData = {
   greeting: HomeGreeting
   watchlistCards: HomeWatchlistCard[]
   alerts: HomeAlert[]
+  nutritionAlert?: HomeAlert | null
   recentScans: HomeRecentScan[]
 }
 
@@ -288,6 +291,40 @@ function buildWatchlistCards(prefs: HomePrefsSnapshot | undefined): HomeWatchlis
   return out.slice(0, 12)
 }
 
+function buildNutritionAlert(scans: ScanRecord[], goalKey: string): HomeAlert | null {
+  if (!isNutritionFocusedGoal(goalKey)) return null
+  const { start, end } = getWeekBounds(new Date())
+  const weekScans = scans.filter((s) => {
+    const d = parseScanHistoryDate(s.date)
+    return d != null && isInWeek(d, start, end) && s.result
+  })
+  if (weekScans.length === 0) return null
+
+  const targets = mergedNutritionTargets(goalKey, null)
+  const maxSugar = targets.maxSugarG ?? 10
+  const overSugar = weekScans.filter((s) => s.result && nutritionScanTags(s.result).highSugar).length
+  const overTarget = countScansOverSugarTarget(
+    weekScans.map((s) => s.result!).filter(Boolean),
+    maxSugar
+  )
+
+  if (overTarget >= 2) {
+    return {
+      id: 'nutrition-sugar-week',
+      title: `${overTarget} scans over your sugar target this week`,
+      subtitle: `Based on your ${maxSugar}g per-serving target. Tap History to filter high-sugar scans.`,
+    }
+  }
+  if (overSugar >= 2) {
+    return {
+      id: 'nutrition-sugar-high',
+      title: `${overSugar} high-sugar scans this week`,
+      subtitle: 'Compare options with nutrition compare on any product page.',
+    }
+  }
+  return null
+}
+
 export function buildHomeScreenData(
   fullName: string | null | undefined,
   scans: ScanRecord[],
@@ -321,6 +358,7 @@ export function buildHomeScreenData(
     },
     watchlistCards: buildWatchlistCards(prefs),
     alerts: buildAlerts(scans),
+    nutritionAlert: buildNutritionAlert(scans, prefs?.goalKey ?? ''),
     recentScans: recent,
   }
 }

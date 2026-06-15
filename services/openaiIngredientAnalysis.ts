@@ -161,6 +161,19 @@ const NUCLEAR_FORCE_CLEAN = [
   'vanilla extract',
   'cocoa',
   'cinnamon',
+  'turmeric',
+  'ginger',
+  'oregano',
+  'rosemary',
+  'thyme',
+  'basil',
+  'parsley',
+  'sage',
+  'dill',
+  'marjoram',
+  'tarragon',
+  'paprika',
+  'cumin',
   'blueberries',
   'banana',
   'quinoa',
@@ -1852,30 +1865,44 @@ export async function analyzeIngredientsWithOpenAI(
       hasUnmappedFrenchLikeName,
     })
   const quick = options?.skipIngredientRepair === true
-  const partialMaxTokens = Math.min(
-    SCAN_AI_MAX_TOKENS,
-    PARTIAL_AI_BASE_TOKENS + unknownNames.length * PARTIAL_AI_PER_ING_TOKENS
-  )
   const timeoutMs = options?.requestTimeoutMs ?? (quick ? SCAN_AI_TIMEOUT_MS : 55_000)
   const requestedMax = options?.maxTokens ?? MAX_TOKENS
-  const maxTokens = Math.min(requestedMax, partialMaxTokens)
+  const partialBudget = PARTIAL_AI_BASE_TOKENS + unknownNames.length * PARTIAL_AI_PER_ING_TOKENS
+  const quickCap = Math.min(SCAN_AI_MAX_TOKENS, partialBudget)
+  const maxTokens =
+    options?.maxTokens != null
+      ? Math.min(options.maxTokens, partialBudget)
+      : Math.min(requestedMax, quickCap)
 
   const { parsed: parsedPartial, meta: aiMeta } = await requestIngredientAnalysisJson(partialUser, compactSystemContent, {
     timeoutMs,
     maxTokens,
   })
+  let parsedResult = parsedPartial
+  let resultMeta = aiMeta
+  if (!parsedResult && aiMeta.failureReason === 'parse_null') {
+    const retryMax = Math.min(MAX_TOKENS, maxTokens + 1200)
+    const retry = await requestIngredientAnalysisJson(partialUser, compactSystemContent, {
+      timeoutMs: Math.max(timeoutMs, 45_000),
+      maxTokens: retryMax,
+    })
+    if (retry.parsed) {
+      parsedResult = retry.parsed
+      resultMeta = retry.meta
+    }
+  }
   devDecodeLog('decode_http_result', {
-    latencyMs: aiMeta.latencyMs,
-    model: aiMeta.model ?? 'unknown',
-    failureReason: aiMeta.failureReason ?? null,
-    parsed: Boolean(parsedPartial),
+    latencyMs: resultMeta.latencyMs,
+    model: resultMeta.model ?? 'unknown',
+    failureReason: resultMeta.failureReason ?? null,
+    parsed: Boolean(parsedResult),
   })
-  if (!parsedPartial || !Array.isArray(parsedPartial.ingredients)) {
+  if (!parsedResult || !Array.isArray(parsedResult.ingredients)) {
     console.warn(
       `[Fillr] ingredient-analysis unavailable; using local fallback for ${ingredientNames.length} ingredients`
     )
     devDecodeLog('decode_fallback_reason', {
-      reason: aiMeta.failureReason ?? 'parsed_partial_invalid',
+      reason: resultMeta.failureReason ?? 'parsed_partial_invalid',
       ingredientCount: ingredientNames.length,
     })
     return buildLocalFallbackAnalysis(
@@ -1888,7 +1915,7 @@ export async function analyzeIngredientsWithOpenAI(
     )
   }
 
-  let partialFixed = parsedPartial
+  let partialFixed = parsedResult
   if (productVerdictInvalid(partialFixed.productVerdict)) {
     partialFixed = {
       ...partialFixed,

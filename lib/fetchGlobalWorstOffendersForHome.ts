@@ -19,8 +19,8 @@ export type GlobalWorstOffendersPack = {
   source: 'community' | 'personal_fallback'
 }
 
-const DEFAULT_WORST_OFFENDER_LIMIT = 4
-const MAX_WORST_OFFENDER_LIMIT = 50
+/** Max rows returned for the community worst-offenders list (screen + RPC cap). */
+export const WORST_OFFENDERS_LIST_LIMIT = 20
 
 /**
  * Top concerning/avoid ingredients for the calendar week across **all** Fillr users (server aggregate).
@@ -32,8 +32,8 @@ export async function fetchGlobalWorstOffendersForHome(
 ): Promise<GlobalWorstOffendersPack> {
   const ref = options.ref ?? new Date()
   const limit = Math.min(
-    MAX_WORST_OFFENDER_LIMIT,
-    Math.max(1, Math.floor(options.limit ?? DEFAULT_WORST_OFFENDER_LIMIT))
+    WORST_OFFENDERS_LIST_LIMIT,
+    Math.max(1, Math.floor(options.limit ?? WORST_OFFENDERS_LIST_LIMIT))
   )
 
   const fallback = (): GlobalWorstOffendersPack => ({

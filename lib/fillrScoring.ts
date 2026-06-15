@@ -15,6 +15,8 @@ import { getGoalDisplayLabel } from './profileDisplayLabels'
 export type ProductCategory =
   | 'whole_food'
   | 'clean_snack'
+  | 'salty_snack'
+  | 'breakfast_grain'
   | 'protein_bar'
   | 'gum'
   | 'candy'
@@ -57,6 +59,13 @@ export type FillrScoringInput = {
   labelHaystack?: string
   /** Product-category context so inherently processed categories are scored against their lane. */
   productCategory?: ProductCategory
+  /** Per-serving nutrition signals when available (vision / OFF). */
+  caloriesPerServing?: number
+  sodiumMgPerServing?: number
+  fatGPerServing?: number
+  proteinGPerServing?: number
+  sugarsGPerServing?: number
+  carbsGPerServing?: number
 }
 
 export type CategoryBaseline = {
@@ -69,6 +78,8 @@ export type CategoryBaseline = {
 export const CATEGORY_BASELINES: Record<ProductCategory, CategoryBaseline> = {
   whole_food: { label: 'whole food', floor: 70, ceiling: 100, base: 86 },
   clean_snack: { label: 'clean snack', floor: 45, ceiling: 85, base: 66 },
+  salty_snack: { label: 'salty snack', floor: 20, ceiling: 55, base: 42 },
+  breakfast_grain: { label: 'breakfast grain', floor: 55, ceiling: 88, base: 74 },
   protein_bar: { label: 'protein bar', floor: 35, ceiling: 82, base: 58 },
   gum: { label: 'chewing gum', floor: 20, ceiling: 65, base: 50 },
   candy: { label: 'candy', floor: 5, ceiling: 50, base: 25 },
@@ -140,6 +151,12 @@ function calculateIngredientScore(data: FillrScoringInput): number {
   if (data.productCategory === 'protein_bar' && /whey|casein|pea protein|soy protein|protein/i.test(hay)) {
     score += 8
   }
+  if (
+    data.productCategory === 'breakfast_grain' &&
+    /\b(oats?|whole grain|rolled oats|steel cut|beta glucan|oatmeal)\b/i.test(hay)
+  ) {
+    score += 8
+  }
   return score
 }
 
@@ -199,6 +216,31 @@ function calculateGoalAdjustments(data: FillrScoringInput): number {
   }
   if (/convenience/i.test(goalText)) {
     score += Math.min(10, (data.ingredientCounts?.processed ?? 0) * 2)
+  }
+  return score
+}
+
+function calculateNutritionAdjustments(data: FillrScoringInput): number {
+  const calories = data.caloriesPerServing ?? 0
+  const sodium = data.sodiumMgPerServing ?? 0
+  const fat = data.fatGPerServing ?? 0
+  const protein = data.proteinGPerServing ?? 0
+  if (calories <= 0 && sodium <= 0 && fat <= 0) return 0
+
+  let score = 0
+  const salty = data.productCategory === 'salty_snack'
+  if (sodium >= 200) {
+    score -= salty
+      ? Math.min(8, (sodium - 220) / 35)
+      : Math.min(14, (sodium - 140) / 20)
+  }
+  if (calories >= 180 && protein < 6) {
+    score -= salty
+      ? Math.min(6, (calories - 170) / 35)
+      : Math.min(12, (calories - 120) / 25)
+  }
+  if (fat >= 10) {
+    score -= salty ? Math.min(6, (fat - 10) / 3) : Math.min(10, (fat - 6) / 2)
   }
   return score
 }
@@ -274,9 +316,10 @@ export function calculateFillrFit(data: FillrScoringInput): FillrFitComputed {
   const ingredientScore = calculateIngredientScore(data)
   const userAdjustments = calculateUserAdjustments(data) - avoidingMatches.length * 12
   const goalAdjustments = calculateGoalAdjustments(data)
+  const nutritionAdjustments = calculateNutritionAdjustments(data)
 
   let finalScore = clampToCategoryBand(
-    category.base + ingredientScore + userAdjustments + goalAdjustments,
+    category.base + ingredientScore + userAdjustments + goalAdjustments + nutritionAdjustments,
     data
   )
 
@@ -350,4 +393,84 @@ export function calculateFillrFit(data: FillrScoringInput): FillrFitComputed {
     reason,
     tier: isTier2 ? 2 : 3,
   }
+}
+
+export function scoreToShortVerdict(score: number): { label: string; color: string } {
+  if (score >= 80) return { label: 'Great', color: '#16a34a' }
+  if (score >= 60) return { label: 'Good', color: '#16a34a' }
+  if (score >= 40) return { label: 'Mixed', color: '#d97706' }
+  if (score >= 20) return { label: 'Weak', color: '#ea580c' }
+  return { label: 'Poor', color: '#dc2626' }
+}
+
+/** Ingredient cleanliness lens — objective formula quality; same for every profile. */
+export function computeIngredientQualityScore(data: FillrScoringInput): number {
+  const category = CATEGORY_BASELINES[categoryOf(data)]
+  const ingredientScore = calculateIngredientScore(data)
+  let finalScore = clampToCategoryBand(category.base + ingredientScore, data)
+  if ((data.hydrogenatedOilCount ?? 0) > 0 || (data.ingredientCounts?.flagged ?? 0) > 0) {
+    finalScore = Math.min(finalScore, 35)
+  }
+  return clampScore(finalScore)
+}
+
+/** Personalized “for you” lens — macros vs goals/targets; varies by profile. */
+export function computeProfileFitScore(
+  data: FillrScoringInput,
+  opts?: { goalKey?: string; maxSugarG?: number; minProteinG?: number; maxSodiumMg?: number }
+): number {
+  if ((data.allergyMatches ?? []).length > 0) return 0
+  if (data.celiacSeverity === 'AVOID') return 0
+
+  const nutritionFit = computeNutritionFitScore(data, opts)
+  if (nutritionFit > 0) {
+    let score = nutritionFit
+    if (data.celiacSeverity === 'CAUTION') score = Math.min(score, 50)
+    return applyRiskCaps(score, data).score
+  }
+
+  return calculateFillrFit(data).score
+}
+
+/** Macro fit lens — sugars, sodium, protein vs goals and personal targets. */
+export function computeNutritionFitScore(
+  data: FillrScoringInput,
+  opts?: { goalKey?: string; maxSugarG?: number; minProteinG?: number; maxSodiumMg?: number }
+): number {
+  const calories = data.caloriesPerServing ?? 0
+  const sodium = data.sodiumMgPerServing ?? 0
+  const protein = data.proteinGPerServing ?? 0
+  const sugars = data.sugarsGPerServing ?? 0
+  const fat = data.fatGPerServing ?? 0
+
+  if (calories <= 0 && sodium <= 0 && protein <= 0 && sugars <= 0 && fat <= 0) return 0
+
+  let score = 72
+  score += calculateNutritionAdjustments(data)
+
+  const goal = (opts?.goalKey ?? '').toLowerCase()
+  if (/less_sugar|low_sugar|lose_weight|blood/i.test(goal)) {
+    if (sugars >= 15) score -= 22
+    else if (sugars >= 10) score -= 14
+    else if (sugars >= 6) score -= 8
+    else if (sugars > 0 && sugars <= 4) score += 6
+    score -= Math.min(12, Math.max(0, ((data.sugarScore ?? 0) - 4) / 2))
+  }
+  if (/more_protein|high_protein|build_muscle|muscle/i.test(goal)) {
+    if (protein >= 15) score += 14
+    else if (protein >= 10) score += 8
+    else if (protein >= 6) score += 2
+    else score -= 14
+  }
+  if (/lower_sodium/i.test(goal)) {
+    if (sodium >= 600) score -= 20
+    else if (sodium >= 400) score -= 12
+    else if (sodium <= 200) score += 6
+  }
+
+  if (opts?.maxSugarG != null && sugars > opts.maxSugarG) score -= 16
+  if (opts?.minProteinG != null && protein > 0 && protein < opts.minProteinG) score -= 14
+  if (opts?.maxSodiumMg != null && sodium > opts.maxSodiumMg) score -= 16
+
+  return clampScore(score)
 }

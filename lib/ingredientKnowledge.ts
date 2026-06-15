@@ -61,6 +61,15 @@ export function cacheRowIsComplete(row: IngredientKnowledgeRow | null): row is I
  * Map DB row → model shape used before deterministic pipeline.
  * `labelName` preserves label order / casing for merge with scan.
  */
+function firstSentenceFromName(name: string, prose?: string | null): string {
+  const fromProse = String(prose ?? '')
+    .trim()
+    .split(/(?<=[.!?])\s+/)[0]
+    ?.trim()
+  if (fromProse && fromProse.length >= 20) return fromProse
+  return `On this label, "${name.trim()}" names a specific part of the recipe—not a generic filler line.`
+}
+
 export function knowledgeRowToAnalysisItem(
   row: IngredientKnowledgeRow,
   labelName: string
@@ -100,7 +109,7 @@ export function knowledgeRowToAnalysisItem(
     name,
     headline: ensureMinProse(
       headline,
-      `${name} is included in this product and can affect texture, flavor, or nutrition depending on the formula.`
+      firstSentenceFromName(name, row.what_it_is || row.explanation)
     ),
     labelDecoder,
     whatItIs,

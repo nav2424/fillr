@@ -159,8 +159,8 @@ export default function OverviewScreen() {
   const daySeries = useMemo(() => buildWeekDayOverviewSeries(rows, week), [rows, week])
 
   const dashboardModel = useMemo(
-    () => buildOverviewDashboardModel(rows, week, metrics),
-    [rows, week, metrics]
+    () => buildOverviewDashboardModel(rows, week, metrics, daySeries),
+    [rows, week, metrics, daySeries]
   )
 
   /** Width for charts inside padded cards (matches card inner horizontal space). */
@@ -439,6 +439,8 @@ export default function OverviewScreen() {
               fonts={fonts}
               chartWidth={overviewChartWidth}
               onTopInsightPress={topInsightDestination ? () => router.push('/worst-offenders') : undefined}
+              onWatchListPress={metrics.topFlagged.length > 0 ? () => router.push('/worst-offenders') : undefined}
+              onRecentScanPress={(productId) => router.push({ pathname: '/product/[id]', params: { id: productId } })}
             />
           </ScrollView>
           <View
@@ -457,12 +459,12 @@ export default function OverviewScreen() {
 const styles = StyleSheet.create({
   overviewScreenRoot: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f2f4f7',
   },
   scrollDashboard: {
     paddingHorizontal: H_PAD,
     paddingTop: spacing.md,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f2f4f7',
   },
   boot: {
     alignItems: 'center',
@@ -470,7 +472,7 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f2f4f7',
   },
   shareCardHiddenWrap: {
     position: 'absolute',

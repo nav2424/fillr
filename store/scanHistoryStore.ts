@@ -4,7 +4,7 @@ import { createDebouncedPersistStorage } from '../lib/debouncedPersistStorage'
 import { storage } from '../lib/storage'
 import { persistScanHistoryRemote } from '../lib/overviewScanRemote'
 import { lightenScanResultForPersistence } from '../lib/lightenScanResultForPersistence'
-import type { SafetyStatus, ScanIngredientSource, ScanResult } from '../types'
+import type { SafetyStatus, ScanIngredientSource, ScanMethod, ScanResult } from '../types'
 
 export interface ScanRecord {
   id: string
@@ -16,6 +16,8 @@ export interface ScanRecord {
   result?: ScanResult
   /** Optional; omitted = barcode scan. */
   source?: ScanIngredientSource
+  /** Remote `scan_history.scan_method`. */
+  scanMethod?: ScanMethod
 }
 
 interface ScanHistoryState {

@@ -41,7 +41,9 @@ import {
 import { ingredientExplanationFailsQualityGate } from '../lib/ingredientCopyQuality'
 import { applyDemoScanProfileTailoring } from '../lib/demoScanPersonalize'
 import { DEFAULT_OCR_PRODUCT_NAME } from '../lib/historyDisplayLabel'
-import type { DietaryProfile, ScanResult } from '../types'
+import type { DietaryProfile, ScanResult, VisionProductIdentification } from '../types'
+import { visionDisplayName, visionIngredientsText, visionContainsAllergenText, visionMayContainAllergenText, visionNutritionToProductJson } from '../lib/visionProductParse'
+import { upsertVisionIdentifiedProduct } from '../lib/visionProductDb'
 import {
   shouldTranslateFrenchOnlyIngredientLabel,
   translateIngredientLabelToEnglish,
@@ -430,6 +432,8 @@ export type EnrichScanAiOptions = {
    * When true (default), that pass runs in the background after ingredient decode so scans feel faster.
    */
   runProductDeepPass?: boolean
+  requestTimeoutMs?: number
+  maxTokens?: number
 }
 
 /**
@@ -854,7 +858,8 @@ export async function enrichScanResultWithAI(
       nutritionJson: base.product.nutritionJson,
       skipIngredientRepair,
       maxRepairJobs: 5,
-      requestTimeoutMs: 28_000,
+      requestTimeoutMs: aiOptions?.requestTimeoutMs ?? 28_000,
+      ...(aiOptions?.maxTokens != null ? { maxTokens: aiOptions.maxTokens } : {}),
       ...(aiOptions?.fromOcr ? { fromOcr: true as const } : {}),
       ...(aiOptions?.ingredientParseSource
         ? { ingredientParseSource: aiOptions.ingredientParseSource }
@@ -1053,9 +1058,14 @@ export async function createScanResultFromIngredientText(
   params: Omit<ScanProductParams, 'barcode'> & {
     ingredientsList: string
     productDisplayName?: string
-    scanSource: 'ocr' | 'manual'
+    scanSource: 'ocr' | 'manual' | 'vision'
+    containsText?: string
+    mayContainText?: string
+    nutritionJson?: Record<string, unknown>
     /** When false, waits for OpenAI before returning (slow). Default true — navigate first, enrich after. */
     deferIngredientAnalysis?: boolean
+    /** When false, caller computes and freezes Fillr Fit after attaching extra product metadata. */
+    freezeScoring?: boolean
   }
 ): Promise<CreateScanFromIngredientTextPayload> {
   const dietaryProfile = await getUserProfileForScan()
@@ -1069,10 +1079,20 @@ export async function createScanResultFromIngredientText(
   }
 
   const ts = Date.now()
-  const barcode = `ocr_${ts}`
+  const barcode = params.scanSource === 'vision' ? `vision_${ts}` : `ocr_${ts}`
   const productDisplayName =
     params.productDisplayName?.trim() ||
-    (params.scanSource === 'ocr' ? DEFAULT_OCR_DISPLAY_NAME : 'Manual entry')
+    (params.scanSource === 'ocr'
+      ? DEFAULT_OCR_DISPLAY_NAME
+      : params.scanSource === 'vision'
+        ? 'Identified product'
+        : 'Manual entry')
+  const productSource =
+    params.scanSource === 'ocr'
+      ? 'photo_ocr'
+      : params.scanSource === 'vision'
+        ? 'gpt4o_vision'
+        : 'manual_entry'
 
   let pasted = params.ingredientsList.trim()
   let ocrTranslatedFromFrench = false
@@ -1090,13 +1110,15 @@ export async function createScanResultFromIngredientText(
   const ingredients_text = extractEnglishIngredients({ ingredients_text: pasted }, parseSource)
 
   const userConfig = buildUserAllergenConfig(params.allergies)
+  const containsText = params.containsText?.trim() ?? ''
+  const mayContainText = params.mayContainText?.trim() ?? ''
   const output = detectAllergensEvidenceBased(
     {
       product_name: productDisplayName,
       ingredients_text,
       ingredients_text_safety,
-      contains_text: '',
-      may_contain_text: '',
+      contains_text: containsText,
+      may_contain_text: mayContainText,
       allergens_tags: [],
       traces_tags: [],
       ingredients: undefined,
@@ -1133,7 +1155,20 @@ export async function createScanResultFromIngredientText(
       celiacStrictGluten: celiac,
       ingredientParseSource: parseSource,
     },
-    {}
+    {
+      ...(params.nutritionJson && Object.keys(params.nutritionJson).length > 0
+        ? { nutritionJson: params.nutritionJson }
+        : {}),
+      ...(params.mayContainText?.trim()
+        ? {
+            crossContactWarnings: params.mayContainText
+              .replace(/^may contain:\s*/i, '')
+              .split(/[,;]/)
+              .map((s) => s.trim())
+              .filter(Boolean),
+          }
+        : {}),
+    }
   )
 
   const patchedBase: ScanResult = {
@@ -1142,7 +1177,7 @@ export async function createScanResultFromIngredientText(
     ...(ocrTranslatedFromFrench ? { ocrTranslatedFromFrench: true } : {}),
     product: {
       ...baseResult.product,
-      source: params.scanSource === 'ocr' ? 'photo_ocr' : 'manual_entry',
+      source: productSource,
     },
   }
 
@@ -1156,6 +1191,7 @@ export async function createScanResultFromIngredientText(
         fromOcr: params.scanSource === 'ocr',
         skipIngredientRepair: false,
         ingredientParseSource: parseSource,
+        nutritionJson: params.nutritionJson ?? result.product.nutritionJson,
       })
       if (ai) {
         result = mergeAiAnalysisWithScan(ai, result)
@@ -1164,23 +1200,39 @@ export async function createScanResultFromIngredientText(
       // keep rule-based breakdown
     }
   }
-  const finalizedBase = freezeScanScoring(
-    finalizeScanForPresentation(
-      {
-        ...result,
-        scanSource: params.scanSource,
-        product: {
-          ...result.product,
-          id: `prod_${barcode}`,
-          barcode,
-          name: productDisplayName,
-          source: params.scanSource === 'ocr' ? 'photo_ocr' : 'manual_entry',
-        },
-      },
-      dietaryProfile
-    ),
-    dietaryProfile
-  )
+  const finalizedBase =
+    params.freezeScoring === false
+      ? finalizeScanForPresentation(
+          {
+            ...result,
+            scanSource: params.scanSource,
+            product: {
+              ...result.product,
+              id: `prod_${barcode}`,
+              barcode,
+              name: productDisplayName,
+              source: productSource,
+            },
+          },
+          dietaryProfile
+        )
+      : freezeScanScoring(
+          finalizeScanForPresentation(
+            {
+              ...result,
+              scanSource: params.scanSource,
+              product: {
+                ...result.product,
+                id: `prod_${barcode}`,
+                barcode,
+                name: productDisplayName,
+                source: productSource,
+              },
+            },
+            dietaryProfile
+          ),
+          dietaryProfile
+        )
   const finalized =
     deferAi &&
     pasted &&
@@ -1190,4 +1242,78 @@ export async function createScanResultFromIngredientText(
       : finalizedBase
 
   return { result: finalized, dietaryProfile }
+}
+
+/**
+ * Build a scan from GPT-4o vision identification (front-of-pack photo).
+ * Uses the same allergen + scoring pipeline as barcode/OCR scans.
+ */
+export async function createScanResultFromVisionProduct(
+  params: Omit<ScanProductParams, 'barcode'> & {
+    identification: VisionProductIdentification
+    deferIngredientAnalysis?: boolean
+  }
+): Promise<CreateScanFromIngredientTextPayload> {
+  const ingredientList = visionIngredientsText(params.identification)
+  const productDisplayName = visionDisplayName(params.identification)
+  const containsText = visionContainsAllergenText(params.identification)
+  const mayContainText = visionMayContainAllergenText(params.identification)
+  const visionNutrition = visionNutritionToProductJson(params.identification)
+  const nutritionJson = {
+    ...visionNutrition,
+    fillr_vision: {
+      confidence: params.identification.confidence,
+      variant: params.identification.variant,
+      allergens: params.identification.allergens,
+      may_contain_allergens: params.identification.may_contain_allergens,
+      country_variant: params.identification.country_variant,
+      nutrition_facts: params.identification.nutrition_facts,
+    },
+  }
+  const { result, dietaryProfile } = await createScanResultFromIngredientText({
+    allergies: params.allergies,
+    sensitivities: params.sensitivities,
+    preferences: params.preferences,
+    goal: params.goal,
+    celiacStrictGluten: params.celiacStrictGluten,
+    ingredientsList: ingredientList,
+    productDisplayName,
+    containsText,
+    mayContainText,
+    nutritionJson,
+    scanSource: 'vision',
+    deferIngredientAnalysis: params.deferIngredientAnalysis,
+    freezeScoring: false,
+  })
+
+  const brand = params.identification.brand.trim()
+  const withVisionMeta: ScanResult = {
+    ...result,
+    scanSource: 'vision',
+    fillrFit: undefined,
+    scoringData: undefined,
+    processedRating: undefined,
+    scoringFrozenAt: undefined,
+    product: {
+      ...result.product,
+      name: productDisplayName,
+      brand: brand || result.product.brand,
+      source: 'gpt4o_vision',
+      nutritionJson: {
+        ...(result.product.nutritionJson ?? {}),
+        ...nutritionJson,
+      },
+    },
+  }
+
+  let finalResult = freezeScanScoring(
+    finalizeScanForPresentation(withVisionMeta, dietaryProfile),
+    dietaryProfile
+  )
+  if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) {
+    finalResult = markScanFastPendingDecode(finalResult)
+  }
+
+  void upsertVisionIdentifiedProduct(params.identification, ingredientList).catch(() => {})
+  return { result: finalResult, dietaryProfile }
 }

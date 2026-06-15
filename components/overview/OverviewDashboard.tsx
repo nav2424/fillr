@@ -2,16 +2,24 @@ import { memo, type ReactNode } from 'react'
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
-import type { OverviewDashboardModel, DeltaTone, TrendInsightTone } from '../../lib/buildOverviewDashboardModel'
+import type {
+  OverviewDashboardModel,
+  DeltaTone,
+  TrendInsightTone,
+  WeekStatChip,
+  WatchListItem,
+} from '../../lib/buildOverviewDashboardModel'
 import type { WeekDayStat } from '../../lib/overviewChartData'
 import { OverviewWeekAvgSparklineMini, OverviewWeeklyFitTrendChart } from './OverviewCharts'
 import { spacing } from '../../constants/theme'
+import { toTitleCase } from '../../lib/formatProductTitle'
 
 const INK = '#0f172a'
 const MUTED = '#64748b'
-const LINE = 'rgba(15, 23, 42, 0.055)'
-const CARD_RAD = 24
-const CARD_PAD = spacing.xl
+const LINE = 'rgba(15, 23, 42, 0.06)'
+const CARD_RAD = 20
+const CARD_PAD = spacing.lg
+const SCREEN_BG = '#f2f4f7'
 
 function deltaPillStyle(tone: DeltaTone): { bg: string; fg: string } {
   switch (tone) {
@@ -35,6 +43,17 @@ function trendInsightColors(tone: TrendInsightTone): { fg: string; bg: string; b
   }
 }
 
+function statChipColors(tone: WeekStatChip['tone']): { bg: string; border: string; icon: string } {
+  switch (tone) {
+    case 'good':
+      return { bg: '#ecfdf5', border: 'rgba(34, 197, 94, 0.2)', icon: '#15803d' }
+    case 'warn':
+      return { bg: '#fff7ed', border: 'rgba(249, 115, 22, 0.22)', icon: '#c2410c' }
+    default:
+      return { bg: '#ffffff', border: LINE, icon: '#475569' }
+  }
+}
+
 function SectionKicker({
   label,
   fonts,
@@ -49,56 +68,85 @@ function SectionKicker({
   )
 }
 
+function CardShell({
+  children,
+  gradient = ['#ffffff', '#fafbfc'] as [string, string],
+}: {
+  children: ReactNode
+  gradient?: [string, string]
+}) {
+  return (
+    <View style={styles.cardShell}>
+      <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFillObject} />
+      <View style={styles.cardInner}>{children}</View>
+    </View>
+  )
+}
+
 const FitScoreRing = memo(function FitScoreRing({ score, color }: { score: number | null; color: string }) {
   const active = score != null && score > 0
   return (
     <View style={styles.ringShell}>
       <View style={[styles.ringTrack, active ? { borderColor: color } : null]}>
-        <Ionicons name="analytics-outline" size={26} color={active ? color : '#94a3b8'} />
+        <Text style={[styles.ringScoreMini, { color: active ? color : '#94a3b8' }]}>
+          {active ? score : '—'}
+        </Text>
       </View>
     </View>
   )
 })
 
-function InsightShell({ children }: { children: ReactNode }) {
+function MixBar({
+  mix,
+}: {
+  mix: NonNullable<OverviewDashboardModel['ingredientMix']>
+}) {
+  const segments = [
+    { key: 'natural', count: mix.natural, color: '#22c55e' },
+    { key: 'processed', count: mix.processed, color: '#eab308' },
+    { key: 'additive', count: mix.additive, color: '#f97316' },
+    { key: 'flagged', count: mix.flagged, color: '#ef4444' },
+  ].filter((s) => s.count > 0)
+
   return (
-    <View style={styles.cardShell}>
-      <LinearGradient
-        colors={['#ffffff', '#f8fafc']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View style={styles.accentBar} />
-      <View style={styles.cardInner}>{children}</View>
+    <View style={styles.mixWrap}>
+      <View style={styles.mixBarTrack}>
+        {segments.map((seg) => (
+          <View
+            key={seg.key}
+            style={[styles.mixBarSegment, { flex: seg.count, backgroundColor: seg.color }]}
+          />
+        ))}
+      </View>
+      <View style={styles.mixLegend}>
+        {segments.map((seg) => (
+          <View key={seg.key} style={styles.mixLegendItem}>
+            <View style={[styles.mixDot, { backgroundColor: seg.color }]} />
+            <Text style={styles.mixLegendText}>
+              {seg.count} {seg.key === 'natural' ? 'natural' : seg.key}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   )
 }
 
-function ScoreShell({ children }: { children: ReactNode }) {
+function WatchListRow({ item, fonts }: { item: WatchListItem; fonts: { sans: string; sansSemiBold: string; sansBold: string } }) {
+  const tone = item.rating === 'avoid' ? '#ef4444' : '#f97316'
   return (
-    <View style={styles.cardShell}>
-      <LinearGradient
-        colors={['#ffffff', '#fafefd']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View style={styles.cardInner}>{children}</View>
-    </View>
-  )
-}
-
-function TrendShell({ children }: { children: ReactNode }) {
-  return (
-    <View style={styles.cardShell}>
-      <LinearGradient
-        colors={['#ffffff', '#f7faf9']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View style={styles.cardInner}>{children}</View>
+    <View style={styles.watchRow}>
+      <View style={[styles.watchRank, { backgroundColor: `${tone}14` }]}>
+        <Text style={[styles.watchRankText, { color: tone, fontFamily: fonts.sansBold }]}>{item.count}×</Text>
+      </View>
+      <View style={styles.watchCopy}>
+        <Text style={[styles.watchName, { fontFamily: fonts.sansSemiBold }]} numberOfLines={1}>
+          {item.name}
+        </Text>
+        <Text style={[styles.watchSub, { fontFamily: fonts.sans }]} numberOfLines={2}>
+          {item.subtitle}
+        </Text>
+      </View>
     </View>
   )
 }
@@ -109,13 +157,16 @@ export function OverviewDashboardBody({
   fonts,
   chartWidth,
   onTopInsightPress,
+  onRecentScanPress,
+  onWatchListPress,
 }: {
   model: OverviewDashboardModel
   daySeries: WeekDayStat[]
   fonts: { sans: string; sansMedium: string; sansSemiBold: string; sansBold: string }
-  /** Inner width for SVG charts (card padding already accounted for). */
   chartWidth: number
   onTopInsightPress?: () => void
+  onRecentScanPress?: (productId: string) => void
+  onWatchListPress?: () => void
 }) {
   const insight = model.topInsight
   const score = model.scoreHero
@@ -127,20 +178,39 @@ export function OverviewDashboardBody({
 
   return (
     <View style={styles.page}>
-      {hasWeeklyScore ? (
+      <View style={styles.weekHero}>
+        <Text style={[styles.weekHeroTitle, { fontFamily: fonts.sansBold }]}>Your week</Text>
+        <Text style={[styles.weekHeroSub, { fontFamily: fonts.sans }]}>{model.weekHeadline}</Text>
+      </View>
+
+      {model.weekStats.length > 0 ? (
+        <View style={styles.statGrid}>
+          {model.weekStats.map((chip) => {
+            const colors = statChipColors(chip.tone)
+            return (
+              <View key={chip.label} style={[styles.statChip, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                <Ionicons name={chip.icon as keyof typeof Ionicons.glyphMap} size={15} color={colors.icon} />
+                <Text style={[styles.statValue, { fontFamily: fonts.sansBold }]}>{chip.value}</Text>
+                <Text style={[styles.statLabel, { fontFamily: fonts.sansMedium }]}>{chip.label}</Text>
+                {chip.hint ? (
+                  <Text style={[styles.statHint, { fontFamily: fonts.sans }]} numberOfLines={1}>
+                    {chip.hint}
+                  </Text>
+                ) : null}
+              </View>
+            )
+          })}
+        </View>
+      ) : null}
+
+      {model.hasScansThisWeek ? (
         <Pressable
           onPress={onTopInsightPress}
           disabled={!onTopInsightPress}
-          accessibilityRole={onTopInsightPress ? 'button' : undefined}
-          accessibilityHint={onTopInsightPress ? 'Opens your watchlist and flagged ingredients' : undefined}
-          android_ripple={onTopInsightPress ? { color: 'rgba(15,23,42,0.07)' } : undefined}
-          style={({ pressed }) => [
-            styles.cardBlock,
-            pressed && onTopInsightPress ? styles.cardPressed : null,
-          ]}
+          style={({ pressed }) => [styles.cardBlock, pressed && onTopInsightPress ? styles.cardPressed : null]}
         >
-          <InsightShell>
-            <SectionKicker label="Highlight" fonts={fonts} />
+          <CardShell gradient={['#ffffff', '#f0fdf4']}>
+            <SectionKicker label="Insight" fonts={fonts} />
             <View style={styles.insightBody}>
               <View style={[styles.topInsightOrb, { backgroundColor: insight.iconBg }]}>
                 <Ionicons name={insight.icon as keyof typeof Ionicons.glyphMap} size={22} color={insight.iconColor} />
@@ -153,36 +223,24 @@ export function OverviewDashboardBody({
                 </Text>
                 <Text style={[styles.topInsightSub, { fontFamily: fonts.sans }]}>{insight.subline}</Text>
               </View>
-              {onTopInsightPress ? (
-                <View style={styles.chevronWrap}>
-                  <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-                </View>
-              ) : null}
+              {onTopInsightPress ? <Ionicons name="chevron-forward" size={18} color="#94a3b8" /> : null}
             </View>
-          </InsightShell>
+          </CardShell>
         </Pressable>
       ) : null}
 
       {hasWeeklyScore ? (
         <View style={styles.cardBlock}>
-          <ScoreShell>
-            <SectionKicker label="This week" fonts={fonts} />
-
+          <CardShell>
+            <SectionKicker label="Weekly fit" fonts={fonts} />
             <View style={styles.scoreHeroRow}>
               <FitScoreRing score={score.score} color={score.ringColor} />
               <View style={styles.scoreNumberCol}>
-                <Text style={[styles.scoreBig, { fontFamily: fonts.sansBold, color: score.ringColor }]}>
-                  {score.score}
-                </Text>
-                <Text style={[styles.scoreWord, { fontFamily: fonts.sansSemiBold }]}>{score.scoreWord}</Text>
-                <Text style={[styles.scoreMeta, { fontFamily: fonts.sansMedium }]}>
-                  Weekly Fillr fit score
-                </Text>
+                <Text style={[styles.scoreWord, { fontFamily: fonts.sansBold }]}>{score.scoreWord}</Text>
+                <Text style={[styles.scoreMeta, { fontFamily: fonts.sansMedium }]}>Average Fillr fit this week</Text>
+                <Text style={[styles.scoreSupport, { fontFamily: fonts.sans }]}>{score.supportLine}</Text>
               </View>
             </View>
-
-            <Text style={[styles.scoreSupport, { fontFamily: fonts.sans }]}>{score.supportLine}</Text>
-
             {score.deltaLabel && scorePill ? (
               <View style={[styles.fitDeltaPill, { backgroundColor: scorePill.bg }]}>
                 <Ionicons
@@ -195,51 +253,100 @@ export function OverviewDashboardBody({
                   }
                   size={14}
                   color={scorePill.fg}
-                  style={{ marginRight: 4 }}
                 />
                 <Text style={[styles.fitDeltaText, { fontFamily: fonts.sansSemiBold, color: scorePill.fg }]}>
                   {score.deltaLabel}
                 </Text>
               </View>
             ) : null}
-
-            {hasDailySeries ? <View style={styles.inCardDivider} /> : null}
-
             {hasDailySeries ? (
-              <View style={styles.sparkBlock}>
-                <View style={styles.sparkBlockHeader}>
-                  <Text style={[styles.sparkBlockTitle, { fontFamily: fonts.sansSemiBold }]}>Daily fit score</Text>
-                  <Text style={[styles.sparkBlockHint, { fontFamily: fonts.sans }]}>Mon to Sun</Text>
-                </View>
-                <Text style={[styles.sparkContext, { fontFamily: fonts.sans }]}>
-                  Taller bars mean better daily fit.
-                </Text>
-                <View style={styles.sparkChartWrap}>
+              <>
+                <View style={styles.inCardDivider} />
+                <View style={styles.sparkBlock}>
+                  <View style={styles.sparkBlockHeader}>
+                    <Text style={[styles.sparkBlockTitle, { fontFamily: fonts.sansSemiBold }]}>Daily rhythm</Text>
+                    <Text style={[styles.sparkBlockHint, { fontFamily: fonts.sans }]}>Mon – Sun</Text>
+                  </View>
                   <OverviewWeekAvgSparklineMini days={daySeries} height={74} width={chartWidth} />
                 </View>
-              </View>
+              </>
             ) : null}
-          </ScoreShell>
+          </CardShell>
+        </View>
+      ) : null}
+
+      {model.ingredientMix ? (
+        <View style={styles.cardBlock}>
+          <CardShell>
+            <SectionKicker label="Ingredient mix" fonts={fonts} />
+            <Text style={[styles.mixInsight, { fontFamily: fonts.sans }]}>{model.ingredientMix.insight}</Text>
+            <MixBar mix={model.ingredientMix} />
+          </CardShell>
+        </View>
+      ) : null}
+
+      {model.watchList.length > 0 ? (
+        <Pressable
+          onPress={onWatchListPress}
+          disabled={!onWatchListPress}
+          style={({ pressed }) => [styles.cardBlock, pressed && onWatchListPress ? styles.cardPressed : null]}
+        >
+          <CardShell gradient={['#ffffff', '#fff7ed']}>
+            <View style={styles.sectionHeaderRow}>
+              <SectionKicker label="Watch list" fonts={fonts} />
+              {onWatchListPress ? <Text style={[styles.sectionLink, { fontFamily: fonts.sansSemiBold }]}>See all</Text> : null}
+            </View>
+            <Text style={[styles.sectionIntro, { fontFamily: fonts.sans }]}>
+              Ingredients that showed up on multiple scans this week.
+            </Text>
+            <View style={styles.watchList}>
+              {model.watchList.map((item) => (
+                <WatchListRow key={item.name} item={item} fonts={fonts} />
+              ))}
+            </View>
+          </CardShell>
+        </Pressable>
+      ) : null}
+
+      {model.recentScans.length > 0 ? (
+        <View style={styles.cardBlock}>
+          <CardShell>
+            <SectionKicker label="Recent scans" fonts={fonts} />
+            <View style={styles.recentList}>
+              {model.recentScans.map((scan) => (
+                <Pressable
+                  key={scan.productId}
+                  onPress={() => onRecentScanPress?.(scan.productId)}
+                  disabled={!onRecentScanPress}
+                  style={({ pressed }) => [styles.recentRow, pressed && onRecentScanPress ? { opacity: 0.88 } : null]}
+                >
+                  <View style={styles.recentText}>
+                    <Text style={[styles.recentName, { fontFamily: fonts.sansSemiBold }]} numberOfLines={1}>
+                      {toTitleCase(scan.name)}
+                    </Text>
+                    {scan.brand ? (
+                      <Text style={[styles.recentBrand, { fontFamily: fonts.sans }]} numberOfLines={1}>
+                        {toTitleCase(scan.brand)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {scan.score != null && scan.score > 0 ? (
+                    <View style={styles.recentScorePill}>
+                      <Text style={[styles.recentScoreText, { fontFamily: fonts.sansBold }]}>{scan.score}</Text>
+                    </View>
+                  ) : null}
+                  {onRecentScanPress ? <Ionicons name="chevron-forward" size={16} color="#cbd5e1" /> : null}
+                </Pressable>
+              ))}
+            </View>
+          </CardShell>
         </View>
       ) : null}
 
       {hasTrendSeries ? (
         <View style={styles.cardBlockLast}>
-          <TrendShell>
-            <SectionKicker label="Six weeks" fonts={fonts} />
-
-            <View style={styles.trendTitleRow}>
-              <View style={styles.trendTitleText}>
-                <Text style={[styles.trendTitle, { fontFamily: fonts.sansBold }]}>Fillr fit trajectory</Text>
-                <Text style={[styles.trendSubtitle, { fontFamily: fonts.sans }]}>
-                  One averaged point per calendar week
-                </Text>
-              </View>
-              <View style={styles.trendIconBadge}>
-                <Ionicons name="analytics-outline" size={18} color="#15803d" />
-              </View>
-            </View>
-
+          <CardShell gradient={['#ffffff', '#f8fafc']}>
+            <SectionKicker label="Six-week trend" fonts={fonts} />
             <View style={[styles.trendInsightBox, { backgroundColor: ti.bg, borderColor: ti.border }]}>
               <Ionicons
                 name={
@@ -251,17 +358,13 @@ export function OverviewDashboardBody({
                 }
                 size={16}
                 color={ti.fg}
-                style={{ marginRight: 8, marginTop: 1 }}
               />
               <Text style={[styles.trendInsightText, { fontFamily: fonts.sans, color: ti.fg }]}>
                 {model.trendInsight.line}
               </Text>
             </View>
-
-            <View style={styles.trendChartWrap}>
-              <OverviewWeeklyFitTrendChart points={model.trend} width={chartWidth} height={182} />
-            </View>
-          </TrendShell>
+            <OverviewWeeklyFitTrendChart points={model.trend} width={chartWidth} height={172} />
+          </CardShell>
         </View>
       ) : null}
     </View>
@@ -272,6 +375,52 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: 'transparent',
     paddingBottom: spacing.xs,
+  },
+  weekHero: {
+    marginBottom: spacing.md,
+    paddingHorizontal: 2,
+  },
+  weekHeroTitle: {
+    fontSize: 28,
+    color: INK,
+    letterSpacing: -0.8,
+  },
+  weekHeroSub: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    color: MUTED,
+  },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: spacing.sm,
+  },
+  statChip: {
+    width: '48%',
+    flexGrow: 1,
+    minWidth: '46%',
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 2,
+  },
+  statValue: {
+    marginTop: 6,
+    fontSize: 22,
+    color: INK,
+    letterSpacing: -0.6,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: MUTED,
+  },
+  statHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 1,
   },
   cardBlock: {
     marginBottom: spacing.sm,
@@ -287,232 +436,281 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: LINE,
+    backgroundColor: '#fff',
     ...Platform.select({
       ios: {
-        shadowColor: '#0c4a1e',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.07,
-        shadowRadius: 22,
+        shadowColor: '#0f172a',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 16,
       },
-      android: { elevation: 3 },
+      android: { elevation: 2 },
     }),
   },
   cardInner: {
     paddingHorizontal: CARD_PAD,
-    paddingTop: CARD_PAD - 4,
-    paddingBottom: CARD_PAD - 2,
-    position: 'relative',
-  },
-  accentBar: {
-    position: 'absolute',
-    left: 0,
-    top: 20,
-    bottom: 20,
-    width: 3,
-    borderRadius: 2,
-    backgroundColor: '#22c55e',
-    opacity: 0.85,
+    paddingTop: CARD_PAD - 2,
+    paddingBottom: CARD_PAD,
   },
   sectionKicker: {
     fontSize: 11,
-    color: '#64748b',
-    letterSpacing: 1.35,
+    color: MUTED,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: 10,
-    marginLeft: 2,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  sectionLink: {
+    fontSize: 13,
+    color: '#15803d',
+    marginBottom: 10,
+  },
+  sectionIntro: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: MUTED,
+    marginBottom: 12,
+    marginTop: -4,
   },
   insightBody: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    paddingLeft: 4,
+    gap: 12,
   },
   topInsightOrb: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.7)',
   },
   topInsightCopy: {
     flex: 1,
     minWidth: 0,
   },
   topInsightHeadline: {
-    fontSize: 19,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 24,
     color: INK,
-    letterSpacing: -0.48,
+    letterSpacing: -0.35,
   },
   topInsightEm: {
     color: '#15803d',
-    fontWeight: '800',
   },
   topInsightSub: {
-    marginTop: 6,
+    marginTop: 5,
     fontSize: 13,
-    lineHeight: 20,
+    lineHeight: 19,
     color: MUTED,
-  },
-  chevronWrap: {
-    alignSelf: 'center',
-    paddingLeft: 2,
-    opacity: 0.88,
   },
   scoreHeroRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    marginBottom: 8,
-    paddingLeft: 2,
+    alignItems: 'flex-start',
+    gap: 16,
+    marginBottom: 10,
   },
   ringShell: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f8fafc',
-  },
-  ringTrack: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    borderWidth: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SCREEN_BG,
+  },
+  ringTrack: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 5,
     borderColor: '#dbe5ef',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
   },
+  ringScoreMini: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
   scoreNumberCol: {
     flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
-  },
-  scoreBig: {
-    fontSize: 40,
-    lineHeight: 44,
-    letterSpacing: -1.25,
+    gap: 4,
   },
   scoreWord: {
-    fontSize: 16,
+    fontSize: 22,
     color: INK,
-    marginTop: 2,
-    letterSpacing: -0.25,
+    letterSpacing: -0.4,
   },
   scoreMeta: {
     fontSize: 12,
     color: MUTED,
-    marginTop: 4,
-    letterSpacing: -0.1,
   },
   scoreSupport: {
     fontSize: 13,
-    lineHeight: 20,
+    lineHeight: 19,
     color: MUTED,
-    marginBottom: 8,
-    paddingLeft: 2,
   },
   fitDeltaPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 11,
+    gap: 4,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    marginBottom: 4,
-    marginLeft: 2,
+    marginTop: 4,
   },
   fitDeltaText: {
     fontSize: 12,
-    letterSpacing: -0.06,
   },
   inCardDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: LINE,
-    marginVertical: 12,
-    marginHorizontal: -4,
+    marginVertical: 14,
   },
   sparkBlock: {
-    paddingLeft: 2,
+    gap: 8,
   },
   sparkBlockHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginBottom: 4,
-    paddingRight: 2,
   },
   sparkBlockTitle: {
     fontSize: 14,
     color: INK,
-    letterSpacing: -0.28,
   },
   sparkBlockHint: {
     fontSize: 12,
     color: MUTED,
   },
-  sparkContext: {
+  mixInsight: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: MUTED,
+    marginBottom: 12,
+  },
+  mixWrap: {
+    gap: 10,
+  },
+  mixBarTrack: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: SCREEN_BG,
+  },
+  mixBarSegment: {
+    minWidth: 4,
+  },
+  mixLegend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  mixLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  mixDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  mixLegendText: {
     fontSize: 11,
-    color: '#7b8a9a',
-    marginBottom: 8,
-    paddingRight: 2,
+    fontWeight: '600',
+    color: MUTED,
+    textTransform: 'capitalize',
   },
-  sparkChartWrap: {
-    alignItems: 'flex-start',
+  watchList: {
+    gap: 12,
   },
-  trendTitleRow: {
+  watchRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 12,
-    paddingLeft: 2,
   },
-  trendTitleText: {
+  watchRank: {
+    minWidth: 42,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  watchRankText: {
+    fontSize: 13,
+  },
+  watchCopy: {
     flex: 1,
     minWidth: 0,
+    gap: 3,
   },
-  trendTitle: {
-    fontSize: 16,
+  watchName: {
+    fontSize: 15,
     color: INK,
-    letterSpacing: -0.42,
+    letterSpacing: -0.2,
   },
-  trendSubtitle: {
+  watchSub: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: MUTED,
+  },
+  recentList: {
+    gap: 2,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: LINE,
+  },
+  recentText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  recentName: {
+    fontSize: 15,
+    color: INK,
+    letterSpacing: -0.15,
+  },
+  recentBrand: {
     fontSize: 12,
     color: MUTED,
-    marginTop: 2,
-    lineHeight: 17,
   },
-  trendIconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(34, 197, 94, 0.18)',
+  recentScorePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#ecfdf5',
+  },
+  recentScoreText: {
+    fontSize: 13,
+    color: '#15803d',
   },
   trendInsightBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: 8,
     paddingVertical: 11,
     paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: 10,
-    marginLeft: 2,
-    marginRight: 2,
+    marginBottom: 12,
   },
   trendInsightText: {
     flex: 1,
     fontSize: 13,
     lineHeight: 19,
-  },
-  trendChartWrap: {
-    alignItems: 'center',
   },
 })

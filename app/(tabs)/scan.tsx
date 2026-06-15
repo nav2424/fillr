@@ -36,6 +36,7 @@ import { isDemoScanBarcode } from '../../services/mockProducts'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
+import { consumeVisionAutoOpenPending } from '../../lib/navigationHelpers'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
 import { ingredientExplanationFailsQualityGate } from '../../lib/ingredientCopyQuality'
 
@@ -44,6 +45,9 @@ const SCAN_TAB_BAR_CLEARANCE = 88
 
 const VIEWFINDER_W = 220
 const VIEWFINDER_H = 180
+
+/** Flip to false before shipping — defaults Scan tab to GPT-4o photo capture for testing. */
+const USE_VISION_AS_DEFAULT_SCAN = true
 
 const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'ean13',
@@ -109,6 +113,12 @@ export default function ScanScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (USE_VISION_AS_DEFAULT_SCAN) {
+        if (consumeVisionAutoOpenPending()) {
+          router.push('/vision-scanner')
+        }
+        return
+      }
       setScanError(null)
       const t = setTimeout(() => {
         scannedRef.current = false
@@ -395,6 +405,10 @@ export default function ScanScreen() {
     })
   }, [navigation, canUseCamera, scanning, torchOn])
 
+  if (USE_VISION_AS_DEFAULT_SCAN) {
+    return <View style={styles.container} />
+  }
+
   const bottomPad = SCAN_TAB_BAR_CLEARANCE + insets.bottom
 
   return (
@@ -512,20 +526,34 @@ export default function ScanScreen() {
           ) : (
             <>
               {!outOfScans && Platform.OS !== 'web' && canUseCamera && (
-                <Pressable
-                  onPress={() => router.push('/ocr-scanner')}
-                  style={({ pressed }) => [styles.bottomSheet, pressed && { opacity: 0.92 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scan ingredients with camera instead of barcode"
-                >
-                  <View style={styles.bottomSheetTextCol}>
-                    <Text style={styles.bottomSheetKicker}>CAN&apos;T SCAN THE BARCODE?</Text>
-                    <Text style={styles.bottomSheetTitle}>Scan ingredients instead</Text>
-                  </View>
-                  <View style={styles.chevronGlass}>
-                    <Ionicons name="chevron-forward" size={22} color="#ffffff" />
-                  </View>
-                </Pressable>
+                <View style={styles.fallbackSheet}>
+                  <Text style={styles.bottomSheetKicker}>CAN&apos;T SCAN THE BARCODE?</Text>
+                  <Pressable
+                    onPress={() => router.push('/vision-scanner')}
+                    style={({ pressed }) => [styles.fallbackRow, pressed && { opacity: 0.92 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Take a photo of the product packaging"
+                  >
+                    <View style={styles.bottomSheetTextCol}>
+                      <Text style={styles.bottomSheetTitle}>Take a Photo</Text>
+                      <Text style={styles.bottomSheetSubtitle}>Identify from the front of the package</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+                  </Pressable>
+                  <View style={styles.fallbackDivider} />
+                  <Pressable
+                    onPress={() => router.push('/ocr-scanner')}
+                    style={({ pressed }) => [styles.fallbackRow, pressed && { opacity: 0.92 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Scan ingredients label with camera"
+                  >
+                    <View style={styles.bottomSheetTextCol}>
+                      <Text style={styles.bottomSheetTitle}>Scan ingredients label</Text>
+                      <Text style={styles.bottomSheetSubtitle}>OCR fallback for the ingredients panel</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+                  </Pressable>
+                </View>
               )}
             </>
           )}
@@ -685,6 +713,24 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 16,
   },
+  fallbackSheet: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  fallbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  fallbackDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
   bottomSheetTextCol: {
     flex: 1,
     paddingRight: 12,
@@ -701,6 +747,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.9)',
+  },
+  bottomSheetSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.62)',
   },
   chevronGlass: {
     width: 36,

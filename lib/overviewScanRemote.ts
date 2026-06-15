@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { ScanResult } from '../types'
+import type { ScanResult, ScanMethod } from '../types'
 import type { OverviewScanRow } from './overviewAnalytics'
 import { parseScanHistoryDate } from './parseScanHistoryDate'
 
@@ -58,6 +58,7 @@ export async function fetchOverviewScanRows(userId: string): Promise<OverviewSca
 export async function persistScanHistoryRemote(scan: {
   barcode: string
   result?: ScanResult | null
+  scanMethod?: ScanMethod
 }): Promise<void> {
   if (!scan.result) return
   const { data: sessionData } = await supabase.auth.getSession()
@@ -71,6 +72,15 @@ export async function persistScanHistoryRemote(scan: {
     ? await resolveProductIdByBarcodeWithRetry(scan.barcode)
     : null
 
+  const scanMethod: ScanMethod =
+    scan.scanMethod ?? (scan.result?.scanSource === 'vision'
+      ? 'vision'
+      : scan.result?.scanSource === 'ocr'
+        ? 'ocr'
+        : scan.result?.scanSource === 'manual'
+          ? 'manual'
+          : 'barcode')
+
   const { data, error } = await supabase
     .from('scan_history')
     .insert({
@@ -78,6 +88,7 @@ export async function persistScanHistoryRemote(scan: {
       barcode: scan.barcode,
       product_id: productId,
       result_json: scan.result as unknown as Record<string, unknown>,
+      scan_method: scanMethod,
     })
     .select('id')
     .maybeSingle()

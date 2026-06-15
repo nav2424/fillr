@@ -4,8 +4,10 @@
 
 import type { DietaryProfile, IngredientExplanation, IngredientRating, ScanResult } from '../types'
 import { runCeliacCheck, getCeliacSeverity } from './allergenEngine/matcher'
+import { parseIngredients } from './fillrAdapter'
 import type { FillrScoringInput } from './fillrScoring'
 import { buildProfileMatches } from './buildProfileMatches'
+import { extractNutritionFacts } from './extractNutritionFacts'
 
 function ratingOf(i: IngredientExplanation): IngredientRating {
   return (i.ingredientRating ?? 'okay') as IngredientRating
@@ -36,6 +38,18 @@ const EMULSIFIER_RE =
 const PRO_INFLAMMATORY_RE =
   /\b(high fructose corn syrup|\bhfcs\b|partially hydrogenated|hydrogenated oil|carrageenan|tbhq|bht|bha|sodium nitrite|sodium nitrate|artificial color|artificial colour|red\s*40|yellow\s*5|yellow\s*6|soybean oil|corn oil|sunflower oil|canola oil)\b/i
 
+const SALTY_SNACK_PRODUCT_RE =
+  /\b(potato chips?|potato crisps|corn chips?|tortilla chips?|kettle chips?|puffed snacks?|cheese puffs?|party mix|snack mix|crisps|chips|pretzels?|popcorn)\b/i
+
+const BREAKFAST_GRAIN_PRODUCT_RE =
+  /\b(instant oatmeal|oatmeal|porridge|whole grain oats|rolled oats|quick oats|steel cut oats|oat flakes|hot cereal|cream of wheat|grits)\b/i
+
+const CANDY_PRODUCT_RE =
+  /\b(candy|chocolate bar|gummy|gummies|lollipop|sour candy|hard candy|jelly beans?|liquorice|licorice|taffy|fudge)\b/i
+
+const PROCESSED_PRODUCT_RE =
+  /\b(chips?|crisps|crackers|snack|seasoning|powder|blend|puffs?|bar\b|candy|chocolate|poutine|flavour|flavor)\b/i
+
 export function detectProductCategoryFromSignals(
   sourceText: string,
   normalizedNames: string[]
@@ -47,6 +61,8 @@ export function detectProductCategoryFromSignals(
   if (/\b(protein bar|protein brownie|protein cookie|whey protein|pea protein|protein isolate|protein concentrate)\b/.test(hay)) {
     return 'protein_bar'
   }
+  if (SALTY_SNACK_PRODUCT_RE.test(hay)) return 'salty_snack'
+  if (BREAKFAST_GRAIN_PRODUCT_RE.test(hay)) return 'breakfast_grain'
   if (
     /\b(cream|coffee cream|creamer|creamers|half[\s-]and[\s-]half|table cream|coffee whitener|whitener|whole milk|milk|skim milk|yogurt|yoghurt|kefir|fromage|lait|creme|cr[eè]me fraiche)\b/.test(
       hay
@@ -54,10 +70,13 @@ export function detectProductCategoryFromSignals(
   ) {
     return 'dairy'
   }
-  if (/\b(candy|chocolate bar|gummy|gummies|caramel|lollipop|sour candy|hard candy)\b/.test(hay)) return 'candy'
+  if (CANDY_PRODUCT_RE.test(hay)) return 'candy'
   if (/\b(soda|soft drink|energy drink|sports drink|juice drink|sparkling water|beverage)\b/.test(hay)) return 'drink'
   if (/\b(ketchup|mustard|mayonnaise|mayo|dressing|sauce|dip|spread|salsa|condiment)\b/.test(hay)) return 'condiment'
   if (
+    !PROCESSED_PRODUCT_RE.test(hay) &&
+    !INDUSTRIAL_STRONG_NAME.test(hay) &&
+    !INDUSTRIAL_MEDIUM_NAME.test(hay) &&
     normalizedNames.length > 0 &&
     normalizedNames.length <= 3 &&
     normalizedNames.every((n) => !INDUSTRIAL_STRONG_NAME.test(n) && !INDUSTRIAL_MEDIUM_NAME.test(n))
@@ -76,8 +95,54 @@ export function detectProductCategoryFromSignals(
 }
 
 function detectProductCategory(scan: ScanResult, normalizedNames: string[]): FillrScoringInput['productCategory'] {
-  const sourceText = `${scan.product.name ?? ''} ${scan.product.ingredientText ?? ''}`
-  return detectProductCategoryFromSignals(sourceText, normalizedNames)
+  const labelHaystack =
+    scan.product.ingredientTextSafetyHaystack?.trim() ||
+    scan.product.ingredientText?.trim() ||
+    ''
+  const sourceText = `${scan.product.name ?? ''} ${scan.product.brand ?? ''} ${labelHaystack}`
+  const parsedFromLabel = parseIngredients(labelHaystack, 'barcode')
+    .map((name) => normName(name))
+    .filter(Boolean)
+  const namesForCategory =
+    normalizedNames.length >= 4
+      ? normalizedNames
+      : parsedFromLabel.length > normalizedNames.length
+        ? parsedFromLabel
+        : normalizedNames
+  return detectProductCategoryFromSignals(sourceText, namesForCategory)
+}
+
+function extractNutritionForScoring(scan: ScanResult): Pick<
+  FillrScoringInput,
+  | 'caloriesPerServing'
+  | 'sodiumMgPerServing'
+  | 'fatGPerServing'
+  | 'proteinGPerServing'
+  | 'sugarsGPerServing'
+  | 'carbsGPerServing'
+> {
+  const facts = extractNutritionFacts(scan)
+  const out: Pick<
+    FillrScoringInput,
+    | 'caloriesPerServing'
+    | 'sodiumMgPerServing'
+    | 'fatGPerServing'
+    | 'proteinGPerServing'
+    | 'sugarsGPerServing'
+    | 'carbsGPerServing'
+  > = {}
+  if (facts.calories) out.caloriesPerServing = facts.calories
+  if (facts.sodiumMg) out.sodiumMgPerServing = facts.sodiumMg
+  if (facts.fatG) out.fatGPerServing = facts.fatG
+  if (facts.proteinG) out.proteinGPerServing = facts.proteinG
+  if (facts.sugarsG) out.sugarsGPerServing = facts.sugarsG
+  if (facts.carbsG) out.carbsGPerServing = facts.carbsG
+  return out
+}
+
+function nutritionNum(v: unknown): number {
+  const x = typeof v === 'number' ? v : typeof v === 'string' ? parseFloat(v) : NaN
+  return Number.isFinite(x) ? x : 0
 }
 
 function estimateCaffeineMgForScoring(scan: ScanResult): number {
@@ -198,6 +263,7 @@ export function buildScoringData(
   const emulsifierCount = normalizedNames.filter((n) => EMULSIFIER_RE.test(n)).length
   const proInflammatoryCount = normalizedNames.filter((n) => PRO_INFLAMMATORY_RE.test(n)).length
   const caffeineMg = estimateCaffeineMgForScoring(scanResult)
+  const nutritionSignals = extractNutritionForScoring(scanResult)
 
   const profileHaystack =
     scanResult.product.ingredientTextSafetyHaystack?.trim() ||
@@ -245,5 +311,6 @@ export function buildScoringData(
     caffeineMg,
     proInflammatoryCount,
     productCategory,
+    ...nutritionSignals,
   }
 }

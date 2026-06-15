@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { createScanResultFromIngredientText, runScanAiEnrichment } from '../services/productService'
 import type { ScanResult } from '../types'
@@ -26,7 +26,11 @@ import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '..
 import { trackScanResultMetric } from '../lib/scanResultMetrics'
 
 export default function ManualIngredientsScreen() {
-  const [text, setText] = useState('')
+  const { prefillIngredients, prefillName } = useLocalSearchParams<{
+    prefillIngredients?: string
+    prefillName?: string
+  }>()
+  const [text, setText] = useState(() => String(prefillIngredients ?? '').trim())
   const [busy, setBusy] = useState(false)
 
   const allergies = useUserStore((s) => s.allergies)
@@ -70,6 +74,7 @@ export default function ManualIngredientsScreen() {
         goal,
         celiacStrictGluten,
         ingredientsList: pasted,
+        productDisplayName: typeof prefillName === 'string' ? prefillName.trim() : undefined,
         scanSource: 'manual',
       })
       const shouldConsumeCredit = Boolean(result.product.id?.trim()) && result.ingredientBreakdown.length > 0

@@ -29,6 +29,8 @@ import type { ScanRecord } from '../../store/scanHistoryStore'
 import { formatHistoryListTitle } from '../../lib/historyDisplayLabel'
 import { parseScanHistoryDate, scanHistoryRecordHasReliableTime } from '../../lib/parseScanHistoryDate'
 import { resolveSafetyStatusWithCeliac } from '../../lib/personalizationEngine'
+import { nutritionScanTags } from '../../lib/buildNutritionViewModel'
+import { isNutritionFocusedGoal } from '../../lib/nutritionTargets'
 import { useUserStore } from '../../store/userStore'
 import type { SafetyStatus } from '../../types'
 
@@ -84,6 +86,7 @@ type HistorySection = {
 }
 
 type StatusFilter = 'all' | SafetyStatus
+type NutritionFilter = 'all' | 'high_sugar' | 'high_sodium' | 'good_protein'
 
 function startOfDayMs(d: Date): number {
   const x = new Date(d)
@@ -138,6 +141,7 @@ function filterScans(
   scans: ScanRecord[],
   query: string,
   statusFilter: StatusFilter,
+  nutritionFilter: NutritionFilter,
   savedOnly: boolean,
   savedIds: string[],
   celiacStrictGluten: boolean
@@ -152,6 +156,12 @@ function filterScans(
         scan.result?.celiac
       )
       if (resolved !== statusFilter) return false
+    }
+    if (nutritionFilter !== 'all' && scan.result) {
+      const tags = nutritionScanTags(scan.result)
+      if (nutritionFilter === 'high_sugar' && !tags.highSugar) return false
+      if (nutritionFilter === 'high_sodium' && !tags.highSodium) return false
+      if (nutritionFilter === 'good_protein' && !tags.goodProtein) return false
     }
     return true
   })
@@ -300,6 +310,8 @@ export default function HistoryScreen() {
   const scans = useScanHistoryStore((state) => state.scans)
   const savedProductIds = useScanHistoryStore((state) => state.savedProductIds)
   const celiacStrictGluten = useUserStore((s) => s.celiacStrictGluten)
+  const goal = useUserStore((s) => s.goal)
+  const showNutritionFilters = isNutritionFocusedGoal(goal)
 
   const [fontsLoaded] = useFonts({
     DMSans_400Regular,
@@ -310,6 +322,7 @@ export default function HistoryScreen() {
 
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [nutritionFilter, setNutritionFilter] = useState<NutritionFilter>('all')
   const [savedOnly, setSavedOnly] = useState(false)
 
   const bottomPad = tabBarHeight + insets.bottom + 24
@@ -317,17 +330,28 @@ export default function HistoryScreen() {
   const padRight = Math.max(homeWordmarkLayout.horizontalPad, insets.right)
 
   const filteredScans = useMemo(
-    () => filterScans(scans, query, statusFilter, savedOnly, savedProductIds, celiacStrictGluten),
-    [scans, query, statusFilter, savedOnly, savedProductIds, celiacStrictGluten]
+    () =>
+      filterScans(
+        scans,
+        query,
+        statusFilter,
+        nutritionFilter,
+        savedOnly,
+        savedProductIds,
+        celiacStrictGluten
+      ),
+    [scans, query, statusFilter, nutritionFilter, savedOnly, savedProductIds, celiacStrictGluten]
   )
 
   const sections = useMemo(() => buildSections(filteredScans), [filteredScans])
 
-  const hasActiveFilters = query.trim().length > 0 || statusFilter !== 'all' || savedOnly
+  const hasActiveFilters =
+    query.trim().length > 0 || statusFilter !== 'all' || nutritionFilter !== 'all' || savedOnly
 
   const clearFilters = useCallback(() => {
     setQuery('')
     setStatusFilter('all')
+    setNutritionFilter('all')
     setSavedOnly(false)
     Keyboard.dismiss()
   }, [])
@@ -392,9 +416,47 @@ export default function HistoryScreen() {
           ))}
           <FilterChip label="Saved only" selected={savedOnly} onPress={() => setSavedOnly((s) => !s)} fonts={HISTORY_FONTS} />
         </ScrollView>
+        {showNutritionFilters ? (
+          <>
+            <Text style={[styles.filterGroupLabel, { fontFamily: HISTORY_FONTS.sansSemiBold, marginTop: 10 }]}>
+              Nutrition
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipRow}
+              keyboardShouldPersistTaps="handled"
+            >
+              <FilterChip
+                label="All macros"
+                selected={nutritionFilter === 'all'}
+                onPress={() => setNutritionFilter('all')}
+                fonts={HISTORY_FONTS}
+              />
+              <FilterChip
+                label="High sugar"
+                selected={nutritionFilter === 'high_sugar'}
+                onPress={() => setNutritionFilter((p) => (p === 'high_sugar' ? 'all' : 'high_sugar'))}
+                fonts={HISTORY_FONTS}
+              />
+              <FilterChip
+                label="High sodium"
+                selected={nutritionFilter === 'high_sodium'}
+                onPress={() => setNutritionFilter((p) => (p === 'high_sodium' ? 'all' : 'high_sodium'))}
+                fonts={HISTORY_FONTS}
+              />
+              <FilterChip
+                label="Good protein"
+                selected={nutritionFilter === 'good_protein'}
+                onPress={() => setNutritionFilter((p) => (p === 'good_protein' ? 'all' : 'good_protein'))}
+                fonts={HISTORY_FONTS}
+              />
+            </ScrollView>
+          </>
+        ) : null}
       </View>
     ),
-    [query, statusFilter, savedOnly, hasActiveFilters, clearFilters]
+    [query, statusFilter, nutritionFilter, savedOnly, hasActiveFilters, clearFilters, showNutritionFilters]
   )
 
   if (!fontsLoaded) {

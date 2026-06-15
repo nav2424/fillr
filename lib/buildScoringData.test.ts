@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { DietaryProfile, IngredientExplanation, ScanResult } from '../types'
-import { buildScoringData, effectiveTierForScoringCounts } from './buildScoringData'
+import { buildScoringData, detectProductCategoryFromSignals, effectiveTierForScoringCounts } from './buildScoringData'
+import { calculateFillrFit } from './fillrScoring'
 import { calculateProcessedRating } from './processedRating'
 
 const emptyProfile: DietaryProfile = {
@@ -94,4 +95,98 @@ test('ingredient-level sensitivity flags are always included in sensitivity matc
     (data.sensitivityMatches ?? []).some((m) => /dark chocolate/i.test(m)),
     `expected ingredient-flagged sensitivity in matches, got: ${JSON.stringify(data.sensitivityMatches ?? [])}`
   )
+})
+
+test('caramel color ingredient does not classify product as candy', () => {
+  const category = detectProductCategoryFromSignals(
+    'Quaker Instant Oatmeal Maple and Brown Sugar Family Size',
+    ['whole grain oats', 'sugar', 'natural flavor', 'caramel color', 'salt']
+  )
+  assert.equal(category, 'breakfast_grain')
+})
+
+test('instant oatmeal scores in healthy breakfast range not candy range', () => {
+  const scan: ScanResult = {
+    ...minimalScan,
+    product: {
+      ...minimalScan.product,
+      name: 'Instant Oatmeal Maple & Brown Sugar — Family Size',
+      brand: 'Quaker',
+      ingredientText:
+        'Whole grain oats, sugar, salt, natural flavor, caramel color, maple and brown sugar flavor',
+      nutritionJson: {
+        'energy-kcal_serving': 160,
+        proteins_serving: 4,
+        sugars_serving: 12,
+        fiber_serving: 3,
+      },
+    },
+  }
+  const list: IngredientExplanation[] = [
+    ing('Whole grain oats', 'clean'),
+    ing('Sugar', 'okay'),
+    ing('Salt', 'clean'),
+    ing('Natural flavor', 'okay'),
+    ing('Caramel color', 'concerning'),
+    ing('Maple and brown sugar flavor', 'okay'),
+  ]
+  const data = buildScoringData(scan, list, emptyProfile)
+  const fit = calculateFillrFit(data)
+  assert.equal(data.productCategory, 'breakfast_grain')
+  assert.ok(fit.score >= 65 && fit.score <= 88, `expected breakfast score ~70-80, got ${fit.score}`)
+})
+
+test('poutine chips are salty snack not whole food even with three collapsed lines', () => {
+  const category = detectProductCategoryFromSignals(
+    "President's Choice World of Flavours Poutine Chips potatoes vegetable oil seasoning blend",
+    ['potatoes', 'vegetable oil', 'poutine seasoning blend']
+  )
+  assert.equal(category, 'salty_snack')
+})
+
+test('poutine chips score in occasional-snack range not whole-food range', () => {
+  const scan: ScanResult = {
+    ...minimalScan,
+    product: {
+      ...minimalScan.product,
+      name: "President's Choice World of Flavours Poutine Chips",
+      ingredientText:
+        'Potatoes, Vegetable oil (canola, sunflower and/or corn oil), Salt, Maltodextrin, Cheese powder, Buttermilk powder, Whey powder, Onion powder, Garlic powder, Yeast extract, Natural flavours, Spice extracts, Lactic acid, Citric acid',
+      nutritionJson: {
+        fillr_vision: {
+          nutrition_facts: {
+            serving_size: '20 chips (about 40 g)',
+            calories: 220,
+            fat_g: 14,
+            saturated_fat_g: 1.5,
+            carbohydrates_g: 22,
+            fibre_g: 2,
+            sugars_g: 1,
+            protein_g: 3,
+            sodium_mg: 350,
+          },
+        },
+      },
+    },
+  }
+  const list: IngredientExplanation[] = [
+    ing('Potatoes', 'clean'),
+    ing('Vegetable oil (canola, sunflower and/or corn oil)', 'okay'),
+    ing('Salt', 'okay'),
+    ing('Maltodextrin', 'clean'),
+    ing('Cheese powder', 'okay'),
+    ing('Buttermilk powder', 'okay'),
+    ing('Whey powder', 'okay'),
+    ing('Onion powder', 'clean'),
+    ing('Garlic powder', 'clean'),
+    ing('Yeast extract', 'clean'),
+    ing('Natural flavours', 'okay'),
+    ing('Spice extracts', 'okay'),
+    ing('Lactic acid', 'okay'),
+    ing('Citric acid', 'okay'),
+  ]
+  const data = buildScoringData(scan, list, emptyProfile)
+  const fit = calculateFillrFit(data)
+  assert.equal(data.productCategory, 'salty_snack')
+  assert.ok(fit.score >= 28 && fit.score <= 48, `expected occasional-snack score, got ${fit.score}`)
 })

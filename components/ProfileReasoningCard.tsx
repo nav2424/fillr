@@ -2,17 +2,34 @@ import { View, Text, StyleSheet } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import type { ProfileReasoningModel, ProfileReasonSeverity } from '../lib/buildProfileReasoning'
 import type { ScoreContributor } from '../lib/buildScoreExplainability'
+import type { FillrScoringDataSnapshot } from '../types'
 import { theme } from '../constants/theme'
 
 export type ProfileReasoningCardProps = {
   model: ProfileReasoningModel
   contributors?: ScoreContributor[]
+  score?: number
+  scoringData?: FillrScoringDataSnapshot
+  /** Parent already shows the score badge (e.g. For You header). */
+  hideScoreBadge?: boolean
+}
+
+type DriverPill = {
+  sign: '+' | '−' | '!'
+  label: string
+  tone: 'good' | 'warn' | 'bad'
 }
 
 function severityColor(sev: ProfileReasonSeverity): string {
   if (sev === 'high') return theme.flagged.text
   if (sev === 'medium') return theme.processed.text
   return theme.textMuted
+}
+
+function severityBg(sev: ProfileReasonSeverity): string {
+  if (sev === 'high') return theme.flagged.bg
+  if (sev === 'medium') return theme.processed.bg
+  return '#f8fafc'
 }
 
 function norm(s: string): string {
@@ -32,42 +49,83 @@ function shouldShowSummary(summary: string, firstReasonBody: string | undefined)
   return !(a.includes(b) || b.includes(a))
 }
 
+function titleCaseDriver(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ''
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+function scoreAccent(score: number): { bg: string; text: string; ring: string } {
+  if (score >= 75) return { bg: theme.green50, text: theme.green800, ring: theme.greenBorder }
+  if (score >= 55) return { bg: '#fffbeb', text: '#b45309', ring: '#fde68a' }
+  if (score >= 35) return { bg: '#fff7ed', text: '#c2410c', ring: '#fed7aa' }
+  return { bg: theme.flagged.bg, text: theme.flagged.text, ring: '#fecaca' }
+}
+
+function fitLabel(model: ProfileReasoningModel): string {
+  if (model.fit === 'good') return 'Good match'
+  if (model.fit === 'poor') return 'Needs caution'
+  return 'Mixed fit'
+}
+
+function driverFromContributor(c: ScoreContributor): DriverPill {
+  if (c.capMaxScore != null) {
+    return { sign: '!', label: `${titleCaseDriver(c.label)} cap`, tone: 'bad' }
+  }
+  return {
+    sign: c.delta >= 0 ? '+' : '−',
+    label: titleCaseDriver(c.label),
+    tone: c.delta >= 0 ? 'good' : Math.abs(c.delta) >= 18 ? 'bad' : 'warn',
+  }
+}
+
+function positiveDrivers(scoringData?: FillrScoringDataSnapshot): DriverPill[] {
+  if (!scoringData) return []
+  const counts = scoringData.ingredientCounts
+  const total = Math.max(1, scoringData.totalIngredients ?? 0)
+  const rows: DriverPill[] = []
+  if ((counts?.natural ?? 0) >= Math.max(2, total * 0.45)) {
+    rows.push({ sign: '+', label: 'Whole-food base', tone: 'good' })
+  }
+  if (scoringData.productCategory === 'whole_food' || scoringData.productCategory === 'clean_snack') {
+    rows.push({ sign: '+', label: 'Simple formula', tone: 'good' })
+  }
+  if ((counts?.additive ?? 0) === 0 && (counts?.flagged ?? 0) === 0 && total > 0) {
+    rows.push({ sign: '+', label: 'Low additive load', tone: 'good' })
+  }
+  return rows
+}
+
+function buildDriverPills(contributors: ScoreContributor[], scoringData?: FillrScoringDataSnapshot): DriverPill[] {
+  const rows = [...positiveDrivers(scoringData), ...contributors.map(driverFromContributor)]
+  const seen = new Set<string>()
+  return rows
+    .filter((row) => {
+      const key = row.label.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 4)
+}
+
+function pillStyles(tone: DriverPill['tone']) {
+  if (tone === 'good') {
+    return { wrap: styles.pillGood, sign: styles.pillGoodSign, text: styles.pillGoodText }
+  }
+  if (tone === 'bad') {
+    return { wrap: styles.pillBad, sign: styles.pillBadSign, text: styles.pillBadText }
+  }
+  return { wrap: styles.pillWarn, sign: styles.pillWarnSign, text: styles.pillWarnText }
+}
+
 export function ProfileReasoningCard({
   model,
   contributors = [],
+  score,
+  scoringData,
+  hideScoreBadge,
 }: ProfileReasoningCardProps) {
-  const hasContributors = contributors.length > 0
-  const hasCap = contributors.some((c) => c.capMaxScore != null)
-  const hasNegPenalty = contributors.some((c) => c.delta < 0)
-  const hasPosBonus = contributors.some((c) => c.delta > 0)
-  /** Caps apply after the quality blend; linear penalties are not stacked on top of a ceiling. */
-  const showCapBlendExplainer = hasCap && hasNegPenalty
-  const primaryCapMax = contributors.find((c) => c.capMaxScore != null)?.capMaxScore
-  const panelTone: 'negative' | 'positive' | 'mixed' = hasPosBonus && !hasNegPenalty && !hasCap
-    ? 'positive'
-    : !hasPosBonus && (hasNegPenalty || hasCap)
-      ? 'negative'
-      : 'mixed'
-
-  const panelStyles =
-    panelTone === 'negative'
-      ? {
-          card: styles.quickExplainCardNegative,
-          kicker: styles.quickKickerNegative,
-          bar: styles.driverFillNegative,
-        }
-      : panelTone === 'positive'
-        ? {
-            card: styles.quickExplainCardPositive,
-            kicker: styles.quickKickerPositive,
-            bar: styles.driverFillPositive,
-          }
-        : {
-            card: styles.quickExplainCardMixed,
-            kicker: styles.quickKickerMixed,
-            bar: styles.driverFillMixed,
-          }
-
   const filteredReasons = model.reasons
     .filter((r) => {
       if (contributors.length > 0 && r.type === 'processing_concern') return false
@@ -75,240 +133,224 @@ export function ProfileReasoningCard({
     })
     .slice(0, 3)
   const showSummary = shouldShowSummary(model.summary, filteredReasons[0]?.body)
+  const driverPills = buildDriverPills(contributors, scoringData)
+  const scoreTheme = typeof score === 'number' && !hideScoreBadge ? scoreAccent(score) : null
+
+  const showHero = !hideScoreBadge
 
   return (
     <View style={styles.root} accessibilityRole="summary">
-      <Text style={styles.headline}>{model.headline}</Text>
-      {showSummary ? <Text style={styles.summary}>{model.summary}</Text> : null}
-      {contributors.length > 0 ? (
-        <View style={[styles.quickExplainCard, panelStyles.card]}>
-          <View style={styles.quickBlock}>
-            <Text style={[styles.quickKicker, panelStyles.kicker]}>Top score drivers</Text>
-            <View style={styles.driverList}>
-              {contributors.slice(0, 2).map((c) => {
-                const isCap = c.capMaxScore != null
-                const widthPct = (
-                  isCap
-                    ? '100%'
-                    : `${Math.max(28, Math.min(100, Math.abs(c.delta) * 2))}%`
-                ) as `${number}%`
-                const rightLabel = isCap ? `Max ${c.capMaxScore}` : String(c.delta)
-                return (
-                  <View key={`${c.label}-${c.capMaxScore ?? ''}-${c.delta}`} style={styles.driverRow}>
-                    <View style={styles.driverRowTop}>
-                      <Text style={styles.driverLabel}>{c.label}</Text>
-                      <Text style={[styles.driverDelta, isCap ? styles.driverDeltaCap : null]}>
-                        {rightLabel}
-                      </Text>
-                    </View>
-                    <View style={styles.driverTrack}>
-                      <View style={[styles.driverFill, panelStyles.bar, { width: widthPct }]} />
-                    </View>
-                  </View>
-                )
-              })}
+      {showHero ? (
+        <View style={styles.heroRow}>
+          {scoreTheme != null ? (
+            <View style={[styles.scoreBadge, { backgroundColor: scoreTheme.bg, borderColor: scoreTheme.ring }]}>
+              <Text style={[styles.scoreValue, { color: scoreTheme.text }]}>{score}</Text>
+              <Text style={[styles.scoreDenom, { color: scoreTheme.text }]}>/100</Text>
             </View>
-            {showCapBlendExplainer && primaryCapMax != null ? (
-              <Text style={styles.driverBlendNote}>
-                Penalties like additive load are baked into your quality score before limits apply. Max{' '}
-                {primaryCapMax} caps the headline score; it is not an extra subtraction stacked after those
-                penalties.
-              </Text>
-            ) : null}
+          ) : null}
+          <View style={styles.heroText}>
+            <Text style={styles.fitTitle}>{fitLabel(model)}</Text>
+            {showSummary ? (
+              <Text style={styles.summary}>{model.summary}</Text>
+            ) : (
+              <Text style={styles.summary}>{model.headline}</Text>
+            )}
           </View>
         </View>
       ) : null}
-      {filteredReasons.length > 0 ? <View style={styles.divider} /> : null}
-      <View style={styles.rows}>
-        {filteredReasons.map((r, i) => (
-          <View
-            key={`${r.type}-${r.title}-${i}`}
-            style={[styles.row, i > 0 ? styles.rowSpacing : null]}
-            accessibilityLabel={`${r.title}. ${r.body}`}
-          >
-            <View style={[styles.iconOrb, { borderColor: `${severityColor(r.severity)}33` }]}>
-              <Ionicons
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                name={r.icon as any}
-                size={18}
-                color={severityColor(r.severity)}
-              />
-            </View>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>{r.title}</Text>
-              <Text style={styles.rowBody}>{r.body}</Text>
-            </View>
+
+      {driverPills.length > 0 ? (
+        <View style={[styles.driversBlock, hideScoreBadge && styles.driversBlockFlush]}>
+          <Text style={styles.driversLabel}>What shaped the score</Text>
+          <View style={styles.pillRow}>
+            {driverPills.map((pill) => {
+              const ps = pillStyles(pill.tone)
+              return (
+                <View key={`${pill.sign}-${pill.label}`} style={[styles.pill, ps.wrap]}>
+                  <Text style={[styles.pillSign, ps.sign]}>{pill.sign}</Text>
+                  <Text style={[styles.pillText, ps.text]} numberOfLines={1}>
+                    {pill.label}
+                  </Text>
+                </View>
+              )
+            })}
           </View>
-        ))}
-      </View>
+        </View>
+      ) : null}
+
+      {filteredReasons.length > 0 ? (
+        <View style={styles.reasonsBlock}>
+          {filteredReasons.map((r, i) => (
+            <View
+              key={`${r.type}-${r.title}-${i}`}
+              style={[styles.reasonRow, i > 0 ? styles.reasonRowSpacing : null]}
+              accessibilityLabel={`${r.title}. ${r.body}`}
+            >
+              <View style={[styles.iconOrb, { backgroundColor: severityBg(r.severity) }]}>
+                <Ionicons
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  name={r.icon as any}
+                  size={17}
+                  color={severityColor(r.severity)}
+                />
+              </View>
+              <View style={styles.reasonText}>
+                <Text style={styles.reasonTitle}>{r.title}</Text>
+                <Text style={styles.reasonBody}>{r.body}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   root: {
-    marginTop: 4,
+    gap: 16,
   },
-  headline: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.textPrimary,
-    letterSpacing: -0.35,
-    lineHeight: 23,
-    marginBottom: 8,
-  },
-  summary: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: theme.textSecondary,
-    lineHeight: 21,
-    letterSpacing: -0.1,
-    marginBottom: 16,
-  },
-  quickExplainCard: {
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.22)',
-    backgroundColor: '#fcfdfd',
-    borderRadius: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    gap: 10,
-  },
-  quickExplainCardNegative: {
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-    backgroundColor: '#fff8f8',
-  },
-  quickExplainCardPositive: {
-    borderColor: 'rgba(22, 163, 74, 0.16)',
-    backgroundColor: '#fbfefc',
-  },
-  quickExplainCardMixed: {
-    borderColor: 'rgba(217, 119, 6, 0.18)',
-    backgroundColor: '#fffcf7',
-  },
-  quickBlock: {
-    gap: 5,
-  },
-  quickKicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-    color: theme.textSecondary,
-    textTransform: 'uppercase',
-  },
-  quickKickerNegative: {
-    color: theme.flagged.text,
-  },
-  quickKickerPositive: {
-    color: theme.green800,
-  },
-  quickKickerMixed: {
-    color: theme.processed.text,
-  },
-  driverList: {
-    gap: 8,
-    marginTop: 2,
-  },
-  driverBlendNote: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: '500',
-    lineHeight: 15,
-    letterSpacing: -0.05,
-    color: theme.textMuted,
-  },
-  driverRow: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 23, 42, 0.08)',
-    paddingVertical: 7,
-    paddingHorizontal: 9,
-    gap: 5,
-  },
-  driverRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  driverLabel: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    textTransform: 'capitalize',
-  },
-  driverDelta: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: theme.flagged.text,
-  },
-  driverDeltaCap: {
-    color: theme.processed.text,
-  },
-  driverTrack: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-    overflow: 'hidden',
-  },
-  driverFill: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#94a3b8',
-  },
-  driverFillNegative: {
-    backgroundColor: '#f87171',
-  },
-  driverFillPositive: {
-    backgroundColor: '#22c55e',
-  },
-  driverFillMixed: {
-    backgroundColor: '#f59e0b',
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
-    marginBottom: 14,
-  },
-  rows: {
-    gap: 0,
-  },
-  row: {
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
+    gap: 14,
   },
-  rowSpacing: {
-    marginTop: 13,
-    paddingTop: 13,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(15, 23, 42, 0.06)',
-  },
-  iconOrb: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#fff',
+  scoreBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  rowText: {
+  scoreValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    lineHeight: 24,
+  },
+  scoreDenom: {
+    fontSize: 10,
+    fontWeight: '700',
+    opacity: 0.72,
+    marginTop: -2,
+  },
+  heroText: {
     flex: 1,
     minWidth: 0,
+    paddingTop: 2,
   },
-  rowTitle: {
+  fitTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.textPrimary,
+    letterSpacing: -0.35,
+    marginBottom: 5,
+  },
+  summary: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.textMuted,
+    lineHeight: 21,
+    letterSpacing: -0.1,
+  },
+  driversBlock: {
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.07)',
+    paddingTop: 14,
+  },
+  driversBlockFlush: {
+    borderTopWidth: 0,
+    paddingTop: 0,
+  },
+  driversLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: theme.textFaint,
+    textTransform: 'uppercase',
+  },
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f4f6f8',
+    maxWidth: '100%',
+  },
+  pillSign: {
+    fontSize: 13,
+    fontWeight: '900',
+    lineHeight: 16,
+  },
+  pillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+    flexShrink: 1,
+  },
+  pillGood: {
+    backgroundColor: '#f0fdf4',
+  },
+  pillGoodSign: { color: '#15803d' },
+  pillGoodText: { color: '#166534' },
+  pillWarn: {
+    backgroundColor: '#fffbeb',
+  },
+  pillWarnSign: { color: '#b45309' },
+  pillWarnText: { color: '#92400e' },
+  pillBad: {
+    backgroundColor: '#fef2f2',
+  },
+  pillBadSign: { color: '#dc2626' },
+  pillBadText: { color: '#991b1b' },
+  reasonsBlock: {
+    gap: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.07)',
+    paddingTop: 14,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  reasonRowSpacing: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(15, 23, 42, 0.05)',
+  },
+  iconOrb: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  reasonText: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 1,
+  },
+  reasonTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: theme.textPrimary,
     letterSpacing: -0.15,
-    marginBottom: 4,
+    marginBottom: 3,
   },
-  rowBody: {
+  reasonBody: {
     fontSize: 13,
     fontWeight: '500',
     color: theme.textMuted,

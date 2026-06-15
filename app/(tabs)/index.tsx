@@ -47,14 +47,19 @@ export default function HomeTab() {
   })
 
   const data = useMemo(
-    () =>
-      buildHomeScreenData(fullName, scans, {
+    () => {
+      const base = buildHomeScreenData(fullName, scans, {
         allergies,
         sensitivities,
         preferences,
         goalKey: goal ?? '',
         celiacStrictGluten,
-      }),
+      })
+      return {
+        ...base,
+        alerts: [...(base.nutritionAlert ? [base.nutritionAlert] : []), ...base.alerts],
+      }
+    },
     [fullName, scans, allergies, sensitivities, preferences, goal, celiacStrictGluten]
   )
 

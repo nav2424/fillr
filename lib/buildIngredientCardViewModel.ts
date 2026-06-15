@@ -5,8 +5,10 @@
 
 import type { IngredientExplanation, IngredientRating } from '../types'
 import { ensureDistinctIngredientExplanation } from './ingredientProseHydration'
-import { isIngredientCopyBoilerplate } from './fillrAdapter'
+import { isIngredientCopyBoilerplate, buildFallbackIngredientExplanation } from './fillrAdapter'
+import { textMatchesIngredientGenericPattern } from './ingredientCopyQuality'
 import { buildIngredientTranslationLine, firstSentencePlain } from './ingredientOneLiner'
+import { sanitizeIngredientDisplayName } from './ingredientNameNormalization'
 import { impactForYouMatchesIngredientProfile } from './ingredientImpactRelevance'
 import { ingredientLevelGoalFocusLabels } from './goalApplicability'
 
@@ -35,6 +37,8 @@ const WEAK_COPY_PATTERNS: RegExp[] = [
   /\ba named ingredient in (this|the) (formula|product)\b/i,
   /\bone of the key lines to verify\b/i,
   /\bif dairy is in your profile\b/i,
+  /\bis included in this product\b/i,
+  /\bcan affect texture, flavou?r, or nutrition depending on the formula\b/i,
 ]
 
 /** Model / repair boilerplate we never want as primary shopper-facing lines. */
@@ -234,6 +238,25 @@ function normalizeCollapsedSubtitleLine(raw: string): string | null {
   return tidyLine(line)
 }
 
+function pickDeterministicOverview(ingredient: IngredientExplanation): string | null {
+  const fb = buildFallbackIngredientExplanation(ingredient.name)
+  const candidates: (string | undefined | null)[] = [
+    fb.whatItIs,
+    fb.whatItDoes ?? fb.whyItsUsed,
+    fb.headline,
+    fb.quickSummary,
+    fb.labelDecoder,
+  ]
+  for (const raw of candidates) {
+    if (!isUsableIngredientIntelligenceField(raw, 12)) continue
+    if (textMatchesIngredientGenericPattern(raw)) continue
+    const t = simplifyShopperCopy(String(raw).trim(), ingredient.name)
+    const line = normalizeCollapsedSubtitleLine(t)
+    if (line) return line
+  }
+  return null
+}
+
 function pickCollapsedShortLabel(ingredient: IngredientExplanation): string | null {
   const candidates: (string | undefined | null)[] = [
     ingredient.shortLabel,
@@ -248,12 +271,13 @@ function pickCollapsedShortLabel(ingredient: IngredientExplanation): string | nu
   ]
   for (const raw of candidates) {
     if (!isUsableIngredientIntelligenceField(raw, 8)) continue
+    if (textMatchesIngredientGenericPattern(raw)) continue
     const t = simplifyShopperCopy(String(raw).trim(), ingredient.name)
     if (isWeakIngredientCopy(t)) continue
     const line = normalizeCollapsedSubtitleLine(t)
     if (line) return line
   }
-  return null
+  return pickDeterministicOverview(ingredient)
 }
 
 /** True when copy is hedgey, generic, or internal — should not win over intelligence. */
@@ -667,7 +691,7 @@ export function buildIngredientCardViewModel(
             ? 'avoid'
             : 'okay'
 
-  const title = (ingredientResolved.name ?? 'Ingredient').trim() || 'Ingredient'
+  const title = sanitizeIngredientDisplayName(ingredientResolved.name ?? 'Ingredient') || 'Ingredient'
 
   const shortLabel =
     pickCollapsedShortLabel(ingredientResolved) ??

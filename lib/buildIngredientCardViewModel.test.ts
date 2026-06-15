@@ -98,6 +98,51 @@ test('buildIngredientCardViewModel drops model copy that contradicts a severe ba
   )
 })
 
+test('buildIngredientCardViewModel replaces generic included-in-product headline', () => {
+  const generic =
+    'Expeller pressed canola oil is included in this product and can affect texture, flavor, or nutrition depending on the formula.'
+  const ing: IngredientExplanation = {
+    name: 'Expeller pressed canola oil and',
+    whatItIs: generic,
+    whyItsUsed: '',
+    whatToKnow: '',
+    headline: generic,
+    quickSummary: generic,
+    ingredientRating: 'okay',
+  }
+  const vm = buildIngredientCardViewModel(ing, { displayRating: 'okay' })
+  assert.ok(vm.shortLabel)
+  assert.equal(/\bincluded in this product\b/i.test(vm.shortLabel ?? ''), false)
+  assert.match(vm.shortLabel ?? '', /oil|canola|seed|fat|refined/i)
+})
+
+test('buildIngredientCardViewModel gives distinct overviews for herbs vs oil', () => {
+  const oil: IngredientExplanation = {
+    name: 'Expeller pressed canola oil and',
+    whatItIs:
+      'Expeller pressed canola oil is included in this product and can affect texture, flavor, or nutrition depending on the formula.',
+    whyItsUsed: '',
+    whatToKnow: '',
+    headline:
+      'Expeller pressed canola oil is included in this product and can affect texture, flavor, or nutrition depending on the formula.',
+    ingredientRating: 'okay',
+  }
+  const herb: IngredientExplanation = {
+    name: 'Dried oregano',
+    whatItIs:
+      'Dried oregano is included in this product and can affect texture, flavor, or nutrition depending on the formula.',
+    whyItsUsed: '',
+    whatToKnow: '',
+    headline:
+      'Dried oregano is included in this product and can affect texture, flavor, or nutrition depending on the formula.',
+    ingredientRating: 'clean',
+  }
+  const oilVm = buildIngredientCardViewModel(oil, { displayRating: 'okay' })
+  const herbVm = buildIngredientCardViewModel(herb, { displayRating: 'clean' })
+  assert.notEqual(oilVm.shortLabel, herbVm.shortLabel)
+  assert.match(herbVm.shortLabel ?? '', /herb|oregano|season/i)
+})
+
 test('buildIngredientCardViewModel drops product-level allergen impact on non-allergen rows', () => {
   const ing: IngredientExplanation = {
     name: 'Fructose',

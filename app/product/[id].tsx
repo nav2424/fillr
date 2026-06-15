@@ -24,18 +24,22 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   IngredientCard,
   ShareCard,
-  ProfileReasoningCard,
   resolveIngredientDisplayRating,
-  ScoreDisplay,
+  ProfileFitHeroScore,
+  IngredientQualityBadge,
   AllergenEvidenceChips,
-  ProductIntelligenceSection,
+  ProductForYouSection,
+  ProductNutritionSection,
+  FormulaConcernsSection,
   type ShareCardProps,
 } from '../../components'
 import { FILLR_LOGO_MARK } from '../../components/FillrHeaderLogo'
 import { colors, theme } from '../../constants/theme'
 import { toTitleCase } from '../../lib/formatProductTitle'
 import { buildIngredientCardViewModel } from '../../lib/buildIngredientCardViewModel'
-import { buildScoreExplainability, type ScoreContributor } from '../../lib/buildScoreExplainability'
+import { buildScoreExplainability } from '../../lib/buildScoreExplainability'
+import { buildNutritionViewModel } from '../../lib/buildNutritionViewModel'
+import { isNutritionFocusedGoal } from '../../lib/nutritionTargets'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
 import { useCurrentScanStore } from '../../store/currentScanStore'
 import { useScanHistoryStore } from '../../store/scanHistoryStore'
@@ -50,6 +54,7 @@ import {
 } from '../../types'
 import { ingredientSortRank } from '../../lib/scanResultHook'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
+import { exitFromScanResult, openRescan } from '../../lib/navigationHelpers'
 import {
   isIngredientEnrichInFlight,
   runScanAiEnrichment,
@@ -59,6 +64,9 @@ import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
 import { personalizeScanResult } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
 import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
+import { buildFormulaConcerns, formulaConcernHeadline } from '../../lib/buildFormulaConcerns'
+import { computeProfileFitScore, scoreToShortVerdict } from '../../lib/fillrScoring'
+import type { FillrScoringInput } from '../../lib/fillrScoring'
 import { playSafeScanSound } from '../../lib/playSafeScanSound'
 import { textMatchesIngredientGenericPattern } from '../../lib/ingredientCopyQuality'
 import { isIngredientLevelGoal } from '../../lib/goalApplicability'
@@ -295,171 +303,13 @@ function TabSectionHeader({
   return (
     <View style={[styles.sectionHeaderRow, containerStyle]}>
       {icon ? (
-        <Ionicons name={icon} size={15} color={dotColor} style={styles.sectionHeaderIcon} />
+        <Ionicons name={icon} size={14} color={theme.textFaint} style={styles.sectionHeaderIcon} />
       ) : (
         <View style={[styles.sectionHeaderDot, { backgroundColor: dotColor }]} />
       )}
-      <Text style={[styles.sectionHeaderLabel, { color: dotColor }]}>{label}</Text>
+      <Text style={styles.sectionHeaderLabel}>{label}</Text>
     </View>
   )
-}
-
-type ScoreDriverRow = {
-  sign: '+' | '-' | '!'
-  label: string
-  tone: 'good' | 'warn' | 'bad'
-}
-
-function titleCaseDriver(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ''
-  return t.charAt(0).toUpperCase() + t.slice(1)
-}
-
-function scoreDriverFromContributor(c: ScoreContributor): ScoreDriverRow {
-  if (c.capMaxScore != null) {
-    return { sign: '!', label: `${titleCaseDriver(c.label)} cap`, tone: 'bad' }
-  }
-  return {
-    sign: c.delta >= 0 ? '+' : '-',
-    label: titleCaseDriver(c.label),
-    tone: c.delta >= 0 ? 'good' : Math.abs(c.delta) >= 18 ? 'bad' : 'warn',
-  }
-}
-
-function positiveScoreDrivers(scoringData?: FillrScoringDataSnapshot): ScoreDriverRow[] {
-  if (!scoringData) return []
-  const counts = scoringData.ingredientCounts
-  const total = Math.max(1, scoringData.totalIngredients ?? 0)
-  const rows: ScoreDriverRow[] = []
-  if ((counts?.natural ?? 0) >= Math.max(2, total * 0.45)) {
-    rows.push({ sign: '+', label: 'Whole-food base', tone: 'good' })
-  }
-  if (scoringData.productCategory === 'whole_food' || scoringData.productCategory === 'clean_snack') {
-    rows.push({ sign: '+', label: 'Simple formula', tone: 'good' })
-  }
-  if ((counts?.additive ?? 0) === 0 && (counts?.flagged ?? 0) === 0 && total > 0) {
-    rows.push({ sign: '+', label: 'No major additive load', tone: 'good' })
-  }
-  return rows
-}
-
-function buildScoreDrivers(
-  scoringData: FillrScoringDataSnapshot | undefined,
-  contributors: ScoreContributor[]
-): ScoreDriverRow[] {
-  const rows = [
-    ...positiveScoreDrivers(scoringData),
-    ...contributors.map(scoreDriverFromContributor),
-  ]
-  const seen = new Set<string>()
-  return rows
-    .filter((row) => {
-      const key = row.label.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    .slice(0, 3)
-}
-
-function ScoreDriversBrief({
-  scoringData,
-  contributors,
-}: {
-  scoringData?: FillrScoringDataSnapshot
-  contributors: ScoreContributor[]
-}) {
-  const rows = buildScoreDrivers(scoringData, contributors)
-  if (rows.length === 0) return null
-  return (
-    <View style={styles.scoreDriversWrap} accessibilityLabel="Why this score">
-      <Text style={styles.scoreDriversTitle}>Why this score</Text>
-      <View style={styles.scoreDriversRow}>
-        {rows.map((row) => (
-          <View
-            key={`${row.sign}-${row.label}`}
-            style={[
-              styles.scoreDriverPill,
-              row.tone === 'good'
-                ? styles.scoreDriverGood
-                : row.tone === 'bad'
-                  ? styles.scoreDriverBad
-                  : styles.scoreDriverWarn,
-            ]}
-          >
-            <Text
-              style={[
-                styles.scoreDriverSign,
-                row.tone === 'good'
-                  ? styles.scoreDriverGoodText
-                  : row.tone === 'bad'
-                    ? styles.scoreDriverBadText
-                    : styles.scoreDriverWarnText,
-              ]}
-            >
-              {row.sign}
-            </Text>
-            <Text
-              style={[
-                styles.scoreDriverText,
-                row.tone === 'good'
-                  ? styles.scoreDriverGoodText
-                  : row.tone === 'bad'
-                    ? styles.scoreDriverBadText
-                    : styles.scoreDriverWarnText,
-              ]}
-              numberOfLines={1}
-            >
-              {row.label}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  )
-}
-
-function profileGoalLabel(goalKey: string): string {
-  const map: Record<string, string> = {
-    less_sugar: 'low-sugar goal',
-    low_sugar: 'low-sugar goal',
-    more_protein: 'protein goal',
-    high_protein: 'protein goal',
-    build_muscle: 'protein goal',
-    gut_health: 'gut-health goal',
-    eat_cleaner: 'cleaner-eating goal',
-    reduce_upf: 'less-processed goal',
-    lower_sodium: 'lower-sodium goal',
-  }
-  return map[goalKey] ?? goalKey.replace(/_/g, ' ')
-}
-
-function buildPersonalizedProductInsight(args: {
-  goalKey?: string
-  scoreExplainability: ReturnType<typeof buildScoreExplainability>
-  matchedAllergens: MatchedAllergen[]
-  matchedSensitivities: MatchedSensitivity[]
-  celiacAvoid: boolean
-}): string | null {
-  const { goalKey = '', scoreExplainability, matchedAllergens, matchedSensitivities, celiacAvoid } = args
-  if (matchedAllergens.length > 0) {
-    const names = matchedAllergens.map((m) => m.allergenName).filter(Boolean).slice(0, 2).join(', ')
-    return `For your profile, the main issue is the confirmed ${names || 'allergen'} match.`
-  }
-  if (celiacAvoid) {
-    return 'For your strict gluten setting, the main issue is the gluten signal in this ingredient list.'
-  }
-  if (matchedSensitivities.length > 0) {
-    const names = matchedSensitivities.map((m) => m.sensitivityName).filter(Boolean).slice(0, 2).join(', ')
-    return `For your profile, the main issue is the ${names || 'sensitivity'} match.`
-  }
-  const goalConflict = scoreExplainability.goalConflicts[0]
-  if (goalKey && goalConflict) {
-    const ingredients = goalConflict.ingredients.length > 0 ? `: ${goalConflict.ingredients.join(', ')}` : ''
-    return `For your ${profileGoalLabel(goalKey)}, the issue is ${goalConflict.title.toLowerCase()}${ingredients}.`
-  }
-  return null
 }
 
 export default function ProductScreen() {
@@ -473,6 +323,7 @@ export default function ProductScreen() {
   const hasUserSensitivities = (zSensitivities?.length ?? 0) > 0
   const preferences = useUserStore((s) => s.preferences)
   const goal = useUserStore((s) => s.goal)
+  const nutritionTargets = useUserStore((s) => s.nutritionTargets)
   const currentResult = useCurrentScanStore((s) => s.result)
   const setCurrentScan = useCurrentScanStore((s) => s.setResult)
   const getResultByProductId = useScanHistoryStore((s) => s.getResultByProductId)
@@ -484,7 +335,6 @@ export default function ProductScreen() {
   const [showAllNatural, setShowAllNatural] = useState(false)
   const [productNameModalVisible, setProductNameModalVisible] = useState(false)
   const [productNameDraft, setProductNameDraft] = useState('')
-  const [profileSectionExpanded, setProfileSectionExpanded] = useState(false)
   const [allergenEvidenceExpanded, setAllergenEvidenceExpanded] = useState(false)
   const [showIngredientSearch, setShowIngredientSearch] = useState(false)
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
@@ -567,10 +417,18 @@ export default function ProductScreen() {
   }, [displayScoredResult, viewResult, currentResult?.product.id, setCurrentScan, updateScanResultByProductId])
 
   useEffect(() => {
+    decodeRetryStartedRef.current = false
+  }, [id])
+
+  useEffect(() => {
     if (isOnboardingPreview || !displayScoredResult || decodeRetryStartedRef.current) return
     if (!scanNeedsIngredientDecode(displayScoredResult)) return
     const productId = displayScoredResult.product.id
-    if (isIngredientEnrichInFlight(productId)) return
+    if (isIngredientEnrichInFlight(productId)) {
+      // Vision/barcode flow already started decode — don't queue a second pass when it finishes.
+      decodeRetryStartedRef.current = true
+      return
+    }
     decodeRetryStartedRef.current = true
     void (async () => {
       try {
@@ -759,6 +617,16 @@ export default function ProductScreen() {
         additive: ratingCounts.concerning,
         flagged: ratingCounts.avoid,
       }
+  const profileFitScore = useMemo(() => {
+    if (!displayScoringData) return displayFillrFit?.score ?? null
+    return computeProfileFitScore(displayScoringData as FillrScoringInput, {
+      goalKey: goal ?? '',
+      maxSugarG: nutritionTargets?.maxSugarG,
+      minProteinG: nutritionTargets?.minProteinG,
+      maxSodiumMg: nutritionTargets?.maxSodiumMg,
+    })
+  }, [displayScoringData, displayFillrFit?.score, goal, nutritionTargets])
+
   const profileReasoning = useMemo(
     () =>
       buildProfileReasoningModel({
@@ -768,6 +636,7 @@ export default function ProductScreen() {
         celiac,
         scoringData: displayScoringData,
         fillrFit: displayFillrFit,
+        profileScore: profileFitScore,
         userGoalKey: goal ?? '',
       }),
     [
@@ -777,6 +646,7 @@ export default function ProductScreen() {
       celiac,
       displayScoringData,
       displayFillrFit,
+      profileFitScore,
       goal,
     ]
   )
@@ -789,17 +659,42 @@ export default function ProductScreen() {
       }),
     [displayScoringData, ingredientBreakdown, goal]
   )
-  const personalizedProductInsight = useMemo(
+  const nutritionViewModel = useMemo(() => {
+    if (!displayScoredResult) return null
+    return buildNutritionViewModel({
+      scan: displayScoredResult,
+      scoringData: displayScoringData ?? null,
+      goalKey: goal ?? '',
+      nutritionTargets,
+      productAnalysis,
+    })
+  }, [displayScoredResult, displayScoringData, goal, nutritionTargets, productAnalysis])
+
+  const formulaConcerns = useMemo(
     () =>
-      buildPersonalizedProductInsight({
-        goalKey: goal ?? '',
-        scoreExplainability,
-        matchedAllergens,
-        matchedSensitivities,
-        celiacAvoid,
-      }),
-    [goal, scoreExplainability, matchedAllergens, matchedSensitivities, celiacAvoid]
+      buildFormulaConcerns(
+        ingredientBreakdown.map((ing) => ing.name),
+        displayScoringData ?? null
+      ),
+    [ingredientBreakdown, displayScoringData]
   )
+  const formulaConcernSummary = useMemo(
+    () => formulaConcernHeadline(formulaConcerns),
+    [formulaConcerns]
+  )
+
+  const heroFitScore = profileFitScore ?? displayFillrFit?.score ?? null
+  const heroFitVerdict = useMemo(() => {
+    if (nutritionViewModel?.hasData && (nutritionViewModel.lensScores.nutritionFit ?? 0) > 0) {
+      return nutritionViewModel.lensScores.nutritionLabel
+    }
+    if (displayFillrFit?.verdict?.trim()) return displayFillrFit.verdict
+    if (heroFitScore != null) return scoreToShortVerdict(heroFitScore).label
+    return 'Scored'
+  }, [nutritionViewModel, displayFillrFit?.verdict, heroFitScore])
+
+  const showNutritionSection =
+    showTrustPanels && Boolean(nutritionViewModel?.hasData || nutritionViewModel?.macros.length)
   const verificationRecommended =
     uncertainIngredients.length > 0 &&
     (safetyStatus === 'UNSAFE' ||
@@ -950,7 +845,6 @@ export default function ProductScreen() {
     decisionMadeRef.current = false
     setFeedbackRating(null)
     setExpandedIngredientKeys([])
-    setProfileSectionExpanded(false)
     setAllergenEvidenceExpanded(false)
     setShowIngredientSearch(false)
     const pid = product?.id
@@ -1119,6 +1013,18 @@ export default function ProductScreen() {
 
   const showProductIntelPanel = productAnalysisHasIntel(productAnalysis)
 
+  const showForYouCard = useMemo(() => {
+    if (isOnboardingPreview || isIngredientDecodePending || !showTrustPanels) return false
+    return showProfileSection || showProductIntelPanel || displayFillrFit != null
+  }, [
+    isOnboardingPreview,
+    isIngredientDecodePending,
+    showTrustPanels,
+    showProfileSection,
+    showProductIntelPanel,
+    displayFillrFit,
+  ])
+
   const shareMessage = useMemo(() => {
     if (!product?.barcode) return ''
     const bits = matchedAllergens.map((m) => `${m.allergenName}: ${m.matchedIngredient}`)
@@ -1205,7 +1111,7 @@ export default function ProductScreen() {
     return (
       <SafeAreaView style={[styles.screenRoot, styles.centeredMiss]} edges={['top']}>
         <Text style={styles.error}>Product not found</Text>
-        <Pressable onPress={() => router.replace('/(tabs)/scan')} style={styles.errorPrimaryBtn}>
+        <Pressable onPress={() => openRescan()} style={styles.errorPrimaryBtn}>
           <Text style={styles.errorPrimaryBtnText}>Scan another</Text>
         </Pressable>
       </SafeAreaView>
@@ -1312,9 +1218,42 @@ export default function ProductScreen() {
   const ingredientsPanel = (
     <View style={styles.tabPanel}>
       <View style={styles.ingredientsSectionHead}>
-        <Text style={styles.ingredientsSectionTitle}>Ingredients</Text>
-        <Text style={styles.ingredientsSectionMeta}>{ingredientListForCards.length} listed</Text>
+        <View style={styles.ingredientsSectionHeadLeft}>
+          <Text style={styles.ingredientsSectionTitle}>Ingredients</Text>
+          <Text style={styles.ingredientsSectionMeta}>{ingredientListForCards.length} listed</Text>
+        </View>
+        {nutritionViewModel && !isOnboardingPreview ? (
+          <IngredientQualityBadge
+            score={nutritionViewModel.lensScores.ingredientQuality}
+            verdict={nutritionViewModel.lensScores.ingredientLabel}
+          />
+        ) : null}
       </View>
+
+      {!isOnboardingPreview ? (
+        <View style={styles.ingredientSummaryPills}>
+          {ratingCounts.avoid + ratingCounts.concerning > 0 ? (
+            <View style={styles.ingredientPill}>
+              <View style={[styles.ingredientPillDot, { backgroundColor: theme.flagged.accent }]} />
+              <Text style={styles.ingredientPillText}>
+                {ratingCounts.avoid + ratingCounts.concerning} flagged
+              </Text>
+            </View>
+          ) : null}
+          {ratingCounts.okay > 0 ? (
+            <View style={styles.ingredientPill}>
+              <View style={[styles.ingredientPillDot, { backgroundColor: theme.processed.accent }]} />
+              <Text style={styles.ingredientPillText}>{ratingCounts.okay} processed</Text>
+            </View>
+          ) : null}
+          {ratingCounts.clean > 0 ? (
+            <View style={styles.ingredientPill}>
+              <View style={[styles.ingredientPillDot, { backgroundColor: theme.green500 }]} />
+              <Text style={styles.ingredientPillText}>{ratingCounts.clean} natural</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {isIngredientDecodePending && !isOnboardingPreview ? (
         <Text style={styles.decodeStatusLine} accessibilityLiveRegion="polite">
@@ -1430,10 +1369,10 @@ export default function ProductScreen() {
             <Pressable
               onPress={() => {
                 markDecision('dismissed')
-                router.canGoBack() ? router.back() : router.replace('/(tabs)/scan')
+                exitFromScanResult()
               }}
-              style={styles.navIconBare}
-              hitSlop={12}
+              style={({ pressed }) => [styles.navIconPill, styles.navIconBack, pressed && { opacity: 0.88 }]}
+              hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
@@ -1447,15 +1386,15 @@ export default function ProductScreen() {
                       if (!isSaved) markDecision('saved')
                       toggleSaved(product.id)
                     }}
-                    hitSlop={12}
-                    style={styles.navIconBare}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.navIconPill, pressed && { opacity: 0.88 }]}
                     accessibilityRole="button"
                     accessibilityLabel={isSaved ? 'Remove from saved list' : 'Save to list'}
                   >
                     <Ionicons
                       name={isSaved ? 'heart' : 'heart-outline'}
-                      size={20}
-                      color={isSaved ? colors.accent : theme.textPrimary}
+                      size={18}
+                      color={isSaved ? colors.accent : theme.textSecondary}
                     />
                   </Pressable>
                   <Pressable
@@ -1463,12 +1402,12 @@ export default function ProductScreen() {
                       markDecision('shared')
                       void shareScanFromCard()
                     }}
-                    hitSlop={12}
-                    style={styles.navIconBare}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.navIconPill, pressed && { opacity: 0.88 }]}
                     accessibilityRole="button"
                     accessibilityLabel="Share scan result"
                   >
-                    <Ionicons name="share-outline" size={20} color={theme.textPrimary} />
+                    <Ionicons name="share-outline" size={18} color={theme.textSecondary} />
                   </Pressable>
                 </>
               ) : null}
@@ -1482,12 +1421,13 @@ export default function ProductScreen() {
               <Text style={styles.heroBrand}>{displayBrand.toUpperCase()}</Text>
             ) : null}
             {heroTitlePressable}
-            <ScoreDisplay fillrFit={displayFillrFit} isLoading={!displayFillrFit} showReason={false} />
-            {heroTakeaway.trim() ? (
-              <Text style={styles.heroTakeaway} numberOfLines={3}>
-                {heroTakeaway}
-              </Text>
-            ) : null}
+
+            <ProfileFitHeroScore
+              score={heroFitScore}
+              verdict={heroFitVerdict}
+              isLoading={!displayFillrFit && !isOnboardingPreview}
+            />
+
             {showTrustPanels && matchedAllergens.length > 0 ? (
               allergenEvidenceExpanded ? (
                 <View style={styles.allergenEvidenceBlock}>
@@ -1509,11 +1449,42 @@ export default function ProductScreen() {
                   accessibilityLabel="Show allergen match evidence"
                 >
                   <Ionicons name="shield-outline" size={16} color={theme.flagged.text} />
-                  <Text style={styles.allergenCompactText}>View match evidence</Text>
+                  <Text style={styles.allergenCompactText}>Allergen match — tap for evidence</Text>
                   <Ionicons name="chevron-forward" size={16} color={theme.textFaint} />
                 </Pressable>
               )
             ) : null}
+
+            <View style={styles.scanSections}>
+              {showTrustPanels && formulaConcerns.length > 0 ? (
+                <FormulaConcernsSection
+                  concerns={formulaConcerns}
+                  headline={formulaConcernSummary}
+                />
+              ) : null}
+
+              {showForYouCard ? (
+                <ProductForYouSection
+                  profileTone={profileTone}
+                  profileReasoning={profileReasoning}
+                  profileCollapsedTitle={profileCollapsedTitle}
+                  profileCollapsedSubtitle={profileCollapsedSubtitle}
+                  scoringData={displayScoringData}
+                  contributors={scoreExplainability.contributors}
+                />
+              ) : null}
+
+              {showNutritionSection && nutritionViewModel ? (
+                <ProductNutritionSection model={nutritionViewModel} />
+              ) : null}
+            </View>
+
+            {!showForYouCard && heroTakeaway.trim() ? (
+              <Text style={styles.heroTakeaway} numberOfLines={3}>
+                {heroTakeaway}
+              </Text>
+            ) : null}
+
             {showTrustPanels &&
             viewResult?.productNameHints &&
             viewResult.productNameHints.length > 0 ? (
@@ -1526,86 +1497,6 @@ export default function ProductScreen() {
                 ))}
               </View>
             ) : null}
-            {showTrustPanels && showProductIntelPanel && productAnalysis ? (
-              <ProductIntelligenceSection
-                analysis={productAnalysis}
-                productVerdict={productVerdict}
-                personalizedInsight={personalizedProductInsight}
-                hidePersonalizedInsight={showProfileSection}
-              />
-            ) : null}
-            {showProfileSection ? (
-              <View
-                style={[
-                  styles.profileUnifiedOuter,
-                  profileTone === 'bad'
-                    ? styles.profileUnifiedOuterConflict
-                    : profileTone === 'warn'
-                      ? styles.profileUnifiedOuterWarn
-                      : styles.profileUnifiedOuterOk,
-                ]}
-              >
-                <View style={styles.profileUnifiedClip}>
-                  <View style={styles.profileUnifiedBody}>
-                    <View style={styles.profileUnifiedBodyContent}>
-                      <Pressable
-                        onPress={() => setProfileSectionExpanded((v) => !v)}
-                        style={({ pressed }) => [
-                          styles.profileSectionHeader,
-                          pressed && styles.profileSectionHeaderPressed,
-                        ]}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          profileSectionExpanded ? 'Collapse your profile section' : 'Expand your profile section'
-                        }
-                        accessibilityState={{ expanded: profileSectionExpanded }}
-                        hitSlop={8}
-                      >
-                        <Text style={[styles.profileUnifiedKicker, styles.profileUnifiedKickerInHeader]}>
-                          FOR YOU
-                        </Text>
-                        <Ionicons
-                          name={profileSectionExpanded ? 'chevron-up' : 'chevron-down'}
-                          size={20}
-                          color={theme.textFaint}
-                        />
-                      </Pressable>
-                      {!profileSectionExpanded ? (
-                        <View style={styles.profileCollapsedSummary} pointerEvents="none">
-                          <Text
-                            style={
-                              profileTone === 'bad'
-                                ? styles.profileTitleConflict
-                                : profileTone === 'warn'
-                                  ? styles.profileTitleWarn
-                                  : styles.profileTitleOk
-                            }
-                            numberOfLines={1}
-                          >
-                            {profileCollapsedTitle}
-                          </Text>
-                          <Text style={styles.profileUnifiedBodyText} numberOfLines={2}>
-                            {profileCollapsedSubtitle}
-                          </Text>
-                        </View>
-                      ) : (
-                        <>
-                          <ProfileReasoningCard
-                            model={profileReasoning}
-                            contributors={scoreExplainability.contributors}
-                          />
-                          <ScoreDriversBrief
-                            scoringData={displayScoringData}
-                            contributors={scoreExplainability.contributors}
-                          />
-                        </>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ) : null}
-
           </View>
           <View style={styles.heroDivider} />
         </View>
@@ -1631,7 +1522,7 @@ export default function ProductScreen() {
                   },
                 })
                 useCurrentScanStore.getState().setResult(null)
-                router.replace('/(tabs)/scan')
+                openRescan()
               }}
               style={({ pressed }) => [styles.footerScanPressable, pressed && { transform: [{ scale: 0.96 }] }]}
               accessibilityRole="button"
@@ -1770,8 +1661,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 8,
-    marginBottom: 8,
+    paddingTop: 4,
+    marginBottom: 4,
     paddingHorizontal: theme.screenPadding,
   },
   navIconBare: {
@@ -1779,13 +1670,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  navIconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  navIconBack: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    width: 32,
+    height: 32,
+  },
   navRightRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
   },
   heroInner: {
-    paddingHorizontal: theme.heroPadding,
+    paddingHorizontal: theme.screenPadding,
+  },
+  scanSections: {
+    marginTop: 8,
+    gap: 10,
   },
   profileUnifiedOuter: {
     marginTop: 12,
@@ -1808,29 +1723,46 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
   },
   profileUnifiedClip: {
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(15, 23, 42, 0.08)',
     backgroundColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  profileAccentBar: {
+    height: 3,
+    width: '100%',
+  },
+  profileAccentOk: {
+    backgroundColor: theme.green500,
+  },
+  profileAccentWarn: {
+    backgroundColor: theme.processed.accent,
+  },
+  profileAccentBad: {
+    backgroundColor: theme.flagged.accent,
   },
   profileUnifiedBody: {
     flex: 1,
     position: 'relative',
   },
   profileUnifiedBodyContent: {
-    paddingTop: 14,
-    paddingRight: 14,
-    paddingBottom: 15,
-    paddingLeft: 14,
+    paddingTop: 16,
+    paddingRight: 16,
+    paddingBottom: 16,
+    paddingLeft: 16,
     zIndex: 1,
   },
   profileUnifiedKicker: {
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.6,
+    fontWeight: '800',
+    letterSpacing: 1.2,
     color: theme.textFaint,
-    opacity: 0.92,
     marginBottom: 13,
   },
   profileUnifiedKickerInHeader: {
@@ -1841,7 +1773,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(15, 23, 42, 0.06)',
   },
   profileSectionHeaderPressed: {
     opacity: 0.88,
@@ -1868,9 +1803,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(244, 63, 94, 0.1)',
   },
   profileUnifiedBodyText: {
-    marginTop: 7,
-    fontSize: 12,
-    lineHeight: 19,
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 20,
     color: theme.textMuted,
   },
   profileUnifiedDivider: {
@@ -1902,20 +1837,26 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
   },
   heroBrand: {
-    fontSize: 10,
-    fontWeight: '600',
+    alignSelf: 'flex-start',
+    fontSize: 11,
+    fontWeight: '700',
     color: theme.textFaint,
-    letterSpacing: 1.2,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#eef2f6',
+    overflow: 'hidden',
   },
   heroTitle: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '800',
     color: theme.textPrimary,
-    lineHeight: 23,
-    letterSpacing: -0.4,
-    marginBottom: 12,
+    lineHeight: 29,
+    letterSpacing: -0.6,
+    marginBottom: 16,
   },
   heroTakeaway: {
     marginTop: 4,
@@ -1926,26 +1867,30 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
   },
   heroDivider: {
-    height: 8,
-    marginTop: 16,
-    backgroundColor: '#f1f5f9',
+    height: StyleSheet.hairlineWidth,
+    marginTop: 24,
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
   },
   allergenCompact: {
-    marginTop: 10,
+    marginTop: 0,
+    marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: '#fff5f5',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#fecaca',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
   },
   allergenCompactText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     color: theme.flagged.text,
   },
   allergenEvidenceBlock: {
@@ -1963,20 +1908,51 @@ const styles = StyleSheet.create({
   },
   ingredientsSectionHead: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 10,
+  },
+  ingredientsSectionHeadLeft: {
+    flex: 1,
+    minWidth: 0,
   },
   ingredientsSectionTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '800',
     color: theme.textPrimary,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   ingredientsSectionMeta: {
-    fontSize: 12,
-    fontWeight: '600',
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '500',
     color: theme.textFaint,
+  },
+  ingredientSummaryPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 16,
+  },
+  ingredientPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#f4f6f8',
+  },
+  ingredientPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  ingredientPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.textSecondary,
   },
   decodeStatusLine: {
     marginBottom: 12,
@@ -1988,81 +1964,26 @@ const styles = StyleSheet.create({
   searchToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    marginBottom: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
+    alignSelf: 'stretch',
+    gap: 8,
+    marginBottom: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
   },
   searchToggleText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: theme.textFaint,
-  },
-  scoreDriversWrap: {
-    marginTop: -4,
-    marginBottom: 10,
-    gap: 7,
-  },
-  scoreDriversTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-    color: theme.textFaint,
-    textTransform: 'uppercase',
-  },
-  scoreDriversRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  scoreDriverPill: {
-    minHeight: 28,
-    maxWidth: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  scoreDriverGood: {
-    backgroundColor: '#ffffff',
-    borderColor: '#d1fae5',
-  },
-  scoreDriverWarn: {
-    backgroundColor: '#ffffff',
-    borderColor: '#fde68a',
-  },
-  scoreDriverBad: {
-    backgroundColor: '#ffffff',
-    borderColor: '#fecdd3',
-  },
-  scoreDriverSign: {
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '900',
-  },
-  scoreDriverText: {
-    maxWidth: 180,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '800',
-  },
-  scoreDriverGoodText: {
-    color: '#166534',
-  },
-  scoreDriverWarnText: {
-    color: '#92400e',
-  },
-  scoreDriverBadText: {
-    color: '#9f1239',
   },
   tabPanel: {
-    paddingTop: 16,
+    paddingTop: 20,
     paddingHorizontal: theme.screenPadding,
     paddingBottom: 24,
     backgroundColor: theme.screenBg,
@@ -2209,21 +2130,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 10,
   },
   sectionHeaderIcon: {
     marginTop: 1,
   },
   sectionHeaderDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 50,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   sectionHeaderLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.15,
-    textTransform: 'uppercase',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: -0.1,
+    color: theme.textFaint,
+    textTransform: 'capitalize',
   },
   spacer16: {
     height: 16,
@@ -2320,17 +2243,22 @@ const styles = StyleSheet.create({
     color: '#78350f',
   },
   showNaturalBtn: {
-    backgroundColor: theme.green50,
-    borderWidth: 1.5,
-    borderColor: theme.greenBorder,
-    borderRadius: 14,
-    padding: 13,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     marginBottom: 8,
+    marginTop: 4,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
   },
   showNaturalBtnText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: theme.green800,
+    fontWeight: '600',
+    color: theme.textSecondary,
     textAlign: 'center',
   },
   tabDisclaimer: {

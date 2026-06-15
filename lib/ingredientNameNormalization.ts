@@ -111,3 +111,14 @@ export function looksLikeFrenchIngredientName(name: string): boolean {
   )
 }
 
+/** Display-safe ingredient title — strips trailing list glue like "and" or "and/or". */
+export function sanitizeIngredientDisplayName(name: string): string {
+  return (
+    String(name ?? '')
+      .trim()
+      .replace(/\s+(?:and\/or|and|or)\s*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Ingredient'
+  )
+}
+

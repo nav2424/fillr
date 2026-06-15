@@ -202,22 +202,200 @@ function buildTrendInsight(points: TrendWeekPoint[]): TrendInsightModel {
   }
 }
 
+export type WeekStatChip = {
+  label: string
+  value: string
+  hint?: string
+  icon: string
+  tone: 'neutral' | 'good' | 'warn'
+}
+
+export type WatchListItem = {
+  name: string
+  count: number
+  subtitle: string
+  rating: 'avoid' | 'concerning'
+}
+
+export type RecentScanItem = {
+  productId: string
+  name: string
+  brand: string
+  score: number | null
+}
+
+export type IngredientMixModel = {
+  natural: number
+  processed: number
+  additive: number
+  flagged: number
+  total: number
+  insight: string
+}
+
 export type OverviewDashboardModel = {
+  hasScansThisWeek: boolean
+  weekHeadline: string
+  weekStats: WeekStatChip[]
   topInsight: TopInsightModel
   scoreHero: ScoreHeroModel
+  watchList: WatchListItem[]
+  recentScans: RecentScanItem[]
+  ingredientMix: IngredientMixModel | null
   trend: TrendWeekPoint[]
   trendInsight: TrendInsightModel
+}
+
+function buildIngredientMixInsight(mix: Omit<IngredientMixModel, 'insight' | 'total'>): string {
+  const total = mix.natural + mix.processed + mix.additive + mix.flagged
+  if (total <= 0) return 'Scan products to see how your baskets skew clean vs processed.'
+  const cleanShare = Math.round(((mix.natural + mix.processed * 0.5) / total) * 100)
+  if (mix.flagged >= 8 || mix.flagged / total > 0.18) {
+    return `${mix.flagged} high-risk lines this week — mostly additives and flagged ingredients.`
+  }
+  if (cleanShare >= 72) {
+    return `${cleanShare}% of lines read as whole-food or simple — a cleaner week overall.`
+  }
+  if (mix.additive >= 6) {
+    return `${mix.additive} additive lines showed up — check the watch list for repeats.`
+  }
+  return `${cleanShare}% of ingredient lines skew simpler — room to swap a few staples.`
+}
+
+function weekIngredientMix(weekScanRows: OverviewScanRow[]): IngredientMixModel | null {
+  let natural = 0
+  let processed = 0
+  let additive = 0
+  let flagged = 0
+  for (const row of weekScanRows) {
+    const fromScore = row.result.scoringData?.ingredientCounts
+    if (fromScore) {
+      natural += fromScore.natural ?? 0
+      processed += fromScore.processed ?? 0
+      additive += fromScore.additive ?? 0
+      flagged += fromScore.flagged ?? 0
+      continue
+    }
+    for (const ing of row.result.ingredientBreakdown ?? []) {
+      const r = (ing.ingredientRating ?? 'okay') as IngredientRating
+      if (r === 'clean') natural++
+      else if (r === 'okay') processed++
+      else if (r === 'concerning') additive++
+      else if (r === 'avoid') flagged++
+    }
+  }
+  const total = natural + processed + additive + flagged
+  if (total <= 0) return null
+  const base = { natural, processed, additive, flagged, total }
+  return { ...base, insight: buildIngredientMixInsight(base) }
+}
+
+function buildRecentScans(weekScanRows: OverviewScanRow[]): RecentScanItem[] {
+  return [...weekScanRows]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 4)
+    .map((row) => ({
+      productId: row.result.product?.id ?? '',
+      name: (row.result.product?.name ?? 'Product').trim() || 'Product',
+      brand: (row.result.product?.brand ?? '').trim(),
+      score: row.result.fillrFit?.score ?? null,
+    }))
+    .filter((item) => item.productId)
+}
+
+function buildWeekStats(
+  Y: number,
+  flagged: number,
+  avgFit: number | null,
+  activeDays: number,
+  bestDay: { label: string; score: number } | null
+): WeekStatChip[] {
+  const chips: WeekStatChip[] = [
+    {
+      label: 'Scans',
+      value: String(Y),
+      hint: activeDays > 0 ? `${activeDays} active day${activeDays === 1 ? '' : 's'}` : undefined,
+      icon: 'scan-outline',
+      tone: Y >= 3 ? 'good' : 'neutral',
+    },
+    {
+      label: 'Flagged',
+      value: String(flagged),
+      hint: flagged > 0 ? 'Lines to review' : 'None this week',
+      icon: 'alert-circle-outline',
+      tone: flagged >= 6 ? 'warn' : flagged > 0 ? 'neutral' : 'good',
+    },
+  ]
+  if (avgFit != null && avgFit > 0) {
+    chips.push({
+      label: 'Avg fit',
+      value: String(avgFit),
+      hint: avgFit >= 72 ? 'Strong week' : avgFit >= 58 ? 'Mixed week' : 'Room to improve',
+      icon: 'pulse-outline',
+      tone: avgFit >= 72 ? 'good' : avgFit >= 58 ? 'neutral' : 'warn',
+    })
+  }
+  if (bestDay) {
+    chips.push({
+      label: 'Best day',
+      value: String(bestDay.score),
+      hint: bestDay.label,
+      icon: 'trophy-outline',
+      tone: 'good',
+    })
+  }
+  return chips
+}
+
+function buildWeekHeadline(Y: number, flagged: number, avgFit: number | null): string {
+  if (Y <= 0) return 'No scans logged this week yet.'
+  const parts = [`${Y} scan${Y === 1 ? '' : 's'}`]
+  if (flagged > 0) parts.push(`${flagged} flagged line${flagged === 1 ? '' : 's'}`)
+  if (avgFit != null && avgFit > 0) parts.push(`${avgFit} avg fit`)
+  return parts.join(' · ')
+}
+
+function bestDayFromSeries(
+  daySeries: { label: string; avgFit: number | null; count: number }[] | undefined
+): { label: string; score: number } | null {
+  if (!daySeries?.length) return null
+  let best: { label: string; score: number } | null = null
+  for (const day of daySeries) {
+    if (day.avgFit == null || day.avgFit <= 0 || day.count <= 0) continue
+    if (!best || day.avgFit > best.score) {
+      best = { label: day.label, score: day.avgFit }
+    }
+  }
+  return best
 }
 
 export function buildOverviewDashboardModel(
   rows: OverviewScanRow[],
   week: { start: Date; end: Date },
-  metrics: ReturnType<typeof computeOverviewMetrics>
+  metrics: ReturnType<typeof computeOverviewMetrics>,
+  daySeries?: { label: string; avgFit: number | null; count: number }[]
 ): OverviewDashboardModel {
   const Y = metrics.totalScansThisWeek
+  const activeDays = daySeries?.filter((d) => d.count > 0).length ?? 0
+  const bestDay = bestDayFromSeries(daySeries)
+  const weekStats = buildWeekStats(Y, metrics.flaggedIngredientsThisWeek, metrics.avgFitThisWeek, activeDays, bestDay)
+  const weekHeadline = buildWeekHeadline(Y, metrics.flaggedIngredientsThisWeek, metrics.avgFitThisWeek)
+  const watchList: WatchListItem[] = metrics.topFlagged.slice(0, 3).map((row) => ({
+    name: row.name,
+    count: row.count,
+    subtitle: row.subtitle,
+    rating: row.rating,
+  }))
+
   if (Y === 0) {
     const trendEmptyWeek = buildWeeklyAvgFitTrend(rows, week, 6)
     return {
+      hasScansThisWeek: false,
+      weekHeadline,
+      weekStats,
+      watchList: [],
+      recentScans: [],
+      ingredientMix: null,
       topInsight: {
         headlineBefore: '',
         headlineHighlight: 'No scans',
@@ -245,6 +423,8 @@ export function buildOverviewDashboardModel(
   const prevMetrics = computeOverviewMetrics(rows, prev)
   const wRows = weekRows(rows, week)
   const avg = metrics.avgFitThisWeek
+  const ingredientMix = weekIngredientMix(wRows)
+  const recentScans = buildRecentScans(wRows)
 
   const top = metrics.topFlagged[0]
   const topInsight = buildTopInsight(Y, wRows, top, avg)
@@ -272,6 +452,12 @@ export function buildOverviewDashboardModel(
 
   const trend = buildWeeklyAvgFitTrend(rows, week, 6)
   return {
+    hasScansThisWeek: true,
+    weekHeadline,
+    weekStats,
+    watchList,
+    recentScans,
+    ingredientMix,
     topInsight,
     scoreHero,
     trend,

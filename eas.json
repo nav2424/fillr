@@ -15,6 +15,13 @@
         "simulator": true
       }
     },
+    "development-testflight": {
+      "developmentClient": true,
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m-medium"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "ios": {
@@ -33,6 +40,7 @@
       "ios": {
         "ascAppId": "6760787859"
       }
-    }
+    },
+    "development-testflight": {}
   }
 }

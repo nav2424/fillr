@@ -206,7 +206,37 @@ export interface IngredientExplanation {
   ingredientDecodeStatus?: 'decoded' | 'unavailable'
 }
 
-export type ScanIngredientSource = 'barcode' | 'ocr' | 'manual'
+export type ScanIngredientSource = 'barcode' | 'ocr' | 'manual' | 'vision'
+
+/** Remote `scan_history.scan_method` — mirrors capture path. */
+export type ScanMethod = 'barcode' | 'ocr' | 'manual' | 'vision'
+
+export type VisionNutritionFacts = {
+  serving_size?: string
+  calories?: number
+  fat_g?: number
+  saturated_fat_g?: number
+  trans_fat_g?: number
+  carbohydrates_g?: number
+  fibre_g?: number
+  sugars_g?: number
+  protein_g?: number
+  sodium_mg?: number
+}
+
+/** GPT-4o vision product identification payload. */
+export type VisionProductIdentification = {
+  product_name: string
+  brand: string
+  variant: string
+  confidence: number
+  ingredients: string[]
+  nutrition_facts: VisionNutritionFacts
+  allergens: string[]
+  /** Cross-contact / facility allergens when known for this SKU. */
+  may_contain_allergens: string[]
+  country_variant: string
+}
 
 export interface ScanResult {
   product: Product
@@ -305,6 +335,8 @@ export interface FillrScoringDataSnapshot {
   productCategory?:
     | 'whole_food'
     | 'clean_snack'
+    | 'salty_snack'
+    | 'breakfast_grain'
     | 'protein_bar'
     | 'gum'
     | 'candy'
@@ -314,6 +346,12 @@ export interface FillrScoringDataSnapshot {
     | 'generic_packaged'
   /** Ingredient blob used for scoring heuristics (mirrors `FillrScoringInput.labelHaystack`). */
   labelHaystack?: string
+  caloriesPerServing?: number
+  sodiumMgPerServing?: number
+  fatGPerServing?: number
+  proteinGPerServing?: number
+  sugarsGPerServing?: number
+  carbsGPerServing?: number
 }
 
 export type AllergenEvidenceSection = 'ingredients' | 'contains' | 'may_contain' | 'open_food_facts'

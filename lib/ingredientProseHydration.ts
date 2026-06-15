@@ -58,6 +58,9 @@ export function ingredientProseFieldsAreRepetitive(ing: IngredientExplanation): 
 
 export function ingredientExplanationNeedsHydration(ing: IngredientExplanation): boolean {
   if (ing.aiDecodePending) return false
+  if (textMatchesIngredientGenericPattern(ing.headline)) return true
+  if (textMatchesIngredientGenericPattern(ing.quickSummary)) return true
+  if (textMatchesIngredientGenericPattern(ing.whatItIs)) return true
   if (ingredientExplanationFailsQualityGate(ing)) return true
   if (ingredientProseFieldsAreRepetitive(ing)) return true
   const w1 = String(ing.whatItIs ?? '').trim()
@@ -90,7 +93,10 @@ export function ensureDistinctIngredientExplanation(ing: IngredientExplanation):
     actionability: ing.actionability,
     impactForYou: ing.impactForYou,
     systemJudgment: ing.systemJudgment,
-    shortLabel: ing.shortLabel,
+    shortLabel:
+      ing.shortLabel && !textMatchesIngredientGenericPattern(ing.shortLabel)
+        ? ing.shortLabel
+        : fb.headline,
     whyItMattersBullets: ing.whyItMattersBullets,
     intelligenceConfidence: ing.intelligenceConfidence,
     sourceAmbiguity: ing.sourceAmbiguity,

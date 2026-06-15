@@ -261,6 +261,27 @@ test('same product scores differently for different user preferences', () => {
   assert.ok(lowSugar.score < general.score, `expected low sugar user lower than general user`)
 })
 
+test('salty snack category caps score for chip-style products', () => {
+  const result = calculateFillrFit({
+    allergyMatches: [],
+    celiacSeverity: 'SAFE',
+    sensitivityMatches: [],
+    avoidingMatches: [],
+    goalMatches: [],
+    goalConflicts: [],
+    productCategory: 'salty_snack',
+    labelHaystack: 'potato chips vegetable oil salt',
+    caloriesPerServing: 220,
+    sodiumMgPerServing: 350,
+    fatGPerServing: 14,
+    proteinGPerServing: 3,
+    ingredientCounts: { natural: 2, processed: 1, additive: 0, flagged: 0 },
+    totalIngredients: 3,
+  })
+  assert.ok(result.score <= 55, `expected salty snack ceiling, got ${result.score}`)
+  assert.ok(result.score >= 20, `expected salty snack floor, got ${result.score}`)
+})
+
 test('category ceiling is respected even with cleaner ingredients', () => {
   const candy = calculateFillrFit({
     allergyMatches: [],

@@ -95,6 +95,7 @@ export type ScoreDisplayProps = {
 
 export function ScoreDisplay({ fillrFit, isLoading, showReason = true }: ScoreDisplayProps) {
   const progressAnim = useRef(new Animated.Value(0)).current
+  const lastScoreRef = useRef<number | null>(null)
   const [gradLeft, gradRight] = fillrFit
     ? progressGradient(fillrFit.score, fillrFit.verdict)
     : ([theme.green700, theme.green500] as const)
@@ -102,9 +103,12 @@ export function ScoreDisplay({ fillrFit, isLoading, showReason = true }: ScoreDi
   useEffect(() => {
     if (!fillrFit) {
       progressAnim.setValue(0)
+      lastScoreRef.current = null
       return
     }
     const target = Math.min(100, Math.max(0, fillrFit.score))
+    if (lastScoreRef.current === target) return
+    lastScoreRef.current = target
     progressAnim.setValue(0)
     // iOS: layout-driven width animation (`useNativeDriver: false`) during a full product re-render
     // (e.g. OCR decode landing) can freeze the UI long enough for SpringBoard to kill the app.
@@ -118,7 +122,7 @@ export function ScoreDisplay({ fillrFit, isLoading, showReason = true }: ScoreDi
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start()
-  }, [fillrFit, progressAnim])
+  }, [fillrFit?.score, progressAnim])
 
   if (isLoading) {
     return <ScoreSkeleton />

@@ -18,6 +18,7 @@ import { colors, spacing, homeWordmarkLayout } from '../constants/theme'
 import { formatWeekRangeChip } from '../lib/buildHomeScreenData'
 import {
   fetchGlobalWorstOffendersForHome,
+  WORST_OFFENDERS_LIST_LIMIT,
   type GlobalWorstOffendersPack,
 } from '../lib/fetchGlobalWorstOffendersForHome'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
@@ -62,7 +63,7 @@ export default function WorstOffendersScreen() {
       let alive = true
       setLoading(true)
       void (async () => {
-        const next = await fetchGlobalWorstOffendersForHome(scans, { limit: 50 })
+        const next = await fetchGlobalWorstOffendersForHome(scans, { limit: WORST_OFFENDERS_LIST_LIMIT })
         if (alive) {
           setPack(next)
           setLoading(false)

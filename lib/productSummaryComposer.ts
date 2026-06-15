@@ -44,7 +44,9 @@ export function composeDeterministicProductSummary(
         ? 'condiment'
         : productCategory === 'drink'
           ? 'beverage'
-          : 'product'
+          : productCategory === 'breakfast_grain'
+            ? 'breakfast grain'
+            : 'product'
   const counts = countRatings(ingredients)
   const riskCount = counts.concerning + counts.avoid
   const hasRisk = riskCount > 0
@@ -142,7 +144,9 @@ export function composeDeterministicProductVerdict(
         ? 'condiment'
         : productCategory === 'drink'
           ? 'beverage'
-          : 'product'
+          : productCategory === 'breakfast_grain'
+            ? 'breakfast grain'
+            : 'product'
   const counts = countRatings(ingredients)
   const riskCount = counts.concerning + counts.avoid
   const sugar100g = sugarFromNutrition(nutrition)
