@@ -2,6 +2,7 @@ import { View, Text, StyleSheet } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { FillrButton } from '../components'
+import { REFERRAL_INVITEE_STARTING_SCANS } from '../constants/subscription'
 import { colors, spacing } from '../constants/theme'
 
 export default function ReferralSuccessScreen() {
@@ -15,7 +16,9 @@ export default function ReferralSuccessScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>🎁 Bonus scans added</Text>
-            <Text style={styles.cardBody}>You have 8 scans to start with</Text>
+            <Text style={styles.cardBody}>
+              You have {REFERRAL_INVITEE_STARTING_SCANS} scans to start with
+            </Text>
             <View style={styles.divider} />
             <Text style={styles.referredBy}>Referred by a friend</Text>
           </View>

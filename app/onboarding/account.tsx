@@ -20,6 +20,7 @@ import {
   TextInputField,
   FooterActionBar,
 } from '../../components/onboarding'
+import { REFERRAL_INVITEE_BONUS } from '../../constants/subscription'
 import { ONBOARDING_STEP } from '../../constants/onboardingFlow'
 import { ob, obType } from '../../constants/onboardingTheme'
 import { looksLikeReferralCode, normalizeReferralCode, getRefFromUrl } from '../../lib/referrals'

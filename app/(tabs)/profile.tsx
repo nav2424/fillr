@@ -17,7 +17,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { FillrButton } from '../../components'
 import { router } from 'expo-router'
 import { colors, homeWordmarkLayout, radius, spacing, typography } from '../../constants/theme'
-import { FREE_SCAN_LIMIT } from '../../constants/subscription'
+import {
+  FREE_SCAN_LIMIT,
+  REFERRAL_INVITEE_BONUS,
+  REFERRAL_REFERRER_BONUS,
+} from '../../constants/subscription'
 import { HEALTH_DISCLAIMER_RATINGS_MODAL_CLOSE } from '../../constants/healthDisclaimer'
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../../constants/legalUrls'
 import { clearDisclaimerKeysOnSignOut } from '../../lib/disclaimerStorage'
@@ -328,7 +332,7 @@ export default function ProfileScreen() {
                 <Text style={styles.refTitle}>Invite friends</Text>
               </View>
               <View style={styles.refPill}>
-                <Text style={styles.refPillText}>Earn 5 scans each</Text>
+                <Text style={styles.refPillText}>Earn {REFERRAL_REFERRER_BONUS} scans each</Text>
               </View>
             </View>
 
@@ -373,7 +377,8 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.refFooterHint}>
-            For every friend who joins, you get 5 bonus scans and they get 3. Max 50 bonus scans.
+            For every friend who joins, you get {REFERRAL_REFERRER_BONUS} bonus scans and they get{' '}
+            {REFERRAL_INVITEE_BONUS}. Max 50 bonus scans.
           </Text>
 
           <View style={styles.sectionCard}>
