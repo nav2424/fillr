@@ -65,8 +65,9 @@ import { personalizeScanResult } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
 import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
 import { buildFormulaConcerns, formulaConcernHeadline } from '../../lib/buildFormulaConcerns'
-import { computeProfileFitScore, scoreToShortVerdict } from '../../lib/fillrScoring'
+import { computeProfileFitScore } from '../../lib/fillrScoring'
 import type { FillrScoringInput } from '../../lib/fillrScoring'
+import { resolveProductHeroFitVerdict } from '../../lib/productHeroFitVerdict'
 import { playSafeScanSound } from '../../lib/playSafeScanSound'
 import { textMatchesIngredientGenericPattern } from '../../lib/ingredientCopyQuality'
 import { isIngredientLevelGoal } from '../../lib/goalApplicability'
@@ -685,13 +686,26 @@ export default function ProductScreen() {
 
   const heroFitScore = profileFitScore ?? displayFillrFit?.score ?? null
   const heroFitVerdict = useMemo(() => {
-    if (nutritionViewModel?.hasData && (nutritionViewModel.lensScores.nutritionFit ?? 0) > 0) {
-      return nutritionViewModel.lensScores.nutritionLabel
-    }
-    if (displayFillrFit?.verdict?.trim()) return displayFillrFit.verdict
-    if (heroFitScore != null) return scoreToShortVerdict(heroFitScore).label
-    return 'Scored'
-  }, [nutritionViewModel, displayFillrFit?.verdict, heroFitScore])
+    return resolveProductHeroFitVerdict({
+      hasNutritionData: nutritionViewModel?.hasData,
+      nutritionFit: nutritionViewModel?.lensScores.nutritionFit,
+      nutritionLabel: nutritionViewModel?.lensScores.nutritionLabel,
+      fillrVerdict: displayFillrFit?.verdict,
+      fillrTier: displayFillrFit?.tier,
+      heroFitScore,
+      safetyStatus,
+      matchedAllergenCount: matchedAllergens.length,
+      celiacAvoid,
+    })
+  }, [
+    nutritionViewModel,
+    displayFillrFit?.verdict,
+    displayFillrFit?.tier,
+    heroFitScore,
+    safetyStatus,
+    matchedAllergens.length,
+    celiacAvoid,
+  ])
 
   const showNutritionSection =
     showTrustPanels && Boolean(nutritionViewModel?.hasData || nutritionViewModel?.macros.length)
