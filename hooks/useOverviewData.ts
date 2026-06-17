@@ -5,11 +5,12 @@ import {
   fetchOverviewScanRows,
   localScansToOverviewRows,
 } from '../lib/overviewScanRemote'
+import { mergeOverviewRows } from '../lib/mergeOverviewRows'
 import type { OverviewScanRow } from '../lib/overviewAnalytics'
 
 /**
- * Prefer Supabase `scan_history` when the user is signed in and rows exist;
- * otherwise fall back to on-device persisted scans.
+ * Use Supabase `scan_history` when available, while keeping local scans that
+ * have not reached remote history yet.
  */
 export function useOverviewData(): { rows: OverviewScanRow[]; loading: boolean } {
   const userId = useAuthStore((s) => s.userId)
@@ -34,9 +35,7 @@ export function useOverviewData(): { rows: OverviewScanRow[]; loading: boolean }
   const rows = useMemo(() => {
     const local = localScansToOverviewRows(localScans)
     if (!userId) return local
-    if (remoteRows === null) return local
-    if (remoteRows.length > 0) return remoteRows
-    return local
+    return mergeOverviewRows(local, remoteRows)
   }, [userId, remoteRows, localScans])
 
   const loading = Boolean(userId) && remoteRows === null
