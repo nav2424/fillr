@@ -40,6 +40,16 @@ test('barcode strips facility cross-contact and bare allergen tokens', () => {
   assert.ok(result.some((s) => /sugar/i.test(s)))
 })
 
+test('barcode keeps bare allergen token when it is part of a short formula', () => {
+  const result = parseIngredientListFromPlain('Ingredients: Wheat, Salt', 'barcode')
+  assert.deepEqual(result, ['Wheat', 'Salt'])
+})
+
+test('barcode drops lone advisory bare allergen token', () => {
+  const result = parseIngredientListFromPlain('Contains: milk', 'barcode')
+  assert.deepEqual(result, [])
+})
+
 test('OCR bilingual EN + FR still dedupes', () => {
   const raw =
     'Ingredients: Sugar, salt, water. Ingrédients: Sucre, sel, eau.'

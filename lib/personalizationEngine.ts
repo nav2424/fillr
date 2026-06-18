@@ -12,6 +12,13 @@ import type {
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
 import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
+import {
+  buildUserAllergenConfig,
+  detectAllergensEvidenceBased,
+  type MatchedAllergen as EngineMatchedAllergen,
+} from './allergenEngine'
+import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
+import { getCeliacInsight } from './smartInsights'
 
 export interface UserProfile {
   allergies: string[]
@@ -115,6 +122,96 @@ function dedupeMatchedAllergensForProfile(rows: MatchedAllergen[]): MatchedAller
     })
   }
   return [...m.values()]
+}
+
+function displayMatchedIngredient(matchText: string): string {
+  return matchText
+    .replace(/^[a-z]{2}:/i, '')
+    .replace(/[-_]/g, ' ')
+    .trim()
+}
+
+function mapEngineAllergenToScanAllergen(match: EngineMatchedAllergen): MatchedAllergen {
+  const evidenceSection: MatchedAllergen['evidenceSection'] = /^en:|^fr:/i.test(match.match_text)
+    ? 'open_food_facts'
+    : match.section
+  return {
+    allergenKey: match.allergen_id,
+    allergenName: match.allergen_name,
+    matchedIngredient: displayMatchedIngredient(match.match_text),
+    explanation: `Contains ${match.allergen_name} from your allergy list - not safe for you.`,
+    severity: match.severity,
+    evidenceSection,
+    evidenceText: match.match_text,
+  }
+}
+
+function isProfileSafetyInsight(insight: string): boolean {
+  return /-derived ingredient detected/i.test(insight) || /\b(celiac|gluten source|gluten-containing)\b/i.test(insight)
+}
+
+/**
+ * Stored scan results are profile-scoped because deterministic allergen/celiac checks run
+ * only for the active profile. Refresh those safety fields before reusing history.
+ */
+export function refreshScanSafetyForProfile(base: ScanResult, profile: UserProfile): ScanResult {
+  const ingredientText = base.product.ingredientText ?? ''
+  const safetyHaystack = base.product.ingredientTextSafetyHaystack?.trim() ?? ''
+  const output = detectAllergensEvidenceBased(
+    {
+      product_name: base.product.name,
+      ingredients_text: ingredientText,
+      ...(safetyHaystack ? { ingredients_text_safety: safetyHaystack } : {}),
+      allergens_tags: base.product.allergensTags,
+      traces_tags: base.product.tracesTags,
+    },
+    buildUserAllergenConfig(profile.allergies ?? [])
+  )
+
+  const matchedAllergens = output.matched_allergens.map(mapEngineAllergenToScanAllergen)
+  const celiac: CeliacResult | undefined = profile.celiacStrictGluten
+    ? (() => {
+        const fullText = safetyHaystack || ingredientText
+        const ingredients = ingredientText
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+        const matchedGlutenSignals = runCeliacCheck(ingredients, fullText).map((m) => ({
+          ingredient: m.ingredient,
+          signalType: m.signalType,
+          severity: m.severity,
+          reason: m.reason,
+        }))
+        return {
+          celiacModeEnabled: true,
+          matchedGlutenSignals,
+          celiacSeverity: getCeliacSeverity(matchedGlutenSignals),
+        }
+      })()
+    : undefined
+
+  const refreshedInsights = base.insights.filter((insight) => !isProfileSafetyInsight(insight))
+  if (matchedAllergens.length > 0) {
+    refreshedInsights.unshift(
+      ...matchedAllergens.map((m) => `${m.allergenName}-derived ingredient detected`)
+    )
+  }
+  const celiacInsight = getCeliacInsight(celiac?.celiacSeverity, celiac?.matchedGlutenSignals)
+  if (celiacInsight) refreshedInsights.push(celiacInsight)
+
+  const productNameHints = output.product_name_hints?.map((h) => ({
+    allergenName: h.allergen_name,
+    hintText: h.hint_text,
+  }))
+
+  return {
+    ...base,
+    matchedAllergens,
+    celiac,
+    insights: [...new Set(refreshedInsights)],
+    ingredientDataQualityScore: output.scan_log.source_coverage_score ?? base.ingredientDataQualityScore,
+    productNameHints,
+  }
 }
 
 /** Determine safety status based on user-specific matches */

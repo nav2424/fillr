@@ -61,7 +61,7 @@ import {
   scanNeedsIngredientDecode,
 } from '../../services/productService'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
-import { personalizeScanResult } from '../../lib/personalizationEngine'
+import { personalizeScanResult, refreshScanSafetyForProfile } from '../../lib/personalizationEngine'
 import type { UserProfile } from '../../lib/personalizationEngine'
 import { buildProfileReasoningModel } from '../../lib/buildProfileReasoning'
 import { buildFormulaConcerns, formulaConcernHeadline } from '../../lib/buildFormulaConcerns'
@@ -349,7 +349,6 @@ export default function ProductScreen() {
 
   const storedResult =
     currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
-  const isIosStabilityMode = Platform.OS === 'ios'
 
   const userProfileForPersonalize: UserProfile = useMemo(
     () => ({
@@ -364,9 +363,11 @@ export default function ProductScreen() {
 
   const viewResult = useMemo(() => {
     if (!storedResult) return null
-    if (isIosStabilityMode) return storedResult
-    return personalizeScanResult(storedResult, userProfileForPersonalize)
-  }, [storedResult, userProfileForPersonalize, isIosStabilityMode])
+    return personalizeScanResult(
+      refreshScanSafetyForProfile(storedResult, userProfileForPersonalize),
+      userProfileForPersonalize
+    )
+  }, [storedResult, userProfileForPersonalize])
 
   const openProductNameModal = useCallback(() => {
     const r = currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')

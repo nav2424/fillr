@@ -34,7 +34,7 @@ import { canUserScan, getRemainingScans, incrementScanCount } from '../../store/
 import { showPaywall } from '../../services/paywallService'
 import { isDemoScanBarcode } from '../../services/mockProducts'
 import { trackScanResultMetric } from '../../lib/scanResultMetrics'
-import { personalizeScanResult } from '../../lib/personalizationEngine'
+import { personalizeScanResult, refreshScanSafetyForProfile } from '../../lib/personalizationEngine'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
 import { consumeVisionAutoOpenPending } from '../../lib/navigationHelpers'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
@@ -175,13 +175,14 @@ export default function ScanScreen() {
       try {
         const reusable = getReusableBarcodeResult(barcode)
         if (reusable) {
-          const personalized = personalizeScanResult(reusable, {
+          const userProfile = {
             allergies,
             sensitivities,
             preferences,
             goal,
             celiacStrictGluten: Boolean(celiacStrictGluten),
-          })
+          }
+          const personalized = personalizeScanResult(refreshScanSafetyForProfile(reusable, userProfile), userProfile)
           const scored = attachFillrFitToScanResult(personalized, getDietProfileSnapshotSync())
           setCurrentScan(scored)
           addScan({
