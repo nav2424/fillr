@@ -1,50 +1,88 @@
 import { Platform } from 'react-native'
+import { hasMetaAppEventsConfig } from './metaAppEventsConfig'
 
 type MetaEventParams = Record<string, string | number>
 
 const isIOS = Platform.OS === 'ios'
+let initializationAttempt: Promise<boolean> | null = null
+
+function logMetaAppEventsError(message: string, error: unknown): void {
+  if (__DEV__) console.log(message, error)
+}
+
+export function isMetaAppEventsConfigured(): boolean {
+  return isIOS && hasMetaAppEventsConfig()
+}
+
+async function ensureMetaAppEventsInitialized(): Promise<boolean> {
+  if (!isMetaAppEventsConfigured()) return false
+  if (initializationAttempt) return initializationAttempt
+
+  initializationAttempt = (async () => {
+    try {
+      const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency')
+      const { Settings } = await import('react-native-fbsdk-next')
+
+      const { status } = await requestTrackingPermissionsAsync()
+      Settings.initializeSDK()
+      await Settings.setAdvertiserTrackingEnabled(status === 'granted')
+      return true
+    } catch (error) {
+      initializationAttempt = null
+      logMetaAppEventsError('Meta App Events not initialized.', error)
+      return false
+    }
+  })()
+
+  return initializationAttempt
+}
 
 /**
  * Initializes Meta App Events SDK for iOS app lifecycle attribution.
  */
 export async function initializeMetaAppEvents(): Promise<void> {
-  if (!isIOS) return
-
-  const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency')
-  const { Settings } = await import('react-native-fbsdk-next')
-
-  const { status } = await requestTrackingPermissionsAsync()
-  Settings.initializeSDK()
-  await Settings.setAdvertiserTrackingEnabled(status === 'granted')
+  await ensureMetaAppEventsInitialized()
 }
 
 /**
  * Logs a purchase conversion event to Meta App Events.
  */
 export async function logMetaPurchase(amount: number, currency = 'USD'): Promise<void> {
-  if (!isIOS) return
-  const { AppEventsLogger } = await import('react-native-fbsdk-next')
-  AppEventsLogger.logPurchase(amount, currency)
+  if (!(await ensureMetaAppEventsInitialized())) return
+  try {
+    const { AppEventsLogger } = await import('react-native-fbsdk-next')
+    AppEventsLogger.logPurchase(amount, currency)
+  } catch (error) {
+    logMetaAppEventsError('Meta purchase event was not logged.', error)
+  }
 }
 
 /**
  * Logs completed registration conversion.
  */
 export async function logMetaCompletedRegistration(): Promise<void> {
-  if (!isIOS) return
-  const { AppEventsLogger } = await import('react-native-fbsdk-next')
-  AppEventsLogger.logEvent('fb_mobile_complete_registration')
+  if (!(await ensureMetaAppEventsInitialized())) return
+  try {
+    const { AppEventsLogger } = await import('react-native-fbsdk-next')
+    AppEventsLogger.logEvent('fb_mobile_complete_registration')
+  } catch (error) {
+    logMetaAppEventsError('Meta registration event was not logged.', error)
+  }
 }
 
 /**
  * Logs custom conversion events with optional parameters.
  */
 export async function logMetaCustomEvent(name: string, parameters?: MetaEventParams): Promise<void> {
-  if (!isIOS) return
-  const { AppEventsLogger } = await import('react-native-fbsdk-next')
-  if (parameters) {
-    AppEventsLogger.logEvent(name, parameters)
-    return
+  if (!(await ensureMetaAppEventsInitialized())) return
+  try {
+    const { AppEventsLogger } = await import('react-native-fbsdk-next')
+    if (parameters) {
+      AppEventsLogger.logEvent(name, parameters)
+      return
+    }
+    AppEventsLogger.logEvent(name)
+  } catch (error) {
+    logMetaAppEventsError(`Meta event "${name}" was not logged.`, error)
   }
-  AppEventsLogger.logEvent(name)
 }

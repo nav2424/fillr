@@ -9,12 +9,13 @@ try {
 // EAS sets EAS_BUILD_PROFILE during cloud builds (e.g. "production", "development").
 const easProfile = process.env.EAS_BUILD_PROFILE
 const includeDevClient = easProfile !== 'production'
-const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID ?? ''
-const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN ?? ''
+const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID?.trim() ?? ''
+const facebookClientToken = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_TOKEN?.trim() ?? ''
 const facebookDisplayName = process.env.EXPO_PUBLIC_FACEBOOK_DISPLAY_NAME ?? 'usefillrapp'
+const facebookSdkConfigured = Boolean(facebookAppId && facebookClientToken)
 
 const facebookSdkPlugin =
-  facebookAppId && facebookClientToken
+  facebookSdkConfigured
     ? [
         [
           'react-native-fbsdk-next',
@@ -32,6 +33,16 @@ const facebookSdkPlugin =
         ],
       ]
     : []
+
+const facebookInfoPlist = facebookSdkConfigured
+  ? {
+      FacebookAppID: facebookAppId,
+      FacebookClientToken: facebookClientToken,
+      FacebookDisplayName: facebookDisplayName,
+      FacebookAutoLogAppEventsEnabled: true,
+      FacebookAdvertiserIDCollectionEnabled: true,
+    }
+  : {}
 
 const plugins = [
   'expo-router',
@@ -79,11 +90,7 @@ module.exports = {
       icon: './assets/icon-ios.png',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
-        FacebookAppID: facebookAppId,
-        FacebookClientToken: facebookClientToken,
-        FacebookDisplayName: facebookDisplayName,
-        FacebookAutoLogAppEventsEnabled: true,
-        FacebookAdvertiserIDCollectionEnabled: true,
+        ...facebookInfoPlist,
       },
     },
     android: {
