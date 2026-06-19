@@ -1050,6 +1050,28 @@ export type CreateScanFromIngredientTextPayload = {
   dietaryProfile: DietaryProfile
 }
 
+function requireLabelReviewForVisionSafeResult(result: ScanResult): ScanResult {
+  if (result.safetyStatus !== 'SAFE') return result
+
+  const reviewMessage =
+    'Vision scans can identify the package, but ingredients and allergens must be verified on the physical label before consuming.'
+  const insights = [reviewMessage, ...result.insights.filter((i) => i !== reviewMessage)]
+
+  return {
+    ...result,
+    safetyStatus: 'UNKNOWN',
+    smartSummary: reviewMessage,
+    insights,
+    fillrFit: result.fillrFit
+      ? {
+          ...result.fillrFit,
+          verdict: 'Label review needed',
+          reason: reviewMessage,
+        }
+      : result.fillrFit,
+  }
+}
+
 /**
  * Build a full scan from pasted or OCR-derived ingredient text (no Open Food Facts product).
  * By default defers OpenAI to the caller (`enrichScanResultWithAI`) so navigation is instant.
@@ -1310,6 +1332,7 @@ export async function createScanResultFromVisionProduct(
     finalizeScanForPresentation(withVisionMeta, dietaryProfile),
     dietaryProfile
   )
+  finalResult = requireLabelReviewForVisionSafeResult(finalResult)
   if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) {
     finalResult = markScanFastPendingDecode(finalResult)
   }
