@@ -19,6 +19,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'test',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +28,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        whatItIs: 'A whole-grain oat ingredient.',
+        whyItsUsed: 'Provides the base of the oatmeal.',
+        whatToKnow: 'Generally a simple grain.',
+        ingredientRating: 'clean',
+      },
+      {
+        name: 'Sugar',
+        whatItIs: 'A sweetener.',
+        whyItsUsed: 'Adds sweetness.',
+        whatToKnow: 'Adds sugar per serving.',
+        ingredientRating: 'okay',
+      },
+      {
+        name: 'Salt',
+        whatItIs: 'A seasoning.',
+        whyItsUsed: 'Balances flavor.',
+        whatToKnow: 'Contributes sodium.',
+        ingredientRating: 'okay',
+      },
     ],
     insights: [],
     scoringData: {
