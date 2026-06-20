@@ -60,3 +60,45 @@ test('nutritionScanTags for history filters', () => {
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
 })
+
+test('Open Food Facts sodium gram fields are converted to milligrams', () => {
+  const scan = baseScan({
+    product: {
+      ...baseScan().product,
+      nutritionJson: {
+        'energy-kcal_serving': 220,
+        sodium_serving: 0.48,
+      },
+    },
+  })
+  const model = buildNutritionViewModel({
+    scan,
+    scoringData: scan.scoringData ?? null,
+    goalKey: 'lower_sodium',
+    nutritionTargets: { maxSodiumMg: 400 },
+  })
+  const sodium = model.macros.find((m) => m.key === 'sodium')
+  assert.equal(sodium?.value, 480)
+  assert.equal(sodium?.display, '480mg')
+  assert.equal(nutritionScanTags(scan).highSodium, true)
+})
+
+test('Open Food Facts 100g sodium fallback is labeled and converted', () => {
+  const scan = baseScan({
+    product: {
+      ...baseScan().product,
+      nutritionJson: {
+        'energy-kcal_100g': 500,
+        sodium_100g: 0.72,
+      },
+    },
+  })
+  const model = buildNutritionViewModel({
+    scan,
+    scoringData: scan.scoringData ?? null,
+  })
+  const sodium = model.macros.find((m) => m.key === 'sodium')
+  assert.equal(model.servingLabel, 'Per 100 g')
+  assert.equal(sodium?.value, 720)
+  assert.equal(sodium?.display, '720mg')
+})

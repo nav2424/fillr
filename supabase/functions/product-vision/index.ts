@@ -6,6 +6,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const MAX_IMAGE_BASE64_CHARS = 6_500_000
+
 const VISION_SYSTEM_PROMPT = `You are a food product identification expert. The user has taken a photo of a food product package.
 
 Identify the product and return ONLY a JSON object with no markdown, no explanation, just raw JSON in this exact structure:
@@ -58,6 +60,73 @@ type ProductVisionRequest = {
   mimeType?: string
 }
 
+function jsonResponse(body: Record<string, unknown>, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  })
+}
+
+function bearerToken(req: Request): string {
+  const header = req.headers.get('authorization') ?? ''
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  return match?.[1]?.trim() ?? ''
+}
+
+async function requireAuthenticatedUser(req: Request): Promise<{ token: string } | Response> {
+  const token = bearerToken(req)
+  if (!token) return jsonResponse({ error: 'Authentication required' }, 401)
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')?.trim()
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return jsonResponse({ error: 'Supabase auth is not configured' }, 500)
+  }
+
+  const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: supabaseAnonKey,
+    },
+  }).catch(() => null)
+
+  if (!userRes?.ok) return jsonResponse({ error: 'Authentication required' }, 401)
+  return { token }
+}
+
+async function consumeVisionScanCredit(token: string): Promise<Response | null> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim()
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')?.trim()
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return jsonResponse({ error: 'Supabase quota is not configured' }, 500)
+  }
+
+  const quotaRes = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_vision_scan_credit`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: supabaseAnonKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  }).catch(() => null)
+
+  if (!quotaRes) return jsonResponse({ error: 'Could not verify scan availability' }, 503)
+
+  const quotaJson = await quotaRes.json().catch(() => null)
+  if (!quotaRes.ok) {
+    console.error('[product-vision] quota check failed', quotaJson)
+    return jsonResponse({ error: 'Could not verify scan availability' }, 503)
+  }
+
+  const row = Array.isArray(quotaJson) ? quotaJson[0] : quotaJson
+  if (!row?.allowed) {
+    return jsonResponse({ error: 'No scans available', reason: row?.reason ?? 'scan_limit_reached' }, 402)
+  }
+
+  return null
+}
+
 serve(async (req: Request) => {
   const requestId = crypto.randomUUID()
   if (req.method === 'OPTIONS') {
@@ -65,39 +134,40 @@ serve(async (req: Request) => {
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'Method not allowed' }, 405)
   }
 
   const openaiKey = Deno.env.get('OPENAI_API_KEY')?.trim()
   if (!openaiKey) {
-    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY is not configured' }), {
-      status: 500,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'OPENAI_API_KEY is not configured' }, 500)
   }
+
+  const auth = await requireAuthenticatedUser(req)
+  if (auth instanceof Response) return auth
 
   let body: ProductVisionRequest
   try {
     body = (await req.json()) as ProductVisionRequest
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
 
   const imageBase64 = String(body.imageBase64 ?? '').trim()
   if (!imageBase64) {
-    return new Response(JSON.stringify({ error: 'imageBase64 is required' }), {
-      status: 400,
-      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'imageBase64 is required' }, 400)
+  }
+  if (imageBase64.length > MAX_IMAGE_BASE64_CHARS) {
+    return jsonResponse({ error: 'Image is too large' }, 413)
   }
 
   const mimeType = String(body.mimeType ?? 'image/jpeg').trim() || 'image/jpeg'
+  if (!/^image\/(?:jpeg|jpg|png|webp)$/i.test(mimeType)) {
+    return jsonResponse({ error: 'Unsupported image type' }, 400)
+  }
+
+  const quotaError = await consumeVisionScanCredit(auth.token)
+  if (quotaError) return quotaError
+
   const dataUrl = `data:${mimeType};base64,${imageBase64}`
 
   const controller = new AbortController()
@@ -136,13 +206,7 @@ serve(async (req: Request) => {
     const name = err && typeof err === 'object' && 'name' in err ? String((err as Error).name) : ''
     const isTimeout = name === 'AbortError'
     console.error(`[product-vision] ${requestId} ${isTimeout ? 'timeout' : 'failed'}`)
-    return new Response(
-      JSON.stringify({ error: isTimeout ? 'Vision request timed out' : 'Vision request failed' }),
-      {
-        status: isTimeout ? 504 : 502,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      }
-    )
+    return jsonResponse({ error: isTimeout ? 'Vision request timed out' : 'Vision request failed' }, isTimeout ? 504 : 502)
   } finally {
     clearTimeout(timeout)
   }

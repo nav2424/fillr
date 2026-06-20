@@ -136,6 +136,20 @@ test('instant oatmeal scores in healthy breakfast range not candy range', () => 
   assert.ok(fit.score >= 65 && fit.score <= 88, `expected breakfast score ~70-80, got ${fit.score}`)
 })
 
+test('buildScoringData converts Open Food Facts sodium grams to milligrams', () => {
+  const scan: ScanResult = {
+    ...minimalScan,
+    product: {
+      ...minimalScan.product,
+      nutritionJson: {
+        sodium_serving: 0.62,
+      },
+    },
+  }
+  const data = buildScoringData(scan, [ing('Salt', 'okay')], emptyProfile)
+  assert.equal(data.sodiumMgPerServing, 620)
+})
+
 test('poutine chips are salty snack not whole food even with three collapsed lines', () => {
   const category = detectProductCategoryFromSignals(
     "President's Choice World of Flavours Poutine Chips potatoes vegetable oil seasoning blend",

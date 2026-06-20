@@ -120,16 +120,21 @@ create table if not exists public.user_sensitivities (
 -- Products (cached from scans / Open Food Facts)
 create table if not exists public.products (
   id uuid primary key default uuid_generate_v4(),
-  barcode text unique not null,
+  barcode text unique,
   name text not null,
   brand text,
   image_url text,
   ingredient_text text,
   nutrition_json jsonb,
   source text default 'openfoodfacts',
+  vision_confidence numeric,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+create index if not exists products_vision_name_brand_idx
+  on public.products (lower(name), lower(coalesce(brand, '')))
+  where source = 'gpt4o_vision';
 
 -- Ingredients (for explanations - optional enrichment)
 create table if not exists public.ingredients (
@@ -433,6 +438,55 @@ begin
 end;
 $$;
 
+-- Atomically charge one scan before the product-vision function calls OpenAI.
+create or replace function public.consume_vision_scan_credit()
+returns table(allowed boolean, reason text, total_scans_used integer)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  p public.profiles%rowtype;
+  free_limit constant integer := 5;
+  max_scans integer;
+  next_total integer;
+begin
+  if auth.uid() is null then
+    return query select false, 'unauthorized', null::integer;
+    return;
+  end if;
+
+  select *
+  into p
+  from public.profiles
+  where id = auth.uid()
+  for update;
+
+  if not found then
+    return query select false, 'profile_not_found', null::integer;
+    return;
+  end if;
+
+  max_scans := free_limit + coalesce(p.bonus_scans_earned, 0);
+  if not (
+    coalesce(p.is_pro, false) or
+    coalesce(p.lifetime_pro, false) or
+    (p.pro_expiry is not null and p.pro_expiry > now())
+  ) and coalesce(p.total_scans_used, 0) >= max_scans then
+    return query select false, 'scan_limit_reached', p.total_scans_used;
+    return;
+  end if;
+
+  next_total := coalesce(p.total_scans_used, 0) + 1;
+  update public.profiles
+  set total_scans_used = next_total,
+      updated_at = now()
+  where id = p.id;
+
+  return query select true, 'charged', next_total;
+end;
+$$;
+
 -- Public-safe referral code validator used during signup.
 create or replace function public.validate_referral_code(code text)
 returns table(valid boolean, referrer_user_id uuid)
@@ -701,6 +755,8 @@ end;
 $$;
 
 grant select on public.ingredient_knowledge to anon, authenticated;
+revoke all on function public.consume_vision_scan_credit() from public;
+grant execute on function public.consume_vision_scan_credit() to authenticated;
 grant execute on function public.increment_ingredient_knowledge_scan_count(text) to anon, authenticated;
 grant execute on function public.upsert_ingredient_knowledge(
   text, text, text, text, text, text, text, text, text, text, text, jsonb, text
