@@ -33,7 +33,7 @@ import { useScanHistoryStore } from '../store/scanHistoryStore'
 import { useCurrentScanStore } from '../store/currentScanStore'
 import { canUserScan, incrementScanCount } from '../store/scanStore'
 import { showPaywall } from '../services/paywallService'
-import { finalizeReferralBonusIfEligible, fetchProfile, incrementScanUsageOnServer } from '../lib/authService'
+import { finalizeReferralBonusIfEligible, fetchProfile } from '../lib/authService'
 import { runAfterInteractionsAndNextFrame, runOnNextFrameInTransition } from '../lib/scheduleUIWork'
 import { trackScanResultMetric } from '../lib/scanResultMetrics'
 import type { ScanResult } from '../types'
@@ -462,7 +462,6 @@ export default function VisionConfirmScreen() {
     await incrementScanCount()
     if (userId) {
       void (async () => {
-        await incrementScanUsageOnServer(userId)
         await finalizeReferralBonusIfEligible(userId).catch(() => {})
         const latest = await fetchProfile(userId)
         if (latest) {

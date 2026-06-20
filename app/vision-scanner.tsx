@@ -21,6 +21,8 @@ import {
 } from '../services/openaiProductVision'
 import { exitVisionFlowToHome } from '../lib/navigationHelpers'
 import { useVisionScanStore } from '../store/visionScanStore'
+import { canUserScan } from '../store/scanStore'
+import { showPaywall } from '../services/paywallService'
 
 export default function VisionScannerScreen() {
   const { barcode: fallbackBarcode } = useLocalSearchParams<{ barcode?: string }>()
@@ -35,6 +37,15 @@ export default function VisionScannerScreen() {
     if (!cameraRef.current || !cameraReady || busy) return
     setBusy(true)
     try {
+      const allowed = await canUserScan()
+      if (!allowed) {
+        const purchased = await showPaywall()
+        if (!purchased) {
+          Alert.alert('Scans', 'You need an available scan or Premium to identify this product.')
+          return
+        }
+      }
+
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true })
       if (!photo?.uri && !photo?.base64) {
         Alert.alert('Photo failed', 'Could not capture the image. Try again.')

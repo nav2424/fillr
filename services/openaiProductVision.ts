@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy'
 import type { VisionProductIdentification } from '../types'
 import { normalizeVisionProductIdentification } from '../lib/visionProductParse'
+import { supabase } from '../lib/supabase'
 
 export {
   normalizeVisionProductIdentification,
@@ -44,6 +45,11 @@ async function requestVisionIdentificationOnce(
   if (!supabaseUrl || !supabaseAnonKey) {
     return { identification: null, error: 'Supabase is not configured' }
   }
+  const session = (await supabase.auth.getSession()).data.session
+  const accessToken = session?.access_token?.trim()
+  if (!accessToken) {
+    return { identification: null, error: 'Sign in to use photo identification' }
+  }
 
   const controller = new AbortController()
   const t = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS)
@@ -53,7 +59,7 @@ async function requestVisionIdentificationOnce(
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${supabaseAnonKey}`,
+        Authorization: `Bearer ${accessToken}`,
         apikey: supabaseAnonKey,
       },
       body: JSON.stringify({ imageBase64, mimeType }),
