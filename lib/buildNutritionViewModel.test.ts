@@ -1,7 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNutritionViewModel, nutritionScanTags } from './buildNutritionViewModel'
-import type { ScanResult } from '../types'
+import type { IngredientExplanation, IngredientRating, ScanResult } from '../types'
+
+function ingredient(name: string, ingredientRating: IngredientRating): IngredientExplanation {
+  return {
+    name,
+    ingredientRating,
+    whatItIs: '',
+    whyItsUsed: '',
+    whatToKnow: '',
+  }
+}
 
 function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
   return {
@@ -19,6 +29,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'openfoodfacts',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +38,9 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      ingredient('Whole grain rolled oats', 'clean'),
+      ingredient('Sugar', 'okay'),
+      ingredient('Salt', 'okay'),
     ],
     insights: [],
     scoringData: {
