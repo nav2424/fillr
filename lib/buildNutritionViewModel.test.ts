@@ -60,3 +60,18 @@ test('nutritionScanTags for history filters', () => {
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
 })
+
+test('nutritionScanTags converts Open Food Facts sodium grams to milligrams', () => {
+  const tags = nutritionScanTags(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          'energy-kcal_serving': 220,
+          sodium_serving: 0.6,
+        },
+      },
+    })
+  )
+  assert.equal(tags.highSodium, true)
+})

@@ -25,7 +25,10 @@ export function extractNutritionFacts(scan: ScanResult): NutritionFacts {
   const out: NutritionFacts = {}
 
   let calories = nutritionNum(o['energy-kcal_serving']) || nutritionNum(o['energy-kcal_100g'])
-  let sodium = nutritionNum(o['sodium_serving_mg']) || nutritionNum(o['sodium_100g'])
+  let sodium =
+    nutritionNum(o['sodium_serving_mg']) ||
+    nutritionNum(o['sodium_serving']) * 1000 ||
+    nutritionNum(o['sodium_100g']) * 1000
   let fat = nutritionNum(o['fat_serving']) || nutritionNum(o['fat_100g'])
   let protein = nutritionNum(o['proteins_serving']) || nutritionNum(o['proteins_100g'])
   let carbs = nutritionNum(o['carbohydrates_serving']) || nutritionNum(o['carbohydrates_100g'])

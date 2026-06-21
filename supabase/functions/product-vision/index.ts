@@ -33,23 +33,25 @@ Identify the product and return ONLY a JSON object with no markdown, no explanat
   "country_variant": ""
 }
 
-Set confidence based on how sure you are about the product name and brand visible in the photo — not on whether ingredients are visible (the front of the package usually does not show them). If you can read a clear product name or brand, confidence should usually be 0.7 or higher.
+Set confidence based on how sure you are about the product name and brand visible in the photo. Do not increase confidence because you know or infer label details from memory.
 
-When you identify a specific branded product and variant with confidence >= 0.7, return the fullest published label data you know for that exact SKU:
+When you identify a specific branded product and variant with confidence >= 0.7, return only label data that is visible and readable in this photo:
 
 INGREDIENTS (critical):
-- Return a FLAT "ingredients" array with every individual ingredient line item in typical label order.
+- Return a FLAT "ingredients" array with every individual ingredient line item visible on the photographed label, in label order.
 - Do NOT collapse seasoning blends, spice mixes, or "contains:" sub-lists into a single vague entry like "seasoning blend" unless you truly cannot name any sub-ingredients.
-- Example: instead of ["Potatoes", "Vegetable oil", "Poutine seasoning blend"], return ["Potatoes", "Vegetable oil (canola, sunflower and/or corn oil)", "Salt", "Maltodextrin", "Cheese powder", "Buttermilk powder", "Whey powder", "Onion powder", "Garlic powder", "Yeast extract", "Natural flavours", "Spice extracts", "Lactic acid", "Citric acid"] when that is the known formula.
+- Example: instead of ["Potatoes", "Vegetable oil", "Poutine seasoning blend"], return ["Potatoes", "Vegetable oil (canola, sunflower and/or corn oil)", "Salt", "Maltodextrin", "Cheese powder", "Buttermilk powder", "Whey powder", "Onion powder", "Garlic powder", "Yeast extract", "Natural flavours", "Spice extracts", "Lactic acid", "Citric acid"] only when those sub-ingredients are visible/readable on the photographed label.
 - Include parenthetical oil types and sub-ingredients inside the string when that is how they appear on the label.
+- If the ingredients panel is not visible/readable, return an empty "ingredients" array.
 
 ALLERGENS:
-- "allergens": confirmed contains allergens (e.g. "Milk ingredients", "Wheat").
-- "may_contain_allergens": cross-contact / facility warnings (e.g. "Soy", "Wheat").
+- "allergens": confirmed contains allergens visible on the photographed label (e.g. "Milk ingredients", "Wheat").
+- "may_contain_allergens": visible cross-contact / facility warnings (e.g. "Soy", "Wheat").
+- If allergen statements are not visible/readable, return empty arrays.
 
 NUTRITION:
-- Populate "nutrition_facts" per serving when known (serving_size, calories, fat_g, saturated_fat_g, carbohydrates_g, fibre_g, sugars_g, protein_g, sodium_mg).
-- Use realistic published values for the identified regional variant (country_variant: US, Canada, etc.).
+- Populate "nutrition_facts" per serving only from a visible/readable nutrition facts panel (serving_size, calories, fat_g, saturated_fat_g, carbohydrates_g, fibre_g, sugars_g, protein_g, sodium_mg).
+- If the nutrition panel is not visible/readable, leave nutrition fields empty/zero.
 
 If you cannot identify the product name or brand with reasonable confidence, return confidence below 0.5 and leave other fields empty. Do not invent data for unbranded, homemade, or ambiguous products where the exact variant is unclear.`
 
@@ -124,7 +126,7 @@ serve(async (req: Request) => {
             content: [
               {
                 type: 'text',
-                text: 'Identify this packaged food product from the photo. Return the complete flat ingredient list (every sub-ingredient you know), per-serving nutrition_facts, allergens, and may_contain_allergens for this exact product SKU — even when the back-of-pack label is not visible in the photo.',
+                text: 'Identify this packaged food product from the photo. Return ingredient, allergen, may-contain, and nutrition details only when those label panels are visible and readable in this photo. Do not use memory or published data for label details that are not visible.',
               },
               { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
             ],

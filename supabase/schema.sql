@@ -161,6 +161,7 @@ create table if not exists public.scan_history (
   barcode text not null,
   product_id uuid references public.products(id) on delete set null,
   result_json jsonb,
+  scan_method text not null default 'barcode',
   created_at timestamptz default now()
 );
 

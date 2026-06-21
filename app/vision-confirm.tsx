@@ -377,7 +377,11 @@ export default function VisionConfirmScreen() {
       return
     }
 
-    if (result.ingredientBreakdown.length === 0 && !visionIngredientsText(identification).trim()) {
+    const visionIngredientText = visionIngredientsText(identification)
+    const hasAdequateIngredientData =
+      visionIngredientText.trim().length > 20 && result.ingredientBreakdown.length >= 3
+
+    if (!hasAdequateIngredientData) {
       void trackScanResultMetric({
         name: 'scan_failed',
         payload: { source: 'vision', reason: 'insufficient_ingredient_data' },
@@ -405,7 +409,7 @@ export default function VisionConfirmScreen() {
                 pathname: '/manual-ingredients',
                 params: {
                   prefillName: result.product.name,
-                  prefillIngredients: visionIngredientsText(identification),
+                  prefillIngredients: visionIngredientText,
                 },
               })
             },
