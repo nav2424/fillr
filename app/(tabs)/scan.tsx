@@ -46,8 +46,8 @@ const SCAN_TAB_BAR_CLEARANCE = 88
 const VIEWFINDER_W = 220
 const VIEWFINDER_H = 180
 
-/** Flip to false before shipping — defaults Scan tab to GPT-4o photo capture for testing. */
-const USE_VISION_AS_DEFAULT_SCAN = true
+/** Defaults the Scan tab to the production barcode camera. */
+const USE_VISION_AS_DEFAULT_SCAN = false
 
 const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'ean13',
