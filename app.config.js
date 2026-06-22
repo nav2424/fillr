@@ -79,6 +79,8 @@ module.exports = {
       icon: './assets/icon-ios.png',
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        NSUserTrackingUsageDescription:
+          'Allow Fillr to use your device identifier to measure ad performance and improve marketing.',
         FacebookAppID: facebookAppId,
         FacebookClientToken: facebookClientToken,
         FacebookDisplayName: facebookDisplayName,
