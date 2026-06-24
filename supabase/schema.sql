@@ -120,13 +120,14 @@ create table if not exists public.user_sensitivities (
 -- Products (cached from scans / Open Food Facts)
 create table if not exists public.products (
   id uuid primary key default uuid_generate_v4(),
-  barcode text unique not null,
+  barcode text unique,
   name text not null,
   brand text,
   image_url text,
   ingredient_text text,
   nutrition_json jsonb,
   source text default 'openfoodfacts',
+  vision_confidence numeric,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
