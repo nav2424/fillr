@@ -10,6 +10,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
       name: 'Instant Oatmeal',
       brand: 'Quaker',
       barcode: 'v1',
+      source: 'test',
       ingredientText: 'Whole grain rolled oats, Sugar, Salt, Natural flavor',
       nutritionJson: {
         'energy-kcal_serving': 160,
@@ -27,9 +28,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        ingredientRating: 'clean',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+      },
+      {
+        name: 'Sugar',
+        ingredientRating: 'okay',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+      },
+      {
+        name: 'Salt',
+        ingredientRating: 'okay',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+      },
     ],
     insights: [],
     scoringData: {
