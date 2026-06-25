@@ -204,6 +204,22 @@ export default function OcrScannerScreen() {
       setCurrentScan(result)
       if (Platform.OS === 'ios') {
         // iOS stability path: navigate immediately, then enrich in background.
+        addScan({
+          id: `scan_ocr_${Date.now()}`,
+          productId,
+          productName: result.product.name,
+          barcode: result.product.barcode,
+          safetyStatus: result.safetyStatus,
+          date: new Date().toISOString(),
+          result,
+          source: 'ocr',
+        })
+        void trackScanResultMetric({
+          name: 'scan_succeeded',
+          productId: result.product.id,
+          barcode: result.product.barcode,
+          payload: { source: 'ocr', ingredient_count: result.ingredientBreakdown.length },
+        })
         const productRouteId = result.product.id
         try {
           router.replace({ pathname: '/product/[id]', params: { id: productRouteId } })
@@ -220,6 +236,9 @@ export default function OcrScannerScreen() {
               if (cur?.product.id === productId) {
                 setCurrentScan(enriched)
               }
+              runOnNextFrameInTransition(() => {
+                useScanHistoryStore.getState().updateScanResultByProductId(productId, enriched)
+              })
             } catch (e) {
               console.warn('[Fillr][decode] apply enrich to current scan failed', e)
             }
