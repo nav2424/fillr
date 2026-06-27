@@ -7,9 +7,30 @@ import {
 } from '../lib/overviewScanRemote'
 import type { OverviewScanRow } from '../lib/overviewAnalytics'
 
+function overviewRowDedupeKey(row: OverviewScanRow): string {
+  const productKey =
+    row.result.product.id?.trim() ||
+    row.result.product.barcode?.trim() ||
+    row.result.product.name.trim().toLowerCase()
+  const minuteBucket = Math.floor(row.createdAt.getTime() / 60_000)
+  return `${productKey}:${minuteBucket}`
+}
+
+function mergeOverviewRows(remote: OverviewScanRow[], local: OverviewScanRow[]): OverviewScanRow[] {
+  const merged = [...remote]
+  const seen = new Set(remote.map(overviewRowDedupeKey))
+  for (const row of local) {
+    const key = overviewRowDedupeKey(row)
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(row)
+  }
+  return merged.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+}
+
 /**
- * Prefer Supabase `scan_history` when the user is signed in and rows exist;
- * otherwise fall back to on-device persisted scans.
+ * Use Supabase `scan_history` when available, but keep local-only scans visible
+ * for pre-login, offline, or failed-sync captures.
  */
 export function useOverviewData(): { rows: OverviewScanRow[]; loading: boolean } {
   const userId = useAuthStore((s) => s.userId)
@@ -35,8 +56,7 @@ export function useOverviewData(): { rows: OverviewScanRow[]; loading: boolean }
     const local = localScansToOverviewRows(localScans)
     if (!userId) return local
     if (remoteRows === null) return local
-    if (remoteRows.length > 0) return remoteRows
-    return local
+    return mergeOverviewRows(remoteRows, local)
   }, [userId, remoteRows, localScans])
 
   const loading = Boolean(userId) && remoteRows === null
