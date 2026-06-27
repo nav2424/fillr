@@ -10,6 +10,7 @@ import {
 import { clearPendingSignupAfterOnboarding } from './pendingSignup'
 import { logInToRevenueCat, logOutOfRevenueCat } from '../services/revenuecatService'
 import { useUserStore } from '../store/userStore'
+import { useScanHistoryStore } from '../store/scanHistoryStore'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -44,6 +45,7 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
       await signOutSupabase()
       await clearPendingSignupAfterOnboarding()
       useUserStore.getState().resetForAccountDeletion()
+      useScanHistoryStore.getState().clearAll()
       state.signOut()
     }
     return
