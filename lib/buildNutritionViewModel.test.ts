@@ -19,6 +19,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'test',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +28,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'clean',
+      },
+      {
+        name: 'Sugar',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'okay',
+      },
+      {
+        name: 'Salt',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'okay',
+      },
     ],
     insights: [],
     scoringData: {
