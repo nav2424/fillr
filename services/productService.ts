@@ -31,7 +31,7 @@ import {
   mergeProductDeepAnalysisIntoScan,
 } from './openaiProductAnalysis'
 import { mockProductByBarcode, isDemoScanBarcode } from './mockProducts'
-import { getDietProfileSnapshotSync, getUserProfileForScan } from '../lib/getUserProfileForScan'
+import { getUserProfileForScan } from '../lib/getUserProfileForScan'
 import {
   finalizeEnrichedScanPreservingScore,
   finalizeScanForPresentation,
@@ -313,7 +313,9 @@ async function buildScanFromCachedBarcodeProduct(
   const ingredientsTextSafety =
     detectionFields.ingredients_text_safety.trim() || ingredientText
 
-  const userConfig = buildUserAllergenConfig(params.allergies)
+  const dietaryProfile = await getUserProfileForScan()
+  const scanParams = scanParamsFromDietaryProfile(params, dietaryProfile)
+  const userConfig = buildUserAllergenConfig(scanParams.allergies)
   const output = detectAllergensEvidenceBased(
     {
       product_name: cached.name,
@@ -329,8 +331,7 @@ async function buildScanFromCachedBarcodeProduct(
     userConfig
   )
 
-  const dietaryProfile = await getUserProfileForScan()
-  const celiacStrict = Boolean(params.celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
+  const celiacStrict = Boolean(scanParams.celiacStrictGluten)
   if (celiacStrict) {
     const ingredients = ingredientText
       .split(/[,;]/)
@@ -360,7 +361,7 @@ async function buildScanFromCachedBarcodeProduct(
     barcode,
     cached.name || 'Known product',
     output,
-    params,
+    scanParams,
     {
       brand: cached.brand ?? undefined,
       nutritionJson: cached.nutrition_json ?? undefined,
@@ -370,10 +371,10 @@ async function buildScanFromCachedBarcodeProduct(
     }
   )
   const userProfile = {
-    allergies: params.allergies,
-    sensitivities: params.sensitivities,
-    preferences: params.preferences,
-    goal: params.goal,
+    allergies: scanParams.allergies,
+    sensitivities: scanParams.sensitivities,
+    preferences: scanParams.preferences,
+    goal: scanParams.goal,
     celiacStrictGluten: celiacStrict,
   }
   let result = personalizeScanResult(baseResult, userProfile)
@@ -583,6 +584,31 @@ export interface ScanProductParams {
   celiacStrictGluten?: boolean
 }
 
+function scanProfileFromDietaryProfile(
+  params: Omit<ScanProductParams, 'barcode'>,
+  dietaryProfile: DietaryProfile
+): Omit<ScanProductParams, 'barcode'> {
+  return {
+    allergies: dietaryProfile.allergies,
+    sensitivities: dietaryProfile.sensitivities,
+    preferences: dietaryProfile.scoringPreferenceKeys?.length
+      ? dietaryProfile.scoringPreferenceKeys
+      : dietaryProfile.preferences,
+    goal: dietaryProfile.goal ?? params.goal ?? '',
+    celiacStrictGluten: Boolean(dietaryProfile.celiacStrictGluten),
+  }
+}
+
+function scanParamsFromDietaryProfile(
+  params: ScanProductParams,
+  dietaryProfile: DietaryProfile
+): ScanProductParams {
+  return {
+    barcode: params.barcode,
+    ...scanProfileFromDietaryProfile(params, dietaryProfile),
+  }
+}
+
 export type ScanProductFastResult =
   | { ok: true; result: ScanResult; dietaryProfile: DietaryProfile }
   | { ok: false; error: string; reason?: 'not_found' | 'insufficient_data'; productName?: string }
@@ -591,10 +617,12 @@ export type ScanProductFastResult =
  * Phase 1 — OFF + allergens + deterministic ratings + score; no OpenAI. Navigate on this, then call `enrichScanResultWithAI`.
  */
 export async function scanProductFast(params: ScanProductParams): Promise<ScanProductFastResult> {
-  const { barcode, allergies, sensitivities, preferences, goal } = params
+  const { barcode } = params
 
-  const syncSnap = getDietProfileSnapshotSync()
-  const celiacForOff = Boolean(params.celiacStrictGluten ?? syncSnap.celiacStrictGluten)
+  const dietaryProfile = await getUserProfileForScan()
+  const scanParams = scanParamsFromDietaryProfile(params, dietaryProfile)
+  const { allergies, sensitivities, preferences, goal } = scanParams
+  const celiacForOff = Boolean(scanParams.celiacStrictGluten)
 
   const offResult = await scanBarcodeForAllergens({
     barcode,
@@ -613,7 +641,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
         offResult.barcode,
         offResult.productName,
         offResult.output,
-        params,
+        scanParams,
         {
           brand: offResult.brand,
           nutritionJson: offResult.nutritionJson,
@@ -627,7 +655,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
         ingredientText.trim().length > 20 && parseIngredients(ingredientText, 'barcode').length >= 3
       if (!hasAdequateIngredientData) {
         const fused = await buildScanFromCachedBarcodeProduct(
-          params,
+          scanParams,
           offResult.barcode,
           undefined,
           offAllergenSupplementFromScanResult(offResult)
@@ -679,7 +707,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
             },
           })
           const fusedPreferred = await buildScanFromCachedBarcodeProduct(
-            params,
+            scanParams,
             offResult.barcode,
             cached,
             offAllergenSupplementFromScanResult(offResult)
@@ -701,8 +729,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
         }
       }
 
-      const dietaryProfile = await getUserProfileForScan()
-      const celiacStrictGluten = Boolean(params.celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
+      const celiacStrictGluten = Boolean(scanParams.celiacStrictGluten)
       const userProfile = { allergies, sensitivities, preferences, goal, celiacStrictGluten }
 
       let result = personalizeScanResult(baseResult, userProfile)
@@ -725,8 +752,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
 
   const baseMock = mockProductByBarcode(barcode)
   if (baseMock) {
-    const dietaryProfile = await getUserProfileForScan()
-    const celiacStrictGluten = Boolean(params.celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
+    const celiacStrictGluten = Boolean(scanParams.celiacStrictGluten)
     const userProfile = { allergies, sensitivities, preferences, goal, celiacStrictGluten }
 
     let result = personalizeScanResult(baseMock, userProfile)
@@ -950,15 +976,25 @@ export async function rescanWithManualIngredients(
     pastedIngredients,
   } = params
   const dietaryProfile = await getUserProfileForScan()
-  const celiac = Boolean(celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
-  const userProfile = { allergies, sensitivities, preferences, goal, celiacStrictGluten: celiac }
+  const scanParams = scanParamsFromDietaryProfile(
+    { barcode, allergies, sensitivities, preferences, goal, celiacStrictGluten },
+    dietaryProfile
+  )
+  const celiac = Boolean(scanParams.celiacStrictGluten)
+  const userProfile = {
+    allergies: scanParams.allergies,
+    sensitivities: scanParams.sensitivities,
+    preferences: scanParams.preferences,
+    goal: scanParams.goal,
+    celiacStrictGluten: celiac,
+  }
   const pasted = pastedIngredients.trim()
   const product = currentResult.product
 
   const ingredients_text_safety = extractEnglishIngredientHaystackForSafetyFromBlob(pasted, 'barcode')
   const ingredients_text = extractEnglishIngredients({ ingredients_text: pasted }, 'barcode')
 
-  const userConfig = buildUserAllergenConfig(allergies)
+  const userConfig = buildUserAllergenConfig(scanParams.allergies)
   const output = detectAllergensEvidenceBased(
     {
       product_name: product.name,
@@ -998,10 +1034,10 @@ export async function rescanWithManualIngredients(
     product.name,
     output,
     {
-      allergies,
-      sensitivities,
-      preferences,
-      goal,
+      allergies: scanParams.allergies,
+      sensitivities: scanParams.sensitivities,
+      preferences: scanParams.preferences,
+      goal: scanParams.goal,
       celiacStrictGluten: celiac,
       ingredientParseSource: 'barcode',
     },
@@ -1069,12 +1105,13 @@ export async function createScanResultFromIngredientText(
   }
 ): Promise<CreateScanFromIngredientTextPayload> {
   const dietaryProfile = await getUserProfileForScan()
-  const celiac = Boolean(params.celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
+  const scanProfile = scanProfileFromDietaryProfile(params, dietaryProfile)
+  const celiac = Boolean(scanProfile.celiacStrictGluten)
   const userProfile = {
-    allergies: params.allergies,
-    sensitivities: params.sensitivities,
-    preferences: params.preferences,
-    goal: params.goal,
+    allergies: scanProfile.allergies,
+    sensitivities: scanProfile.sensitivities,
+    preferences: scanProfile.preferences,
+    goal: scanProfile.goal,
     celiacStrictGluten: celiac,
   }
 
@@ -1109,7 +1146,7 @@ export async function createScanResultFromIngredientText(
   const ingredients_text_safety = extractEnglishIngredientHaystackForSafetyFromBlob(pasted, parseSource)
   const ingredients_text = extractEnglishIngredients({ ingredients_text: pasted }, parseSource)
 
-  const userConfig = buildUserAllergenConfig(params.allergies)
+  const userConfig = buildUserAllergenConfig(scanProfile.allergies)
   const containsText = params.containsText?.trim() ?? ''
   const mayContainText = params.mayContainText?.trim() ?? ''
   const output = detectAllergensEvidenceBased(
@@ -1148,10 +1185,10 @@ export async function createScanResultFromIngredientText(
     productDisplayName,
     output,
     {
-      allergies: params.allergies,
-      sensitivities: params.sensitivities,
-      preferences: params.preferences,
-      goal: params.goal,
+      allergies: scanProfile.allergies,
+      sensitivities: scanProfile.sensitivities,
+      preferences: scanProfile.preferences,
+      goal: scanProfile.goal,
       celiacStrictGluten: celiac,
       ingredientParseSource: parseSource,
     },
