@@ -58,4 +58,4 @@ test('personalization keeps allergen matches when profile uses saved preset slug
 
   assert.equal(gluten.safetyStatus, 'UNSAFE')
   assert.deepEqual(gluten.matchedAllergens.map((a) => a.allergenKey), ['wheat'])
-}
+})
