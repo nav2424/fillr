@@ -59,7 +59,6 @@ export default function VerifyEmailScreen() {
       void logInToRevenueCat(userId)
       await setOnboardingCompletedOnServer(userId)
       setOnboardingComplete(true)
-      useUserStore.getState().clearOnboardingDraft()
       router.replace({
         pathname: '/onboarding/disclaimer',
         params: {
