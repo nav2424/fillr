@@ -3,9 +3,12 @@ import test from 'node:test'
 import {
   flattenVisionIngredients,
   normalizeVisionProductIdentification,
+  visionMeetsConfidenceThreshold,
   visionContainsAllergenText,
   visionIngredientsText,
   visionMayContainAllergenText,
+  visionNutritionToProductJson,
+  VISION_CONFIDENCE_THRESHOLD,
 } from '../lib/visionProductParse'
 
 test('normalizeVisionProductIdentification parses valid payload', () => {
@@ -57,4 +60,35 @@ test('vision allergen helpers format contains and may contain lines', () => {
 
 test('normalizeVisionProductIdentification returns null for invalid payload', () => {
   assert.equal(normalizeVisionProductIdentification(null), null)
+})
+
+test('vision confidence gate uses the shared threshold', () => {
+  const low = normalizeVisionProductIdentification({ confidence: VISION_CONFIDENCE_THRESHOLD - 0.01 })
+  const high = normalizeVisionProductIdentification({ confidence: VISION_CONFIDENCE_THRESHOLD })
+  assert.equal(visionMeetsConfidenceThreshold(low), false)
+  assert.equal(visionMeetsConfidenceThreshold(high), true)
+})
+
+test('visionNutritionToProductJson maps per-serving facts for scoring', () => {
+  const id = normalizeVisionProductIdentification({
+    confidence: 0.9,
+    nutrition_facts: {
+      serving_size: '40 g',
+      calories: 220,
+      fat_g: 14,
+      carbohydrates_g: 22,
+      sugars_g: 1,
+      protein_g: 3,
+      sodium_mg: 350,
+    },
+  })!
+  assert.deepEqual(visionNutritionToProductJson(id), {
+    serving_size: '40 g',
+    'energy-kcal_serving': 220,
+    fat_serving: 14,
+    carbohydrates_serving: 22,
+    sugars_serving: 1,
+    proteins_serving: 3,
+    sodium_serving_mg: 350,
+  })
 })
