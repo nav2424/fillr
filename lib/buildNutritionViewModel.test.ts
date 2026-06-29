@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNutritionViewModel, nutritionScanTags } from './buildNutritionViewModel'
+import { extractNutritionFacts } from './extractNutritionFacts'
 import type { ScanResult } from '../types'
 
 function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
@@ -59,4 +60,35 @@ test('nutritionScanTags for history filters', () => {
   const tags = nutritionScanTags(baseScan())
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
+})
+
+test('extractNutritionFacts converts Open Food Facts sodium grams to milligrams', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_serving: 0.62,
+          sodium_100g: 1.2,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.sodiumMg, 620)
+})
+
+test('extractNutritionFacts converts Open Food Facts per-100g sodium grams when serving is missing', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_100g: 0.8,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.sodiumMg, 800)
 })
