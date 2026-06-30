@@ -1,7 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNutritionViewModel, nutritionScanTags } from './buildNutritionViewModel'
-import type { ScanResult } from '../types'
+import { extractNutritionFacts } from './extractNutritionFacts'
+import type { IngredientRating, ScanResult } from '../types'
+
+function ingredient(name: string, ingredientRating: IngredientRating) {
+  return {
+    name,
+    whatItIs: '',
+    whyItsUsed: '',
+    whatToKnow: '',
+    ingredientRating,
+  }
+}
 
 function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
   return {
@@ -19,6 +30,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'test',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +39,9 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      ingredient('Whole grain rolled oats', 'clean'),
+      ingredient('Sugar', 'okay'),
+      ingredient('Salt', 'okay'),
     ],
     insights: [],
     scoringData: {
@@ -59,4 +71,35 @@ test('nutritionScanTags for history filters', () => {
   const tags = nutritionScanTags(baseScan())
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
+})
+
+test('extractNutritionFacts converts Open Food Facts sodium grams to milligrams', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_serving: 0.62,
+          sodium_100g: 1.2,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.sodiumMg, 620)
+})
+
+test('extractNutritionFacts converts Open Food Facts per-100g sodium grams when serving is missing', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_100g: 0.8,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.sodiumMg, 800)
 })
