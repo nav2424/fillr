@@ -7,6 +7,7 @@ import {
   visionIngredientsText,
   visionMayContainAllergenText,
 } from '../lib/visionProductParse'
+import { createScanResultFromVisionProduct } from './productService'
 
 test('normalizeVisionProductIdentification parses valid payload', () => {
   const out = normalizeVisionProductIdentification({
@@ -57,4 +58,28 @@ test('vision allergen helpers format contains and may contain lines', () => {
 
 test('normalizeVisionProductIdentification returns null for invalid payload', () => {
   assert.equal(normalizeVisionProductIdentification(null), null)
+})
+
+test('vision scan does not mark allergy profiles safe without label verification', async () => {
+  const { result } = await createScanResultFromVisionProduct({
+    allergies: ['peanuts'],
+    sensitivities: [],
+    preferences: [],
+    goal: '',
+    celiacStrictGluten: false,
+    identification: {
+      product_name: 'Plain Potato Chips',
+      brand: 'Example',
+      variant: '',
+      confidence: 0.92,
+      ingredients: ['Potatoes', 'Vegetable oil', 'Salt'],
+      nutrition_facts: {},
+      allergens: [],
+      may_contain_allergens: [],
+      country_variant: 'US',
+    },
+  })
+
+  assert.equal(result.safetyStatus, 'UNKNOWN')
+  assert.match(result.smartSummary, /not verified from the physical ingredients label/i)
 })
