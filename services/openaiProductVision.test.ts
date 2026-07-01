@@ -7,7 +7,6 @@ import {
   visionIngredientsText,
   visionMayContainAllergenText,
 } from '../lib/visionProductParse'
-import { createScanResultFromVisionProduct } from './productService'
 
 test('normalizeVisionProductIdentification parses valid payload', () => {
   const out = normalizeVisionProductIdentification({
@@ -61,6 +60,10 @@ test('normalizeVisionProductIdentification returns null for invalid payload', ()
 })
 
 test('vision scan does not mark allergy profiles safe without label verification', async () => {
+  process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+  const { createScanResultFromVisionProduct } = await import('./productService')
+
   const { result } = await createScanResultFromVisionProduct({
     allergies: ['peanuts'],
     sensitivities: [],
