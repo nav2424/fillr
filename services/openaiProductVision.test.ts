@@ -62,6 +62,7 @@ test('normalizeVisionProductIdentification returns null for invalid payload', ()
 test('vision scan does not mark allergy profiles safe without label verification', async () => {
   process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+  ;(globalThis as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false
   const { createScanResultFromVisionProduct } = await import('./productService')
 
   const { result } = await createScanResultFromVisionProduct({
