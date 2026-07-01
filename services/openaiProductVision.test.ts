@@ -58,3 +58,32 @@ test('vision allergen helpers format contains and may contain lines', () => {
 test('normalizeVisionProductIdentification returns null for invalid payload', () => {
   assert.equal(normalizeVisionProductIdentification(null), null)
 })
+
+test('vision scan does not mark allergy profiles safe without label verification', async () => {
+  process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+  ;(globalThis as typeof globalThis & { __DEV__?: boolean }).__DEV__ = false
+  const { createScanResultFromVisionProduct } = await import('./productService')
+
+  const { result } = await createScanResultFromVisionProduct({
+    allergies: ['peanuts'],
+    sensitivities: [],
+    preferences: [],
+    goal: '',
+    celiacStrictGluten: false,
+    identification: {
+      product_name: 'Plain Potato Chips',
+      brand: 'Example',
+      variant: '',
+      confidence: 0.92,
+      ingredients: ['Potatoes', 'Vegetable oil', 'Salt'],
+      nutrition_facts: {},
+      allergens: [],
+      may_contain_allergens: [],
+      country_variant: 'US',
+    },
+  })
+
+  assert.equal(result.safetyStatus, 'UNKNOWN')
+  assert.match(result.smartSummary, /not verified from the physical ingredients label/i)
+})

@@ -1244,6 +1244,25 @@ export async function createScanResultFromIngredientText(
   return { result: finalized, dietaryProfile }
 }
 
+function applyVisionSafetyVerificationGuard(
+  result: ScanResult,
+  params: Pick<ScanProductParams, 'allergies' | 'celiacStrictGluten'>
+): ScanResult {
+  const hasCriticalSafetyProfile =
+    params.allergies.some((a) => a.trim().length > 0) || Boolean(params.celiacStrictGluten)
+  if (!hasCriticalSafetyProfile || result.safetyStatus !== 'SAFE') return result
+
+  const warning =
+    'Vision identified this product, but allergy safety is not verified from the physical ingredients label. Check the package before relying on this result.'
+  return {
+    ...result,
+    safetyStatus: 'UNKNOWN',
+    smartSummary: warning,
+    productVerdict: warning,
+    insights: [warning, ...result.insights.filter((i) => i !== warning)],
+  }
+}
+
 /**
  * Build a scan from GPT-4o vision identification (front-of-pack photo).
  * Uses the same allergen + scoring pipeline as barcode/OCR scans.
@@ -1305,9 +1324,10 @@ export async function createScanResultFromVisionProduct(
       },
     },
   }
+  const safetyAdjustedVisionMeta = applyVisionSafetyVerificationGuard(withVisionMeta, params)
 
   let finalResult = freezeScanScoring(
-    finalizeScanForPresentation(withVisionMeta, dietaryProfile),
+    finalizeScanForPresentation(safetyAdjustedVisionMeta, dietaryProfile),
     dietaryProfile
   )
   if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) {
