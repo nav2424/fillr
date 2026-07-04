@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
 import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
+import { buildUserAllergenConfig } from './allergenEngine'
 
 export interface UserProfile {
   allergies: string[]
@@ -86,8 +87,13 @@ function filterAllergensForUser(
   userAllergies: string[]
 ): MatchedAllergen[] {
   if (userAllergies.length === 0) return []
-  const userSet = new Set(userAllergies.map((a) => a.toLowerCase()))
-  return matchedAllergens.filter((m) => userSet.has(m.allergenKey.toLowerCase()))
+  const userConfig = buildUserAllergenConfig(userAllergies)
+  const userSet = new Set([
+    ...userConfig.builtin_ids,
+    ...userConfig.custom_rules.map((rule) => rule.id),
+    ...userAllergies.map((a) => a.toLowerCase().trim().replace(/\s+/g, '_')),
+  ])
+  return matchedAllergens.filter((m) => userSet.has(m.allergenKey.toLowerCase().trim()))
 }
 
 /** One UI row per profile allergen key (merges bilingual / multi-line evidence). */

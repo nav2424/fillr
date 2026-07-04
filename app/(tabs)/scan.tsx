@@ -38,7 +38,6 @@ import { personalizeScanResult } from '../../lib/personalizationEngine'
 import { attachFillrFitToScanResult } from '../../lib/attachFillrFit'
 import { consumeVisionAutoOpenPending } from '../../lib/navigationHelpers'
 import { getDietProfileSnapshotSync } from '../../lib/getUserProfileForScan'
-import { ingredientExplanationFailsQualityGate } from '../../lib/ingredientCopyQuality'
 
 /** Tab bar is `position: 'absolute'` + floating pill — keep sheet + disclaimer above it. */
 const SCAN_TAB_BAR_CLEARANCE = 88
@@ -46,8 +45,8 @@ const SCAN_TAB_BAR_CLEARANCE = 88
 const VIEWFINDER_W = 220
 const VIEWFINDER_H = 180
 
-/** Flip to false before shipping — defaults Scan tab to GPT-4o photo capture for testing. */
-const USE_VISION_AS_DEFAULT_SCAN = true
+/** Defaults Scan tab to barcode capture; vision remains available from explicit entry points. */
+const USE_VISION_AS_DEFAULT_SCAN = false
 
 const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'ean13',
@@ -60,35 +59,10 @@ const RETAIL_BARCODE_TYPES: BarcodeType[] = [
   'codabar',
 ]
 
-function hasReusableIngredientDecode(result: ScanResult): boolean {
-  if (!result.ingredientBreakdown.length) return false
-  if (result.ingredientBreakdown.some((ing) => ing.aiDecodePending)) return false
-  if (result.ingredientBreakdown.some((ing) => ing.ingredientDecodeStatus === 'unavailable')) return false
-  if (result.ingredientBreakdown.some((ing) => ingredientExplanationFailsQualityGate(ing))) return false
-  return result.ingredientBreakdown.some((ing) => {
-    const text = [ing.whatItIs, ing.whatItDoes, ing.whyItsUsed, ing.labelDecoder, ing.quickSummary]
-      .map((s) => s?.trim() ?? '')
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    if (!text) return false
-    return !(
-      text.includes('explicitly listed on the label and contributes') ||
-      text.includes('contributes to the product recipe, texture, flavor, stability') ||
-      text.includes('decode for') ||
-      text.includes('didn’t load this time') ||
-      text.includes("didn't load this time")
-    )
-  })
-}
-
-function getReusableBarcodeResult(barcode: string): ScanResult | null {
-  const bc = barcode.trim()
-  if (!bc) return null
-  const match = useScanHistoryStore
-    .getState()
-    .scans.find((scan) => scan.barcode === bc && scan.result && hasReusableIngredientDecode(scan.result))
-  return match?.result ?? null
+function getReusableBarcodeResult(_barcode: string): ScanResult | null {
+  // Safety detection is profile-dependent; always re-run the scan pipeline so saved or
+  // changed allergies/celiac mode cannot reuse a stale SAFE result.
+  return null
 }
 
 export default function ScanScreen() {
