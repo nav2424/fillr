@@ -79,3 +79,26 @@ test('nutritionScanTags for history filters', () => {
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
 })
+
+test('OFF sodium values in grams are normalized to milligrams', () => {
+  const scan = baseScan({
+    product: {
+      ...baseScan().product,
+      nutritionJson: {
+        'energy-kcal_serving': 220,
+        sodium_serving: 0.62,
+      },
+    },
+  })
+
+  const model = buildNutritionViewModel({
+    scan,
+    scoringData: scan.scoringData ?? null,
+    goalKey: 'lower_sodium',
+    nutritionTargets: { maxSodiumMg: 400 },
+  })
+  const sodiumRow = model.macros.find((m) => m.key === 'sodium')
+
+  assert.equal(sodiumRow?.value, 620)
+  assert.equal(nutritionScanTags(scan).highSodium, true)
+})
