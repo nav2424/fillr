@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNutritionViewModel, nutritionScanTags } from './buildNutritionViewModel'
+import { extractNutritionFacts } from './extractNutritionFacts'
 import type { ScanResult } from '../types'
 
 function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
@@ -19,6 +20,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'openfoodfacts',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +29,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        whatItIs: 'Whole grain oats',
+        whyItsUsed: 'Base grain',
+        whatToKnow: 'A minimally processed grain',
+        ingredientRating: 'clean',
+      },
+      {
+        name: 'Sugar',
+        whatItIs: 'Sweetener',
+        whyItsUsed: 'Adds sweetness',
+        whatToKnow: 'Contributes added sugar',
+        ingredientRating: 'okay',
+      },
+      {
+        name: 'Salt',
+        whatItIs: 'Sodium chloride',
+        whyItsUsed: 'Adds flavor',
+        whatToKnow: 'Contributes sodium',
+        ingredientRating: 'okay',
+      },
     ],
     insights: [],
     scoringData: {
@@ -59,4 +79,44 @@ test('nutritionScanTags for history filters', () => {
   const tags = nutritionScanTags(baseScan())
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
+})
+
+test('extractNutritionFacts converts OFF sodium grams to milligrams', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          serving_size: '40 g',
+          sodium_serving: 0.35,
+          sugars_serving: 8,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.sodiumMg, 350)
+  assert.equal(facts.sugarsG, 8)
+})
+
+test('extractNutritionFacts scales OFF 100g values when serving size is available', () => {
+  const facts = extractNutritionFacts(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          serving_size: '50 g',
+          'energy-kcal_100g': 400,
+          sodium_100g: 0.7,
+          sugars_100g: 28,
+          proteins_100g: 10,
+        },
+      },
+    })
+  )
+
+  assert.equal(facts.calories, 200)
+  assert.equal(facts.sodiumMg, 350)
+  assert.equal(facts.sugarsG, 14)
+  assert.equal(facts.proteinG, 5)
 })
