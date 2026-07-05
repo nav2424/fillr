@@ -5,20 +5,28 @@ import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
 import { fetchOpenFoodFactsProduct } from './openFoodFactsFetch'
 import { buildProductName } from './buildProductName'
 
-function pickNutrimentsForProduct(raw: unknown): Record<string, unknown> | undefined {
+function pickNutrimentsForProduct(raw: unknown, servingSize?: unknown): Record<string, unknown> | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const n = raw as Record<string, unknown>
   const keys = [
     'energy-kcal_100g',
     'energy-kcal_serving',
     'energy_100g',
+    'serving_size',
     'fat_100g',
+    'fat_serving',
     'saturated-fat_100g',
+    'saturated-fat_serving',
     'carbohydrates_100g',
+    'carbohydrates_serving',
     'sugars_100g',
+    'sugars_serving',
     'fiber_100g',
+    'fiber_serving',
     'proteins_100g',
+    'proteins_serving',
     'protein_100g',
+    'protein_serving',
     'salt_100g',
     'salt_serving',
     'sodium_100g',
@@ -29,6 +37,7 @@ function pickNutrimentsForProduct(raw: unknown): Record<string, unknown> | undef
     'cholesterol_100g',
   ] as const
   const out: Record<string, unknown> = {}
+  if (servingSize !== undefined && servingSize !== null && servingSize !== '') out.serving_size = servingSize
   for (const k of keys) {
     const v = n[k]
     if (v !== undefined && v !== null && v !== '') out[k] = v
@@ -141,7 +150,7 @@ export async function scanBarcodeForAllergens(params: {
     }
   }
 
-  const nutritionJson = pickNutrimentsForProduct(product?.nutriments)
+  const nutritionJson = pickNutrimentsForProduct(product?.nutriments, product?.serving_size)
   const brandsTags = product?.brands_tags
   const firstBrandTag =
     Array.isArray(brandsTags) && brandsTags.length > 0 ? String(brandsTags[0]) : ''
