@@ -20,6 +20,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'openfoodfacts',
       createdAt: '',
       updatedAt: '',
     },
@@ -28,9 +29,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        whatItIs: 'Whole grain oats',
+        whyItsUsed: 'Base grain',
+        whatToKnow: 'A minimally processed grain',
+        ingredientRating: 'clean',
+      },
+      {
+        name: 'Sugar',
+        whatItIs: 'Sweetener',
+        whyItsUsed: 'Adds sweetness',
+        whatToKnow: 'Contributes added sugar',
+        ingredientRating: 'okay',
+      },
+      {
+        name: 'Salt',
+        whatItIs: 'Sodium chloride',
+        whyItsUsed: 'Adds flavor',
+        whatToKnow: 'Contributes sodium',
+        ingredientRating: 'okay',
+      },
     ],
     insights: [],
     scoringData: {
