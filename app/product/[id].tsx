@@ -425,8 +425,7 @@ export default function ProductScreen() {
     if (!scanNeedsIngredientDecode(displayScoredResult)) return
     const productId = displayScoredResult.product.id
     if (isIngredientEnrichInFlight(productId)) {
-      // Vision/barcode flow already started decode — don't queue a second pass when it finishes.
-      decodeRetryStartedRef.current = true
+      // Let the handoff enrichment settle first; if it keeps pending copy, a later store update can retry.
       return
     }
     decodeRetryStartedRef.current = true
@@ -685,13 +684,15 @@ export default function ProductScreen() {
 
   const heroFitScore = profileFitScore ?? displayFillrFit?.score ?? null
   const heroFitVerdict = useMemo(() => {
+    const hasSafetyBlockingFit = matchedAllergens.length > 0 || celiacAvoid || heroFitScore === 0
+    if (hasSafetyBlockingFit && displayFillrFit?.verdict?.trim()) return displayFillrFit.verdict
     if (nutritionViewModel?.hasData && (nutritionViewModel.lensScores.nutritionFit ?? 0) > 0) {
       return nutritionViewModel.lensScores.nutritionLabel
     }
     if (displayFillrFit?.verdict?.trim()) return displayFillrFit.verdict
     if (heroFitScore != null) return scoreToShortVerdict(heroFitScore).label
     return 'Scored'
-  }, [nutritionViewModel, displayFillrFit?.verdict, heroFitScore])
+  }, [nutritionViewModel, displayFillrFit?.verdict, heroFitScore, matchedAllergens.length, celiacAvoid])
 
   const showNutritionSection =
     showTrustPanels && Boolean(nutritionViewModel?.hasData || nutritionViewModel?.macros.length)
