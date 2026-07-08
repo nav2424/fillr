@@ -36,15 +36,6 @@ function userFitCopy(scoringData: FillrScoringInput, fit: FillrFitComputed): str
   return 'No direct profile conflict drove the score; ingredient quality and category fit did most of the work.'
 }
 
-function computeLiveFillrScoring(
-  result: ScanResult,
-  profile: DietaryProfile
-): { fillrFit: FillrFitComputed; scoringData: FillrScoringInput } {
-  const scoringData = buildScoringData(result, result.ingredientBreakdown, profile)
-  const fillrFit = calculateFillrFit(scoringData)
-  return { fillrFit, scoringData }
-}
-
 function attachScoringCopy(result: ScanResult, scoringData: FillrScoringInput, fit: FillrFitComputed): ScanResult {
   const category = scoringData.productCategory ?? 'generic_packaged'
   const band = CATEGORY_BASELINES[category]

@@ -11,6 +11,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
       brand: 'Quaker',
       barcode: 'v1',
       ingredientText: 'Whole grain rolled oats, Sugar, Salt, Natural flavor',
+      source: 'openfoodfacts',
       nutritionJson: {
         'energy-kcal_serving': 160,
         proteins_serving: 4,
@@ -27,9 +28,27 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      {
+        name: 'Whole grain rolled oats',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'clean',
+      },
+      {
+        name: 'Sugar',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'okay',
+      },
+      {
+        name: 'Salt',
+        whatItIs: '',
+        whyItsUsed: '',
+        whatToKnow: '',
+        ingredientRating: 'okay',
+      },
     ],
     insights: [],
     scoringData: {
@@ -59,4 +78,18 @@ test('nutritionScanTags for history filters', () => {
   const tags = nutritionScanTags(baseScan())
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
+})
+
+test('nutritionScanTags converts Open Food Facts sodium grams to milligrams', () => {
+  const tags = nutritionScanTags(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_serving: 0.45,
+        },
+      },
+    })
+  )
+  assert.equal(tags.highSodium, true)
 })
