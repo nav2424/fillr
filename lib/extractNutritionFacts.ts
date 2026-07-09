@@ -16,6 +16,16 @@ function nutritionNum(v: unknown): number {
   return Number.isFinite(x) && x > 0 ? x : 0
 }
 
+function gramsToMilligrams(v: unknown): number {
+  const n = nutritionNum(v)
+  return n > 0 ? n * 1000 : 0
+}
+
+function saltGramsToSodiumMilligrams(v: unknown): number {
+  const n = nutritionNum(v)
+  return n > 0 ? (n / 2.5) * 1000 : 0
+}
+
 /** Unified per-serving nutrition from OFF nutriments or vision embed. */
 export function extractNutritionFacts(scan: ScanResult): NutritionFacts {
   const n = scan.product.nutritionJson
@@ -25,7 +35,12 @@ export function extractNutritionFacts(scan: ScanResult): NutritionFacts {
   const out: NutritionFacts = {}
 
   let calories = nutritionNum(o['energy-kcal_serving']) || nutritionNum(o['energy-kcal_100g'])
-  let sodium = nutritionNum(o['sodium_serving_mg']) || nutritionNum(o['sodium_100g'])
+  let sodium =
+    nutritionNum(o['sodium_serving_mg']) ||
+    gramsToMilligrams(o['sodium_serving']) ||
+    gramsToMilligrams(o['sodium_100g']) ||
+    saltGramsToSodiumMilligrams(o['salt_serving']) ||
+    saltGramsToSodiumMilligrams(o['salt_100g'])
   let fat = nutritionNum(o['fat_serving']) || nutritionNum(o['fat_100g'])
   let protein = nutritionNum(o['proteins_serving']) || nutritionNum(o['proteins_100g'])
   let carbs = nutritionNum(o['carbohydrates_serving']) || nutritionNum(o['carbohydrates_100g'])

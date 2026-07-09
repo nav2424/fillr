@@ -120,13 +120,14 @@ create table if not exists public.user_sensitivities (
 -- Products (cached from scans / Open Food Facts)
 create table if not exists public.products (
   id uuid primary key default uuid_generate_v4(),
-  barcode text unique not null,
+  barcode text unique,
   name text not null,
   brand text,
   image_url text,
   ingredient_text text,
   nutrition_json jsonb,
   source text default 'openfoodfacts',
+  vision_confidence numeric,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -161,6 +162,7 @@ create table if not exists public.scan_history (
   barcode text not null,
   product_id uuid references public.products(id) on delete set null,
   result_json jsonb,
+  scan_method text not null default 'barcode' check (scan_method in ('barcode', 'ocr', 'manual', 'vision')),
   created_at timestamptz default now()
 );
 
