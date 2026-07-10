@@ -60,3 +60,17 @@ test('nutritionScanTags for history filters', () => {
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
 })
+
+test('nutritionScanTags converts OFF sodium grams to milligrams', () => {
+  const tags = nutritionScanTags(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_100g: 0.8,
+        },
+      },
+    })
+  )
+  assert.equal(tags.highSodium, true)
+})
