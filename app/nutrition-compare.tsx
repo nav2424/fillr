@@ -52,10 +52,10 @@ export default function NutritionCompareScreen() {
   const getResultByProductId = useScanHistoryStore((s) => s.getResultByProductId)
   const scans = useScanHistoryStore((s) => s.scans)
 
-  const leftScan = id ? getResultByProductId(id)?.result ?? null : null
+  const leftScan = id ? getResultByProductId(id) : null
   const [rightProductId, setRightProductId] = useState<string | null>(null)
 
-  const rightScan = rightProductId ? getResultByProductId(rightProductId)?.result ?? null : null
+  const rightScan = rightProductId ? getResultByProductId(rightProductId) : null
 
   const pickOptions = useMemo(
     () =>
