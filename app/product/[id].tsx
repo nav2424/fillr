@@ -349,7 +349,6 @@ export default function ProductScreen() {
 
   const storedResult =
     currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
-  const isIosStabilityMode = Platform.OS === 'ios'
 
   const userProfileForPersonalize: UserProfile = useMemo(
     () => ({
@@ -364,9 +363,8 @@ export default function ProductScreen() {
 
   const viewResult = useMemo(() => {
     if (!storedResult) return null
-    if (isIosStabilityMode) return storedResult
     return personalizeScanResult(storedResult, userProfileForPersonalize)
-  }, [storedResult, userProfileForPersonalize, isIosStabilityMode])
+  }, [storedResult, userProfileForPersonalize])
 
   const openProductNameModal = useCallback(() => {
     const r = currentResult?.product.id === id ? currentResult : getResultByProductId(id || '')
@@ -685,13 +683,19 @@ export default function ProductScreen() {
 
   const heroFitScore = profileFitScore ?? displayFillrFit?.score ?? null
   const heroFitVerdict = useMemo(() => {
+    if (matchedAllergens.length > 0 || celiacAvoid || safetyStatus === 'UNSAFE') {
+      return displayFillrFit?.verdict?.trim() || 'Unsafe'
+    }
+    if (safetyStatus === 'CAUTION') {
+      return displayFillrFit?.verdict?.trim() || 'Caution'
+    }
     if (nutritionViewModel?.hasData && (nutritionViewModel.lensScores.nutritionFit ?? 0) > 0) {
       return nutritionViewModel.lensScores.nutritionLabel
     }
     if (displayFillrFit?.verdict?.trim()) return displayFillrFit.verdict
     if (heroFitScore != null) return scoreToShortVerdict(heroFitScore).label
     return 'Scored'
-  }, [nutritionViewModel, displayFillrFit?.verdict, heroFitScore])
+  }, [matchedAllergens.length, celiacAvoid, safetyStatus, nutritionViewModel, displayFillrFit?.verdict, heroFitScore])
 
   const showNutritionSection =
     showTrustPanels && Boolean(nutritionViewModel?.hasData || nutritionViewModel?.macros.length)
