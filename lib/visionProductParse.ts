@@ -43,7 +43,9 @@ function normalizeNutrition(value: unknown): VisionNutritionFacts {
   if (servingSize) facts.serving_size = servingSize
   for (const key of NUTRITION_KEYS) {
     const n = asNumber(value[key])
-    if (n !== undefined) facts[key] = n
+    if (n !== undefined) {
+      ;(facts as Record<string, number | string | undefined>)[key] = n
+    }
   }
   return facts
 }
