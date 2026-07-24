@@ -9,9 +9,13 @@ import type {
   MatchedSensitivity,
   SafetyStatus,
   CeliacResult,
+  AllergenEvidenceSection,
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
 import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
+import { buildUserAllergenConfig, detectAllergensEvidenceBased } from './allergenEngine'
+import { getCeliacSeverity, runCeliacCheck } from './allergenEngine/matcher'
+import type { MatchedAllergen as EngineMatchedAllergen } from './allergenEngine/types'
 
 export interface UserProfile {
   allergies: string[]
@@ -88,6 +92,89 @@ function filterAllergensForUser(
   if (userAllergies.length === 0) return []
   const userSet = new Set(userAllergies.map((a) => a.toLowerCase()))
   return matchedAllergens.filter((m) => userSet.has(m.allergenKey.toLowerCase()))
+}
+
+function evidenceSection(section: EngineMatchedAllergen['section']): AllergenEvidenceSection {
+  return section === 'contains' || section === 'may_contain' ? section : 'ingredients'
+}
+
+function mapEngineAllergenMatch(match: EngineMatchedAllergen): MatchedAllergen {
+  const source =
+    match.section === 'contains'
+      ? 'contains statement'
+      : match.section === 'may_contain'
+        ? 'may-contain warning'
+        : 'ingredient list'
+  return {
+    allergenKey: match.allergen_id,
+    allergenName: match.allergen_name,
+    matchedIngredient: match.match_text,
+    explanation: `${match.allergen_name} matched in the ${source}.`,
+    severity: match.severity,
+    evidenceSection: evidenceSection(match.section),
+    evidenceText: match.match_text,
+  }
+}
+
+function detectCurrentAllergens(base: ScanResult, profile: UserProfile, ingredientText: string): MatchedAllergen[] {
+  const hasStoredAllergenText = Boolean(
+    base.declaredAllergensLabel?.trim() || (base.crossContactWarnings ?? []).some((w) => w.trim())
+  )
+  if (
+    !ingredientText.trim() &&
+    !base.product.allergensTags?.length &&
+    !base.product.tracesTags?.length &&
+    !hasStoredAllergenText
+  ) {
+    return filterAllergensForUser(base.matchedAllergens, profile.allergies)
+  }
+  const userConfig = buildUserAllergenConfig(profile.allergies)
+  if (userConfig.builtin_ids.length === 0 && userConfig.custom_rules.length === 0) return []
+  const output = detectAllergensEvidenceBased(
+    {
+      product_name: base.product.name,
+      ingredients_text: base.product.ingredientText || ingredientText,
+      ingredients_text_safety: base.product.ingredientTextSafetyHaystack || ingredientText,
+      contains_text: base.declaredAllergensLabel ?? '',
+      may_contain_text: (base.crossContactWarnings ?? []).join(', '),
+      allergens_tags: base.product.allergensTags,
+      traces_tags: base.product.tracesTags,
+    },
+    userConfig
+  )
+  return output.matched_allergens.map(mapEngineAllergenMatch)
+}
+
+function rerunCeliacForProfile(
+  base: ScanResult,
+  profile: UserProfile,
+  ingredientText: string
+): CeliacResult | undefined {
+  if (!profile.celiacStrictGluten) return undefined
+  const ingredients = (base.product.ingredientText || ingredientText)
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const haystack = [
+    base.product.ingredientTextSafetyHaystack,
+    base.product.ingredientText,
+    base.declaredAllergensLabel,
+    ...(base.crossContactWarnings ?? []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+  if (ingredients.length === 0 && !haystack.trim()) return base.celiac
+  const matches = runCeliacCheck(ingredients, haystack || ingredientText)
+  return {
+    celiacModeEnabled: true,
+    matchedGlutenSignals: matches.map((m) => ({
+      ingredient: m.ingredient,
+      signalType: m.signalType,
+      severity: m.severity,
+      reason: m.reason,
+    })),
+    celiacSeverity: getCeliacSeverity(matches),
+  }
 }
 
 /** One UI row per profile allergen key (merges bilingual / multi-line evidence). */
@@ -245,13 +332,14 @@ export function personalizeScanResult(
   const ingredientText =
     base.product.ingredientTextSafetyHaystack?.trim() || base.product.ingredientText || ''
   const filteredAllergens = dedupeMatchedAllergensForProfile(
-    filterAllergensForUser(base.matchedAllergens, profile.allergies)
+    detectCurrentAllergens(base, profile, ingredientText)
   )
   const matchedSensitivities = matchSensitivities(
     ingredientText,
     profile.sensitivities
   )
   const preferenceConflict = classifyPreferenceConflicts(profile, ingredientText)
+  const celiac = rerunCeliacForProfile(base, profile, ingredientText)
 
   let safetyStatus = computeSafetyStatus(
     filteredAllergens.length > 0,
@@ -260,10 +348,10 @@ export function personalizeScanResult(
     matchedSensitivities.length > 0,
     ingredientText.length > 0
   )
-  safetyStatus = resolveSafetyStatusWithCeliac(safetyStatus, profile, base.celiac)
+  safetyStatus = resolveSafetyStatusWithCeliac(safetyStatus, profile, celiac)
 
   const smartSummary = buildSmartSummary(
-    base,
+    { ...base, celiac },
     profile,
     filteredAllergens,
     matchedSensitivities
@@ -288,6 +376,11 @@ export function personalizeScanResult(
     safetyStatus,
     matchedAllergens: filteredAllergens,
     matchedSensitivities,
+    celiac,
+    fillrFit: undefined,
+    processedRating: undefined,
+    scoringData: undefined,
+    scoringFrozenAt: undefined,
     smartSummary,
     insights: [...new Set(insights)],
   }
