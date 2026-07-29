@@ -1,7 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildNutritionViewModel, nutritionScanTags } from './buildNutritionViewModel'
-import type { ScanResult } from '../types'
+import type { IngredientExplanation, ScanResult } from '../types'
+
+function ing(name: string, ingredientRating: IngredientExplanation['ingredientRating']): IngredientExplanation {
+  return {
+    name,
+    whatItIs: '',
+    whyItsUsed: '',
+    whatToKnow: '',
+    ingredientRating,
+  }
+}
 
 function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
   return {
@@ -19,6 +29,7 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
         fat_serving: 2,
         sodium_serving_mg: 260,
       },
+      source: 'off',
       createdAt: '',
       updatedAt: '',
     },
@@ -27,9 +38,9 @@ function baseScan(overrides: Partial<ScanResult> = {}): ScanResult {
     matchedSensitivities: [],
     smartSummary: '',
     ingredientBreakdown: [
-      { name: 'Whole grain rolled oats', ingredientRating: 'clean' },
-      { name: 'Sugar', ingredientRating: 'okay' },
-      { name: 'Salt', ingredientRating: 'okay' },
+      ing('Whole grain rolled oats', 'clean'),
+      ing('Sugar', 'okay'),
+      ing('Salt', 'okay'),
     ],
     insights: [],
     scoringData: {
@@ -59,4 +70,18 @@ test('nutritionScanTags for history filters', () => {
   const tags = nutritionScanTags(baseScan())
   assert.equal(tags.highSugar, true)
   assert.equal(tags.highSodium, false)
+})
+
+test('nutritionScanTags converts OFF sodium grams to milligrams', () => {
+  const tags = nutritionScanTags(
+    baseScan({
+      product: {
+        ...baseScan().product,
+        nutritionJson: {
+          sodium_100g: 0.8,
+        },
+      },
+    })
+  )
+  assert.equal(tags.highSodium, true)
 })
