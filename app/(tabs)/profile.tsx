@@ -20,11 +20,9 @@ import { colors, homeWordmarkLayout, radius, spacing, typography } from '../../c
 import { FREE_SCAN_LIMIT } from '../../constants/subscription'
 import { HEALTH_DISCLAIMER_RATINGS_MODAL_CLOSE } from '../../constants/healthDisclaimer'
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../../constants/legalUrls'
-import { clearDisclaimerKeysOnSignOut } from '../../lib/disclaimerStorage'
-import { clearPendingSignupAfterOnboarding } from '../../lib/pendingSignup'
+import { clearLocalAccountData } from '../../lib/clearLocalAccountData'
 import { useAuthStore } from '../../store/authStore'
 import { useUserStore } from '../../store/userStore'
-import { useScanHistoryStore } from '../../store/scanHistoryStore'
 import { logOutOfRevenueCat } from '../../services/revenuecatService'
 import {
   SENSITIVITY_OPTIONS,
@@ -214,12 +212,9 @@ export default function ProfileScreen() {
 
   const handleSignOut = () => {
     void (async () => {
-      await clearDisclaimerKeysOnSignOut()
-      await clearPendingSignupAfterOnboarding()
       await logOutOfRevenueCat()
       void signOutSupabase()
-      useUserStore.getState().resetForAccountDeletion()
-      useScanHistoryStore.getState().clearAll()
+      await clearLocalAccountData()
       signOut()
       router.replace('/welcome')
     })()

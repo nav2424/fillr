@@ -87,6 +87,15 @@ async function saveUserProfile(profile) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next))
 }
 
+/** Call on sign-out / account delete so the next account cannot inherit this device's dietary profile. */
+async function clearUserProfile() {
+  try {
+    await AsyncStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // Best-effort local wipe; sign-out should continue even if storage remove fails.
+  }
+}
+
 function normItem(item) {
   return String(item || '')
     .toLowerCase()
@@ -148,6 +157,7 @@ module.exports = {
   getUserProfile,
   getUserProfileOrNull,
   saveUserProfile,
+  clearUserProfile,
   addAllergy,
   removeAllergy,
   addSensitivity,

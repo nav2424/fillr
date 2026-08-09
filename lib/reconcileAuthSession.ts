@@ -11,6 +11,11 @@ import { clearPendingSignupAfterOnboarding } from './pendingSignup'
 import { logInToRevenueCat, logOutOfRevenueCat } from '../services/revenuecatService'
 import { useUserStore } from '../store/userStore'
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { clearUserProfile } = require('../store/userProfileStore.js') as {
+  clearUserProfile: () => Promise<void>
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 /**
@@ -43,6 +48,7 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
       await logOutOfRevenueCat()
       await signOutSupabase()
       await clearPendingSignupAfterOnboarding()
+      await clearUserProfile()
       useUserStore.getState().resetForAccountDeletion()
       state.signOut()
     }
