@@ -6,10 +6,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { GradientBackground, FillrButton, StackBackButton } from '../components'
 import { colors, spacing, typography } from '../constants/theme'
 import { useAuthStore } from '../store/authStore'
-import { useUserStore } from '../store/userStore'
-import { useScanHistoryStore } from '../store/scanHistoryStore'
-import { clearDisclaimerKeysOnSignOut } from '../lib/disclaimerStorage'
-import { clearPendingSignupAfterOnboarding } from '../lib/pendingSignup'
+import { clearLocalAccountData } from '../lib/clearLocalAccountData'
 import { signOutSupabase } from '../lib/authService'
 import { logOutOfRevenueCat } from '../services/revenuecatService'
 
@@ -37,12 +34,9 @@ export default function DeleteAccountScreen() {
 
   const performDelete = () => {
     void (async () => {
-      await clearDisclaimerKeysOnSignOut()
-      await clearPendingSignupAfterOnboarding()
       await logOutOfRevenueCat()
       void signOutSupabase()
-      useScanHistoryStore.getState().clearAll()
-      useUserStore.getState().resetForAccountDeletion()
+      await clearLocalAccountData()
       signOut()
       router.replace('/welcome')
     })()
