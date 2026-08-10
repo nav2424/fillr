@@ -111,6 +111,11 @@ function dedupeMatchedAllergens(matches: MatchedAllergen[]): MatchedAllergen[] {
  * Plain water products (bottled, mineral, spring, etc.) have zero allergens.
  * It is scientifically impossible to be allergic to water. Always return SAFE.
  * Shared by BarcodeService and allergen engine for consistency.
+ *
+ * NOTE: This heuristic is intentionally broad (any name containing "water").
+ * Callers that short-circuit to SAFE with *no* label evidence must also require
+ * `isLikelyBottledWaterName` so foods like "Water Chestnuts" do not become SAFE
+ * when Open Food Facts has an empty ingredient list.
  */
 export function isPlainWaterProduct(productName: string): boolean {
   if (!productName?.trim()) return false
@@ -118,6 +123,31 @@ export function isPlainWaterProduct(productName: string): boolean {
   const hasWater = /\b(water|eau|aqua|agua|wasser|voda|mineral water|spring water|sparkling water|seltzer|carbonated water|mineralwasser|purified water|distilled water|drinking water|still water|aquafina|evian|dasani|smartwater)\b/.test(n)
   const hasExclusions = /\b(flavor|flavoured|flavored|juice|soda|lemonade|vitamin|electrolyte|sports drink|energy drink|iced tea|coffee|tea|coconut|coco|fruit)\b/.test(n)
   return hasWater && !hasExclusions
+}
+
+/**
+ * Stricter name check for the empty-label SAFE short-circuit.
+ * True for bottled / branded water; false for water-named foods/drinks that may contain allergens.
+ */
+export function isLikelyBottledWaterName(productName: string): boolean {
+  if (!productName?.trim()) return false
+  const n = productName.toLowerCase().trim()
+  if (
+    /\b(aquafina|evian|dasani|smartwater|fiji|voss|poland spring|nestle pure life|pure life)\b/.test(n)
+  ) {
+    return true
+  }
+  if (
+    /\b(mineral water|spring water|sparkling water|purified water|distilled water|drinking water|still water|carbonated water|seltzer|mineralwasser)\b/.test(
+      n
+    )
+  ) {
+    return true
+  }
+  // Name is essentially just "water" (+ optional size), e.g. "Water", "Eau 500ml"
+  return /^(natural\s+)?(spring\s+|mineral\s+|purified\s+|distilled\s+|drinking\s+|still\s+|sparkling\s+)?(water|eau|aqua|agua|wasser)(\s+\d+(\s*(ml|l|cl|oz|fl\.?\s*oz))?)?$/.test(
+    n
+  )
 }
 
 /**
@@ -186,10 +216,16 @@ export function detectAllergensEvidenceBased(
   const { builtin_ids, custom_rules } = userConfig
   const enabledBuiltinIds = builtin_ids.filter(id => getBuiltinById(id))
 
-  // 0. PLAIN WATER by product name: SAFE only when there is no contrary label evidence.
-  // Names like "Water Chestnuts" / "Barley Water" / "Almond Water" contain "water" but must
-  // still run allergen matching when ingredients/contains/tags are present.
-  if (input.product_name && isPlainWaterProduct(input.product_name) && !hasNonWaterLabelEvidence(input)) {
+  // 0. PLAIN WATER by product name: SAFE only when there is no contrary label evidence
+  // AND the name looks like bottled water. Broad `isPlainWaterProduct` matches
+  // "Water Chestnuts" / "Barley Water" / "Almond Water"; with empty OFF ingredients those
+  // must fall through to UNKNOWN, not SAFE.
+  if (
+    input.product_name &&
+    isPlainWaterProduct(input.product_name) &&
+    isLikelyBottledWaterName(input.product_name) &&
+    !hasNonWaterLabelEvidence(input)
+  ) {
     return plainWaterSafeOutput(input)
   }
 

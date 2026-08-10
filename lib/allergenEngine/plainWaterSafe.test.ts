@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildUserAllergenConfig, detectAllergensEvidenceBased, isPlainWaterProduct } from './index'
+import {
+  buildUserAllergenConfig,
+  detectAllergensEvidenceBased,
+  isLikelyBottledWaterName,
+  isPlainWaterProduct,
+} from './index'
 
 test('isPlainWaterProduct matches water-named foods that are not bottled water', () => {
   assert.equal(isPlainWaterProduct('Water Chestnuts'), true)
@@ -9,6 +14,18 @@ test('isPlainWaterProduct matches water-named foods that are not bottled water',
   assert.equal(isPlainWaterProduct('Evian Natural Spring Water'), true)
   assert.equal(isPlainWaterProduct('Vitamin Water XXX'), false)
   assert.equal(isPlainWaterProduct('Coconut Water'), false)
+})
+
+test('isLikelyBottledWaterName rejects water-named foods', () => {
+  assert.equal(isLikelyBottledWaterName('Water Chestnuts'), false)
+  assert.equal(isLikelyBottledWaterName('Barley Water'), false)
+  assert.equal(isLikelyBottledWaterName('Almond Water'), false)
+  assert.equal(isLikelyBottledWaterName('Tonic Water'), false)
+  assert.equal(isLikelyBottledWaterName('Rose Water'), false)
+  assert.equal(isLikelyBottledWaterName('Evian Natural Spring Water'), true)
+  assert.equal(isLikelyBottledWaterName('Dasani'), true)
+  assert.equal(isLikelyBottledWaterName('Water'), true)
+  assert.equal(isLikelyBottledWaterName('Water 500ml'), true)
 })
 
 test('water-named products with real ingredients still match allergens (no false SAFE)', () => {
@@ -88,6 +105,25 @@ test('true bottled water with no formula still short-circuits to SAFE', () => {
   )
   assert.equal(waterOnly.overall_status, 'SAFE')
   assert.equal(waterOnly.matched_allergens.length, 0)
+})
+
+test('water-named foods with empty OFF ingredients are UNKNOWN, not SAFE', () => {
+  const user = buildUserAllergenConfig(['sulfites', 'wheat', 'tree_nuts'])
+  for (const name of ['Water Chestnuts', 'Barley Water', 'Almond Water', 'Tonic Water']) {
+    const result = detectAllergensEvidenceBased(
+      {
+        product_name: name,
+        ingredients_text: '',
+        contains_text: '',
+        may_contain_text: '',
+        allergens_tags: [],
+        traces_tags: [],
+      },
+      user
+    )
+    assert.equal(result.overall_status, 'UNKNOWN', `${name} should be UNKNOWN with empty label`)
+    assert.equal(result.matched_allergens.length, 0)
+  }
 })
 
 test('ingredients-only-water does not ignore Contains / allergen tags', () => {
