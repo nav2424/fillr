@@ -111,6 +111,11 @@ function dedupeMatchedAllergens(matches: MatchedAllergen[]): MatchedAllergen[] {
  * Plain water products (bottled, mineral, spring, etc.) have zero allergens.
  * It is scientifically impossible to be allergic to water. Always return SAFE.
  * Shared by BarcodeService and allergen engine for consistency.
+ *
+ * NOTE: This heuristic is intentionally broad (any name containing "water").
+ * Callers that short-circuit to SAFE with *no* label evidence must also require
+ * `isLikelyBottledWaterName` so foods like "Water Chestnuts" do not become SAFE
+ * when Open Food Facts has an empty ingredient list.
  */
 export function isPlainWaterProduct(productName: string): boolean {
   if (!productName?.trim()) return false
@@ -121,6 +126,31 @@ export function isPlainWaterProduct(productName: string): boolean {
 }
 
 /**
+ * Stricter name check for the empty-label SAFE short-circuit.
+ * True for bottled / branded water; false for water-named foods/drinks that may contain allergens.
+ */
+export function isLikelyBottledWaterName(productName: string): boolean {
+  if (!productName?.trim()) return false
+  const n = productName.toLowerCase().trim()
+  if (
+    /\b(aquafina|evian|dasani|smartwater|fiji|voss|poland spring|nestle pure life|pure life)\b/.test(n)
+  ) {
+    return true
+  }
+  if (
+    /\b(mineral water|spring water|sparkling water|purified water|distilled water|drinking water|still water|carbonated water|seltzer|mineralwasser)\b/.test(
+      n
+    )
+  ) {
+    return true
+  }
+  // Name is essentially just "water" (+ optional size), e.g. "Water", "Eau 500ml"
+  return /^(natural\s+)?(spring\s+|mineral\s+|purified\s+|distilled\s+|drinking\s+|still\s+|sparkling\s+)?(water|eau|aqua|agua|wasser)(\s+\d+(\s*(ml|l|cl|oz|fl\.?\s*oz))?)?$/.test(
+    n
+  )
+}
+
+/**
  * Ingredients list is ONLY water (no additives). Safe for allergies.
  */
 function isIngredientsOnlyWater(ingredientsText: string): boolean {
@@ -128,10 +158,56 @@ function isIngredientsOnlyWater(ingredientsText: string): boolean {
   return /^(water|eau|aqua|h2o|agua)$/.test(cleaned)
 }
 
+/** True when label fields include anything beyond plain water (must not short-circuit to SAFE). */
+function hasNonWaterLabelEvidence(input: DetectionInput): boolean {
+  if (String(input.contains_text || '').trim()) return true
+  if (String(input.may_contain_text || '').trim()) return true
+  if ((input.allergens_tags?.length ?? 0) > 0) return true
+  if ((input.traces_tags?.length ?? 0) > 0) return true
+
+  const stripped = String(input.ingredients_text || '').trim()
+  const safety = String(input.ingredients_text_safety || '').trim()
+  for (const blob of [safety, stripped]) {
+    if (blob && !isIngredientsOnlyWater(blob)) return true
+  }
+
+  if (input.ingredients?.length) {
+    const joined = input.ingredients
+      .map((i) => i.text)
+      .filter(Boolean)
+      .join(', ')
+      .trim()
+    if (joined && !isIngredientsOnlyWater(joined)) return true
+  }
+  if (input.ingredients_tags?.length) {
+    const joined = input.ingredients_tags
+      .map((t) => t.replace(/^[a-z]{2}:/, ''))
+      .join(', ')
+      .trim()
+    if (joined && !isIngredientsOnlyWater(joined)) return true
+  }
+  return false
+}
+
+function plainWaterSafeOutput(input: DetectionInput): DetectionOutput {
+  return {
+    overall_status: 'SAFE',
+    matched_allergens: [],
+    scan_log: {
+      ingredients_text_used: input.ingredients_text || '',
+      contains_text_used: input.contains_text || '',
+      may_contain_text_used: input.may_contain_text || '',
+      has_ingredient_data: true,
+      source_coverage_score: 100,
+    },
+  }
+}
+
 /**
  * Main detection function - evidence-based, deterministic.
  * NEVER returns SAFE when ingredients_text is missing/empty.
- * EXCEPTION: Plain water (by product name or ingredients-only-water) → always SAFE.
+ * EXCEPTION: Plain water (by product name or ingredients-only-water) → always SAFE,
+ * but only when the label does not also carry a real formula / allergen sections.
  */
 export function detectAllergensEvidenceBased(
   input: DetectionInput,
@@ -140,35 +216,23 @@ export function detectAllergensEvidenceBased(
   const { builtin_ids, custom_rules } = userConfig
   const enabledBuiltinIds = builtin_ids.filter(id => getBuiltinById(id))
 
-  // 0. PLAIN WATER: Always SAFE (even with no ingredient data).
-  if (input.product_name && isPlainWaterProduct(input.product_name)) {
-    return {
-      overall_status: 'SAFE',
-      matched_allergens: [],
-      scan_log: {
-        ingredients_text_used: input.ingredients_text || '',
-        contains_text_used: input.contains_text || '',
-        may_contain_text_used: input.may_contain_text || '',
-        has_ingredient_data: true,
-        source_coverage_score: 100,
-      },
-    }
+  // 0. PLAIN WATER by product name: SAFE only when there is no contrary label evidence
+  // AND the name looks like bottled water. Broad `isPlainWaterProduct` matches
+  // "Water Chestnuts" / "Barley Water" / "Almond Water"; with empty OFF ingredients those
+  // must fall through to UNKNOWN, not SAFE.
+  if (
+    input.product_name &&
+    isPlainWaterProduct(input.product_name) &&
+    isLikelyBottledWaterName(input.product_name) &&
+    !hasNonWaterLabelEvidence(input)
+  ) {
+    return plainWaterSafeOutput(input)
   }
 
-  // 0b. Ingredients list is ONLY water → SAFE (use stripped/card text only)
+  // 0b. Ingredients list is ONLY water → SAFE (unless contains/may_contain/tags disagree)
   const strippedForCards = input.ingredients_text || ''
-  if (isIngredientsOnlyWater(strippedForCards)) {
-    return {
-      overall_status: 'SAFE',
-      matched_allergens: [],
-      scan_log: {
-        ingredients_text_used: strippedForCards,
-        contains_text_used: input.contains_text || '',
-        may_contain_text_used: input.may_contain_text || '',
-        has_ingredient_data: true,
-        source_coverage_score: 100,
-      },
-    }
+  if (isIngredientsOnlyWater(strippedForCards) && !hasNonWaterLabelEvidence(input)) {
+    return plainWaterSafeOutput(input)
   }
 
   const safetyHaystack = input.ingredients_text_safety?.trim() || ''
