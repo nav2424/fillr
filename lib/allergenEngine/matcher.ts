@@ -77,16 +77,46 @@ function isMatchedTextAntiMatch(allergenId: string, matchText: string): boolean 
   return anti.some(antiTerm => normalizeText(antiTerm) === norm || norm.includes(normalizeText(antiTerm)))
 }
 
-/** Check negation patterns (e.g., "milk-free", "sans lait") */
-function hasNegation(text: string, allergenId: string, terms: string[]): boolean {
+/**
+ * Synonyms that must never count as allergen-absence claims for an allergen id.
+ * "Lactose-free" removes lactose sugar — it does NOT mean milk-protein-free, and
+ * lactose-free dairy is still dangerous for milk allergy.
+ */
+const NON_ALLERGEN_NEGATION_TERMS: Record<string, string[]> = {
+  milk: ['lactose', 'galactose', 'lactulose'],
+}
+
+/**
+ * True when this specific term is locally negated (milk-free, no eggs, sans gluten).
+ * Windowed + term-scoped so a distant "lactose-free" / "gluten-free" claim cannot
+ * wipe unrelated positive evidence in the same section.
+ */
+function hasLocalNegationAroundTerm(text: string, term: string, allergenId: string): boolean {
+  const t = normalizeText(term)
+  if (!t) return false
+  const skip = NON_ALLERGEN_NEGATION_TERMS[allergenId]
+  if (skip?.some((s) => normalizeText(s) === t)) return false
+
   const normalized = normalizeText(text)
-  const negations = ['free', 'sans', 'sans ', 'no ', 'without', 'does not contain', 'ne contient pas']
-  for (const term of terms) {
-    const t = normalizeText(term)
-    for (const neg of negations) {
-      if (normalized.includes(`${t} ${neg}`) || normalized.includes(`${neg} ${t}`)) {
-        return true
-      }
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`\\b${escaped}\\b`, 'gi')
+  let m: RegExpExecArray | null
+  while ((m = re.exec(normalized)) !== null) {
+    const idx = m.index
+    const windowStart = Math.max(0, idx - 32)
+    const windowEnd = Math.min(normalized.length, idx + t.length + 32)
+    const window = normalized.slice(windowStart, windowEnd)
+    if (
+      window.includes(`${t} free`) ||
+      window.includes(`no ${t}`) ||
+      window.includes(`without ${t}`) ||
+      window.includes(`sans ${t}`) ||
+      window.includes(`does not contain ${t}`) ||
+      window.includes(`ne contient pas ${t}`) ||
+      window.includes(`free from ${t}`) ||
+      window.includes(`free of ${t}`)
+    ) {
+      return true
     }
   }
   return false
@@ -131,8 +161,6 @@ function matchBuiltinInSection(
   const builtin = getBuiltinById(allergenId)
   if (!builtin) return null
 
-  if (hasNegation(sectionText, allergenId, builtin.synonyms)) return null
-
   let severity: Severity = section === 'may_contain' ? 'MAY_CONTAIN' : 'CONTAINS'
 
   for (const term of builtin.synonyms) {
@@ -154,6 +182,9 @@ function matchBuiltinInSection(
     if (isWholeWordMatch(sectionText, term)) {
       const match_text = extractMatchText(sectionText, term)
       if (isMatchedTextAntiMatch(allergenId, match_text)) continue
+      // Skip only this term when it is locally negated (e.g. "milk" inside "milk-free").
+      // Do not abort the whole allergen for an unrelated "*‑free" claim in the section.
+      if (hasLocalNegationAroundTerm(sectionText, term, allergenId)) continue
       if (allergenId === 'wheat' && ['malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour', 'malted'].some(t => normalizeText(t) === normalizeText(term))) {
         severity = getMaltSeverity(sectionText, match_text)
       }
