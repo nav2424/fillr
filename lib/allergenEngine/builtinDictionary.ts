@@ -135,7 +135,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
 ]
 
 /** Anti-matches: terms that should NOT trigger the allergen (false positive prevention).
- * For milk: "peanut butter" etc. only apply when matching "butter"/"cream" (via shouldSkipMilkButterCream).
+ * For milk: "peanut butter" etc. only apply when matching "butter"/"cream" (blanked term-locally).
  * These apply when matching the allergen's generic terms. */
 export const ANTI_MATCHES: Record<string, string[]> = {
   milk: [
@@ -143,7 +143,7 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'cashew milk', 'macadamia milk', 'pea milk', 'flax milk', 'quinoa milk', 'spelt milk',
     'milk thistle', 'milkweed', 'cream of tartar', 'coconut cream',
     'lactic acid', 'sodium lactate', 'calcium lactate'
-    // peanut butter, cocoa butter, etc. handled by shouldSkipMilkButterCream for term "butter"/"cream"
+    // peanut butter, cocoa butter, etc. blanked term-locally when matching "butter"/"cream"
   ],
   eggs: ['eggplant', 'eggnog'],
   wheat: [

@@ -30,15 +30,13 @@ export function normalizeText(text: string): string {
     .trim()
 }
 
-function sectionUsesNonWheatFlour(sectionText: string): boolean {
-  const norm = normalizeText(sectionText)
-  return NON_WHEAT_FLOURS.some((flour) => norm.includes(normalizeText(flour)))
-}
-
 /** Check if term matches as whole word (word boundaries) - "nut" does NOT match "donut" */
 function isWholeWordMatch(text: string, term: string): boolean {
-  const normalizedText = normalizeText(text)
-  const normalizedTerm = normalizeText(term)
+  return isWholeWordMatchNormalized(normalizeText(text), normalizeText(term))
+}
+
+function isWholeWordMatchNormalized(normalizedText: string, normalizedTerm: string): boolean {
+  if (!normalizedTerm) return false
 
   if (normalizedTerm.includes(' ')) {
     return normalizedText.includes(normalizedTerm)
@@ -57,16 +55,63 @@ function extractMatchText(text: string, term: string): string {
   return m ? m[0] : term
 }
 
-/** Section-level: skip when text contains anti phrase that INCLUDES our term (e.g. "soy milk" contains "milk") */
-function isAntiMatchSection(allergenId: string, sectionText: string, term: string): boolean {
-  const anti = ANTI_MATCHES[allergenId]
-  if (!anti) return false
-  const normText = normalizeText(sectionText)
+/** Blank known false-friend phrases so remaining allergen terms can still match. */
+function blankPhrases(normalizedText: string, phrases: string[]): string {
+  let out = normalizedText
+  for (const phrase of phrases) {
+    const normalizedPhrase = normalizeText(phrase)
+    if (!normalizedPhrase || !out.includes(normalizedPhrase)) continue
+    out = out.split(normalizedPhrase).join(' ')
+  }
+  return out.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Build matchable text for one synonym by blanking only the false-friend phrases that
+ * involve that synonym. Anti-matches / non-dairy butter / non-wheat flours must be
+ * term-local: "egg, eggplant" and "milk, soy milk" must still match the real allergen.
+ */
+function matchableTextForTerm(allergenId: string, sectionText: string, term: string): string {
+  let text = normalizeText(sectionText)
   const normTerm = normalizeText(term)
-  return anti.some(antiTerm => {
-    const normAnti = normalizeText(antiTerm)
-    return normText.includes(normAnti) && normAnti.includes(normTerm)
-  })
+  if (!normTerm) return text
+
+  const anti = ANTI_MATCHES[allergenId] || []
+  text = blankPhrases(
+    text,
+    anti.filter((antiTerm) => normalizeText(antiTerm).includes(normTerm))
+  )
+
+  if (
+    allergenId === 'milk' &&
+    (normTerm === 'butter' ||
+      normTerm === 'cream' ||
+      normTerm.includes('butter') ||
+      normTerm.includes('cream'))
+  ) {
+    text = blankPhrases(text, NON_DAIRY_BUTTER_CREAM)
+  }
+
+  if (
+    allergenId === 'soy' &&
+    (normTerm.includes('lecithin') || normTerm === normalizeText('lécithine de soja'))
+  ) {
+    text = blankPhrases(text, [
+      'sunflower lecithin',
+      'lécithine de tournesol',
+      'canola lecithin',
+      'lecithin from canola',
+    ])
+  }
+
+  if (
+    allergenId === 'wheat' &&
+    (normTerm.includes('flour') || normTerm === 'semolina' || normTerm === 'durum')
+  ) {
+    text = blankPhrases(text, NON_WHEAT_FLOURS)
+  }
+
+  return text
 }
 
 /** Match-level: skip when matched text IS an anti-match */
@@ -92,21 +137,10 @@ function hasNegation(text: string, allergenId: string, terms: string[]): boolean
   return false
 }
 
-/** Special handling: milk + butter/cream - skip if non-dairy phrase */
-function shouldSkipMilkButterCream(text: string): boolean {
+/** True when a short phrase is itself a non-dairy butter/cream false friend. */
+function isNonDairyButterCreamPhrase(text: string): boolean {
   const norm = normalizeText(text)
-  return NON_DAIRY_BUTTER_CREAM.some(p => norm.includes(normalizeText(p)))
-}
-
-/** Special handling: soy + lecithin - only match when soy is explicit; skip when sunflower/canola */
-function shouldSkipSoyLecithin(text: string): boolean {
-  const norm = normalizeText(text)
-  return (
-    norm.includes('sunflower lecithin') ||
-    norm.includes('lécithine de tournesol') ||
-    norm.includes('canola lecithin') ||
-    norm.includes('lecithin from canola')
-  )
+  return NON_DAIRY_BUTTER_CREAM.some((p) => norm === normalizeText(p) || norm.includes(normalizeText(p)))
 }
 
 /** Malt/gluten policy: "barley malt" etc. = CONTAINS; "malt" alone = MAY_CONTAIN */
@@ -136,29 +170,15 @@ function matchBuiltinInSection(
   let severity: Severity = section === 'may_contain' ? 'MAY_CONTAIN' : 'CONTAINS'
 
   for (const term of builtin.synonyms) {
-    if (isAntiMatchSection(allergenId, sectionText, term)) continue
-    if (allergenId === 'milk' && (term === 'butter' || term === 'cream') && shouldSkipMilkButterCream(sectionText)) {
-      continue
-    }
-    if (allergenId === 'soy' && (term.includes('lecithin') || term === 'lécithine de soja') && shouldSkipSoyLecithin(sectionText)) {
-      continue
-    }
-    if (
-      allergenId === 'wheat' &&
-      (term.includes('flour') || term === 'semolina' || term === 'durum') &&
-      sectionUsesNonWheatFlour(sectionText)
-    ) {
-      continue
-    }
+    const matchable = matchableTextForTerm(allergenId, sectionText, term)
+    if (!isWholeWordMatchNormalized(matchable, normalizeText(term))) continue
 
-    if (isWholeWordMatch(sectionText, term)) {
-      const match_text = extractMatchText(sectionText, term)
-      if (isMatchedTextAntiMatch(allergenId, match_text)) continue
-      if (allergenId === 'wheat' && ['malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour', 'malted'].some(t => normalizeText(t) === normalizeText(term))) {
-        severity = getMaltSeverity(sectionText, match_text)
-      }
-      return { match_text, term, severity }
+    const match_text = extractMatchText(sectionText, term)
+    if (isMatchedTextAntiMatch(allergenId, match_text)) continue
+    if (allergenId === 'wheat' && ['malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour', 'malted'].some(t => normalizeText(t) === normalizeText(term))) {
+      severity = getMaltSeverity(sectionText, match_text)
     }
+    return { match_text, term, severity }
   }
   return null
 }
@@ -186,8 +206,12 @@ function extractParenthesesEvidence(
         return normInParens === norm || normInParens.includes(norm) || norm.includes(normInParens)
       })
       if (matched) {
-        if (isAntiMatchSection(allergenId, sectionText, inParens)) continue
-        if (allergenId === 'milk' && shouldSkipMilkButterCream(sectionText)) continue
+        if (isMatchedTextAntiMatch(allergenId, inParens) || isMatchedTextAntiMatch(allergenId, fullPhrase)) {
+          continue
+        }
+        if (allergenId === 'milk' && (isNonDairyButterCreamPhrase(inParens) || isNonDairyButterCreamPhrase(fullPhrase))) {
+          continue
+        }
         results.push({ allergenId, match_text: fullPhrase })
         break
       }
