@@ -78,7 +78,12 @@ export function parseSections(rawText: string): ParsedSections {
     for (const p of MAY_CONTAIN_PATTERNS) {
       const m = seg.match(p)
       if (m) {
+        // Keep the formula that precedes an in-sentence advisory (e.g.
+        // "wheat flour, sugar, traces of nuts"). Dropping `before` made
+        // wheat/soy/etc. disappear and scored those products SAFE.
+        const before = seg.slice(0, m.index!).trim()
         const after = stripLeadingColon(seg.slice(m.index! + m[0].length))
+        if (before) ingredientsSegments.push(before)
         if (after) mayContainSegments.push(after)
         foundMayContain = true
         break
