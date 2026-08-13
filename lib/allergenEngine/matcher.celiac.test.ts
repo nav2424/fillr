@@ -90,3 +90,28 @@ test('wheat in parentheses on same line as glucose syrup -> AVOID', () => {
   const result = runCeliacCheck(ingredients, text)
   assert.equal(getCeliacSeverity(result), 'AVOID')
 })
+
+test('enriched flour without the word wheat -> AVOID', () => {
+  const result = runCeliacCheck(['enriched flour', 'sugar', 'palm oil', 'salt'], '')
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+  assert.equal(result[0]?.signalType, 'EXPLICIT_GRAIN')
+})
+
+test('all-purpose flour without the word wheat -> AVOID', () => {
+  const result = runCeliacCheck(['all-purpose flour', 'water', 'salt'], '')
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+  assert.equal(result[0]?.signalType, 'EXPLICIT_GRAIN')
+})
+
+test('bleached flour / white flour without the word wheat -> AVOID', () => {
+  for (const name of ['bleached flour', 'unbleached flour', 'white flour', 'bread flour']) {
+    const result = runCeliacCheck([name, 'sugar'], '')
+    assert.equal(getCeliacSeverity(result), 'AVOID', name)
+    assert.equal(result[0]?.signalType, 'EXPLICIT_GRAIN', name)
+  }
+})
+
+test('rice flour still SAFE after wheat-flour label additions', () => {
+  const result = runCeliacCheck(['rice flour', 'almond flour', 'salt'], '')
+  assert.equal(getCeliacSeverity(result), 'SAFE')
+})

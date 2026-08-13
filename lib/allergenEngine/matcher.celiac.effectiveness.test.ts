@@ -52,6 +52,18 @@ const SHOULD_FLAG_AVOID: Scenario[] = [
     expectAnySignal: ['EXPLICIT_GRAIN'],
   },
   {
+    id: 'enriched-flour-us-label-no-wheat-word',
+    ingredients: ['Enriched flour', 'sugar', 'high fructose corn syrup', 'palm oil'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
+    id: 'all-purpose-flour-cookie',
+    ingredients: ['all-purpose flour', 'butter', 'sugar', 'eggs'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
     id: 'rye-flour',
     ingredients: ['rye flour', 'water', 'salt'],
     expect: 'AVOID',

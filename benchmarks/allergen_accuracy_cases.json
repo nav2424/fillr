@@ -51,6 +51,23 @@
     }
   },
   {
+    "id": "soy_soybeans_plural",
+    "product_name": "Firm tofu",
+    "allergies": ["soy"],
+    "input": {
+      "ingredients_text": "Water, soybeans, calcium sulfate, nigari",
+      "contains_text": "Soybeans",
+      "may_contain_text": "",
+      "allergens_tags": [],
+      "traces_tags": []
+    },
+    "expect": {
+      "overall_status": "CONTAINS",
+      "must_match_allergen_ids": ["soy"],
+      "min_matches": 1
+    }
+  },
+  {
     "id": "unknown_without_any_ingredient_data",
     "product_name": "Mystery snack",
     "allergies": ["milk"],
