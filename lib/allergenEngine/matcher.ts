@@ -77,12 +77,17 @@ function isMatchedTextAntiMatch(allergenId: string, matchText: string): boolean 
   return anti.some(antiTerm => normalizeText(antiTerm) === norm || norm.includes(normalizeText(antiTerm)))
 }
 
+/** Dairy-derived words that do not mean the product is milk-free. */
+const MILK_ABSENCE_FALSE_FRIENDS = new Set(['lactose', 'galactose', 'lactulose', 'dairy', 'cheese'])
+
 /** Check negation patterns (e.g., "milk-free", "sans lait") */
 function hasNegation(text: string, allergenId: string, terms: string[]): boolean {
   const normalized = normalizeText(text)
   const negations = ['free', 'sans', 'sans ', 'no ', 'without', 'does not contain', 'ne contient pas']
   for (const term of terms) {
     const t = normalizeText(term)
+    // "lactose-free" / "dairy-free" / "cheese-free" must not wipe whey/milk evidence.
+    if (allergenId === 'milk' && MILK_ABSENCE_FALSE_FRIENDS.has(t)) continue
     for (const neg of negations) {
       if (normalized.includes(`${t} ${neg}`) || normalized.includes(`${neg} ${t}`)) {
         return true

@@ -10,6 +10,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Milk',
     synonyms: [
       'milk', 'whey', 'casein', 'lactose', 'cream', 'butter', 'butterfat',
+      'dairy', 'cheese',
       'milk powder', 'skim milk powder', 'milkfat', 'modified milk ingredients',
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
@@ -72,7 +73,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     id: 'tree_nuts',
     name: 'Tree Nuts',
     synonyms: [
-      'tree nut', 'tree nuts',
+      'tree nut', 'tree nuts', 'nuts',
       'almond', 'almonds', 'hazelnut', 'hazelnuts', 'cashew', 'cashews',
       'walnut', 'walnuts', 'pecan', 'pecans', 'pistachio', 'pistachios',
       'macadamia', 'macadamias', 'brazil nut', 'brazil nuts', 'pine nut', 'pine nuts',
@@ -105,11 +106,11 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     id: 'shellfish',
     name: 'Shellfish',
     synonyms: [
-      'shrimp', 'prawn', 'prawns', 'crab', 'crabs', 'lobster', 'lobsters',
+      'shellfish', 'shrimp', 'shrimps', 'prawn', 'prawns', 'crab', 'crabs', 'lobster', 'lobsters',
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
-      'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crustacean', 'crustaceans', 'mollusk', 'mollusks', 'mollusc', 'molluscs',
+      'crevette', 'crevettes', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
     ],
   },
   {
@@ -142,7 +143,9 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'soy milk', 'almond milk', 'coconut milk', 'oat milk', 'rice milk', 'hemp milk',
     'cashew milk', 'macadamia milk', 'pea milk', 'flax milk', 'quinoa milk', 'spelt milk',
     'milk thistle', 'milkweed', 'cream of tartar', 'coconut cream',
-    'lactic acid', 'sodium lactate', 'calcium lactate'
+    'lactic acid', 'sodium lactate', 'calcium lactate',
+    'non-dairy', 'non dairy', 'dairy-free', 'dairy free',
+    'vegan cheese', 'dairy-free cheese', 'plant-based cheese', 'cashew cheese', 'almond cheese',
     // peanut butter, cocoa butter, etc. handled by shouldSkipMilkButterCream for term "butter"/"cream"
   ],
   eggs: ['eggplant', 'eggnog'],
