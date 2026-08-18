@@ -63,11 +63,21 @@ const OFF_TAG_TO_ID: Record<string, string> = {
   'gluten': 'wheat', 'en:gluten': 'wheat',
   'soy': 'soy', 'en:soybeans': 'soy', 'en:soy': 'soy', 'fr:soja': 'soy',
   'peanuts': 'peanuts', 'en:peanuts': 'peanuts', 'fr:arachides': 'peanuts',
-  'tree-nuts': 'tree_nuts', 'en:tree-nuts': 'tree_nuts', 'en:cashews': 'tree_nuts',
-  'en:almonds': 'tree_nuts', 'en:walnuts': 'tree_nuts', 'en:hazelnuts': 'tree_nuts',
+  // OFF's canonical tree-nut tag is en:nuts (not en:tree-nuts).
+  'nuts': 'tree_nuts', 'en:nuts': 'tree_nuts',
+  'tree-nuts': 'tree_nuts', 'en:tree-nuts': 'tree_nuts', 'fr:fruits-a-coque': 'tree_nuts',
+  'en:cashews': 'tree_nuts', 'en:almonds': 'tree_nuts', 'en:walnuts': 'tree_nuts',
+  'en:hazelnuts': 'tree_nuts', 'en:pecans': 'tree_nuts', 'en:pistachios': 'tree_nuts',
+  'en:macadamia-nuts': 'tree_nuts', 'en:brazil-nuts': 'tree_nuts', 'en:pine-nuts': 'tree_nuts',
   'fish': 'fish', 'en:fish': 'fish', 'fr:poisson': 'fish',
   'shellfish': 'shellfish', 'en:shellfish': 'shellfish',
+  'crustaceans': 'shellfish', 'en:crustaceans': 'shellfish', 'fr:crustaces': 'shellfish',
+  'molluscs': 'shellfish', 'en:molluscs': 'shellfish', 'mollusks': 'shellfish',
+  'en:mollusks': 'shellfish', 'fr:mollusques': 'shellfish',
   'sesame': 'sesame', 'en:sesame-seeds': 'sesame', 'en:sesame': 'sesame', 'fr:sesame': 'sesame',
+  'sulphites': 'sulfites', 'en:sulphites': 'sulfites',
+  'en:sulphur-dioxide-and-sulphites': 'sulfites',
+  'en:sulfur-dioxide-and-sulfites': 'sulfites',
 }
 
 function normalizeOFFTag(tag: string): string | null {
