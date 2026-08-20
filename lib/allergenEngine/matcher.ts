@@ -4,6 +4,8 @@
 import type { CeliacMatch, MatchedAllergen, SectionSource, Severity } from './types'
 import {
   ANTI_MATCHES,
+  CELIAC_OFF_AVOID_TAGS,
+  CELIAC_OFF_CAUTION_TAGS,
   CELIAC_RULES,
   NON_DAIRY_BUTTER_CREAM,
   NON_WHEAT_FLOURS,
@@ -301,6 +303,62 @@ function hasWholeWordMalt(text: string): boolean {
   return /\bmalt\b/i.test(text)
 }
 
+function hasWholeWordTerm(text: string, term: string): boolean {
+  const n = normalizeText(text)
+  const t = normalizeText(term)
+  if (!t) return false
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`\\b${escaped}\\b`).test(n)
+}
+
+/** Blank gluten-free marketing so leftover "gluten" is a real declaration. */
+function stripGlutenFreePhrases(text: string): string {
+  return normalizeText(text)
+    .replace(/\bgluten\s+free\b/g, ' ')
+    .replace(/\bsans\s+gluten\b/g, ' ')
+    .replace(/\bno\s+gluten\b/g, ' ')
+    .replace(/\bwithout\s+gluten\b/g, ' ')
+    .replace(/\bglutenfrei\b/g, ' ')
+    .replace(/\bfree\s+(?:from\s+)?gluten\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function findExplicitGrainWholeWord(text: string): string | undefined {
+  const glutenHaystack = stripGlutenFreePhrases(text)
+  for (const term of CELIAC_RULES.EXPLICIT_GRAIN_WHOLE_WORDS) {
+    const haystack = term === 'gluten' ? glutenHaystack : normalizeText(text)
+    if (hasWholeWordTerm(haystack, term)) return term
+  }
+  return undefined
+}
+
+/** Full-text haystack: do not promote "may contain gluten" / traces to AVOID. */
+function findExplicitGrainWholeWordInFullText(text: string): string | undefined {
+  const withoutTraces = normalizeText(text)
+    .replace(/\bmay\s+contain(?:\s+traces\s+of)?\s+gluten\b/g, ' ')
+    .replace(/\bmay\s+contain(?:\s+traces\s+of)?\s+wheat\b/g, ' ')
+    .replace(/\btraces?\s+(?:de\s+|of\s+)?gluten\b/g, ' ')
+    .replace(/\btraces?\s+(?:de\s+|of\s+)?(?:ble|wheat|orge|seigle|barley|rye)\b/g, ' ')
+    .replace(/\bpeut\s+contenir(?:\s+des\s+traces\s+(?:de\s+)?)?(?:du\s+)?gluten\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return findExplicitGrainWholeWord(withoutTraces)
+}
+
+function normalizeCeliacOffTag(tag: string): string {
+  return String(tag || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]{2}:/, '')
+    .replace(/_/g, '-')
+}
+
+export type CeliacOffTags = {
+  allergens_tags?: string[]
+  traces_tags?: string[]
+}
+
 function isSafeNegativeCeliac(text: string): boolean {
   const n = normalizeText(text)
   return CELIAC_RULES.SAFE_NEGATIVES.some((term) => n.includes(normalizeText(term)))
@@ -319,7 +377,8 @@ function pushUniqueCeliac(
 
 export function runCeliacCheck(
   ingredients: string[],
-  fullText: string
+  fullText: string,
+  offTags?: CeliacOffTags
 ): CeliacMatch[] {
   const matches: CeliacMatch[] = []
   const normalizedFullText = normalizeText(fullText)
@@ -353,6 +412,17 @@ export function runCeliacCheck(
         signalType: CELIAC_RULES.BARLEY_MALT.signalType,
         severity: CELIAC_RULES.BARLEY_MALT.severity,
         reason: CELIAC_RULES.BARLEY_MALT.reason,
+      })
+      continue
+    }
+
+    const explicitWord = findExplicitGrainWholeWord(lower)
+    if (explicitWord) {
+      pushUniqueCeliac(matches, {
+        ingredient,
+        signalType: CELIAC_RULES.EXPLICIT_GRAINS.signalType,
+        severity: CELIAC_RULES.EXPLICIT_GRAINS.severity,
+        reason: CELIAC_RULES.EXPLICIT_GRAINS.reason,
       })
       continue
     }
@@ -447,6 +517,48 @@ export function runCeliacCheck(
           reason: CELIAC_RULES.ALLERGEN_SECTION.reason,
         })
       }
+    }
+
+    const fullTextGrain = findExplicitGrainWholeWordInFullText(fullText)
+    if (fullTextGrain) {
+      pushUniqueCeliac(matches, {
+        ingredient: fullTextGrain,
+        signalType: CELIAC_RULES.EXPLICIT_GRAINS.signalType,
+        severity: CELIAC_RULES.EXPLICIT_GRAINS.severity,
+        reason: CELIAC_RULES.EXPLICIT_GRAINS.reason,
+      })
+    }
+  }
+
+  const avoidTags = new Set(CELIAC_OFF_AVOID_TAGS)
+  const cautionTags = new Set(CELIAC_OFF_CAUTION_TAGS)
+  for (const tag of offTags?.allergens_tags ?? []) {
+    const plain = normalizeCeliacOffTag(tag)
+    if (avoidTags.has(plain)) {
+      pushUniqueCeliac(matches, {
+        ingredient: tag,
+        signalType: CELIAC_RULES.ALLERGEN_SECTION.signalType,
+        severity: CELIAC_RULES.ALLERGEN_SECTION.severity,
+        reason: CELIAC_RULES.ALLERGEN_SECTION.reason,
+      })
+    } else if (cautionTags.has(plain)) {
+      pushUniqueCeliac(matches, {
+        ingredient: tag,
+        signalType: CELIAC_RULES.OATS.signalType,
+        severity: CELIAC_RULES.OATS.severity,
+        reason: CELIAC_RULES.OATS.reason,
+      })
+    }
+  }
+  for (const tag of offTags?.traces_tags ?? []) {
+    const plain = normalizeCeliacOffTag(tag)
+    if (avoidTags.has(plain) || cautionTags.has(plain)) {
+      pushUniqueCeliac(matches, {
+        ingredient: tag,
+        signalType: CELIAC_RULES.MAY_CONTAIN.signalType,
+        severity: CELIAC_RULES.MAY_CONTAIN.severity,
+        reason: CELIAC_RULES.MAY_CONTAIN.reason,
+      })
     }
   }
 

@@ -90,3 +90,80 @@ test('wheat in parentheses on same line as glucose syrup -> AVOID', () => {
   const result = runCeliacCheck(ingredients, text)
   assert.equal(getCeliacSeverity(result), 'AVOID')
 })
+
+test('standalone gluten ingredient -> AVOID', () => {
+  const result = runCeliacCheck(['water', 'gluten', 'salt'], 'water, gluten, salt')
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+  assert.equal(result.some((m) => m.signalType === 'EXPLICIT_GRAIN'), true)
+})
+
+test('vital gluten / gluten flour -> AVOID', () => {
+  for (const name of ['vital gluten', 'gluten flour', 'added gluten']) {
+    const result = runCeliacCheck([name, 'salt'], '')
+    assert.equal(getCeliacSeverity(result), 'AVOID', name)
+  }
+})
+
+test('French contient : gluten -> AVOID', () => {
+  const result = runCeliacCheck(
+    ['pois chiches', 'sel'],
+    'Ingrédients: pois chiches, sel. Contient : gluten.'
+  )
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+})
+
+test('EU cereals containing gluten -> AVOID', () => {
+  const en = runCeliacCheck(['salt', 'spices'], 'Contains cereals containing gluten')
+  assert.equal(getCeliacSeverity(en), 'AVOID')
+  const fr = runCeliacCheck(['sel'], 'céréales contenant du gluten')
+  assert.equal(getCeliacSeverity(fr), 'AVOID')
+})
+
+test('French blé / orge / seigle whole words -> AVOID', () => {
+  assert.equal(getCeliacSeverity(runCeliacCheck(['blé', 'sel'], '')), 'AVOID')
+  assert.equal(getCeliacSeverity(runCeliacCheck(['orge perlée'], '')), 'AVOID')
+  assert.equal(getCeliacSeverity(runCeliacCheck(['seigle', 'eau'], '')), 'AVOID')
+})
+
+test('fromage bleu does not match French blé -> SAFE', () => {
+  const result = runCeliacCheck(['fromage bleu', 'sel'], 'fromage bleu, sel')
+  assert.equal(getCeliacSeverity(result), 'SAFE')
+})
+
+test('gluten-free oats still CAUTION not AVOID', () => {
+  const result = runCeliacCheck(['gluten-free oats'], '')
+  assert.equal(getCeliacSeverity(result), 'CAUTION')
+  assert.equal(result.some((m) => m.signalType === 'EXPLICIT_GRAIN'), false)
+})
+
+test('may contain gluten stays CAUTION not AVOID', () => {
+  const result = runCeliacCheck(['rice flour', 'salt'], 'may contain gluten')
+  assert.equal(getCeliacSeverity(result), 'CAUTION')
+  assert.equal(result.some((m) => m.signalType === 'MAY_CONTAIN'), true)
+})
+
+test('OFF en:gluten tag with no grain words -> AVOID', () => {
+  const result = runCeliacCheck(['chickpea flour', 'salt'], '', {
+    allergens_tags: ['en:gluten'],
+  })
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+})
+
+test('OFF en:wheat tag -> AVOID', () => {
+  const result = runCeliacCheck(['huile de tournesol', 'sel'], '', {
+    allergens_tags: ['en:wheat'],
+  })
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+})
+
+test('OFF traces en:gluten -> CAUTION', () => {
+  const result = runCeliacCheck(['rice', 'salt'], '', {
+    traces_tags: ['en:gluten'],
+  })
+  assert.equal(getCeliacSeverity(result), 'CAUTION')
+})
+
+test('traces de gluten -> CAUTION', () => {
+  const result = runCeliacCheck(['riz', 'sel'], 'traces de gluten')
+  assert.equal(getCeliacSeverity(result), 'CAUTION')
+})

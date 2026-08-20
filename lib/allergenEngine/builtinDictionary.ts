@@ -204,6 +204,9 @@ export const CELIAC_RULES = {
       'hydrolyzed wheat',
       'hydrolysed wheat',
       'modified wheat starch',
+      'gluten flour',
+      'vital gluten',
+      'added gluten',
       'bulgur',
       'couscous',
       'freekeh',
@@ -251,14 +254,18 @@ export const CELIAC_RULES = {
       'contains gluten',
       'contains barley',
       'contains rye',
+      'contains cereals containing gluten',
+      'cereals containing gluten',
       'allergens: wheat',
       'allergens: gluten',
       'contient du ble',
       'contient du gluten',
+      'contient gluten',
       'contient de l orge',
       'contient du seigle',
       'contient: ble',
       'contient : ble',
+      'cereales contenant du gluten',
       'peut contenir du ble',
       'peut contenir du gluten',
       'contiene trigo',
@@ -297,7 +304,10 @@ export const CELIAC_RULES = {
       'same equipment as wheat',
       'processed in a facility that also processes wheat',
       'traces of wheat',
+      'traces of gluten',
       'traces de ble',
+      'traces de gluten',
+      'peut contenir gluten',
       'peut contenir des traces de ble',
       'peut contenir des traces de gluten',
     ],
@@ -342,7 +352,42 @@ export const CELIAC_RULES = {
     'gluten free brewers yeast',
     'gluten-free brewers yeast',
   ],
+  /**
+   * Word-boundary grains. Do NOT put these in EXPLICIT_GRAINS.terms:
+   * includes("gluten") matches gluten-free; includes("ble") matches bleu.
+   */
+  EXPLICIT_GRAIN_WHOLE_WORDS: ['gluten', 'ble', 'orge', 'seigle'],
 }
+
+/** OFF allergens_tags / traces_tags that mean a gluten cereal is declared. */
+export const CELIAC_OFF_AVOID_TAGS = [
+  'gluten',
+  'wheat',
+  'barley',
+  'rye',
+  'spelt',
+  'kamut',
+  'triticale',
+  'durum',
+  'einkorn',
+  'emmer',
+  'farro',
+  'seitan',
+  'cereals-containing-gluten',
+  'wheat-flour',
+  'wheat-gluten',
+  'barley-malt',
+  'rye-flour',
+]
+
+/** OFF traces/oat tags — caution, not a confirmed gluten recipe ingredient. */
+export const CELIAC_OFF_CAUTION_TAGS = [
+  'oats',
+  'oat-flour',
+  'oat-flakes',
+  'oat-bran',
+  'oat-fiber',
+]
 
 /** Sensitivity helpers shared by UI/score mapping. */
 export const SENSITIVITY_MAP: Record<string, string[]> = {

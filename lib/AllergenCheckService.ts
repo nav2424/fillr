@@ -128,7 +128,10 @@ export async function scanBarcodeForAllergens(params: {
     ]
       .join(' ')
       .trim()
-    const celiacMatches = runCeliacCheck(ingredients, fullProductText)
+    const celiacMatches = runCeliacCheck(ingredients, fullProductText, {
+      allergens_tags: norm?.allergens_tags,
+      traces_tags: norm?.traces_tags,
+    })
     output.celiac = {
       celiacModeEnabled: true,
       matchedGlutenSignals: celiacMatches.map((m) => ({
