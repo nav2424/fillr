@@ -114,6 +114,32 @@ const SHOULD_FLAG_AVOID: Scenario[] = [
     expect: 'AVOID',
     expectAnySignal: ['ALLERGEN_SECTION'],
   },
+  {
+    id: 'standalone-gluten-seitan-style',
+    ingredients: ['water', 'gluten', 'salt'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
+    id: 'french-contient-colon-gluten',
+    ingredients: ['pois chiches', 'sel'],
+    fullText: 'Contient : gluten',
+    expect: 'AVOID',
+    expectAnySignal: ['ALLERGEN_SECTION', 'EXPLICIT_GRAIN'],
+  },
+  {
+    id: 'french-ble-grain',
+    ingredients: ['blé', 'sel'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
+    id: 'eu-cereals-containing-gluten',
+    ingredients: ['salt'],
+    fullText: 'Contains cereals containing gluten',
+    expect: 'AVOID',
+    expectAnySignal: ['ALLERGEN_SECTION', 'EXPLICIT_GRAIN'],
+  },
 ]
 
 /** Should stay clear — common non-gluten staples (specificity). */
@@ -151,6 +177,11 @@ const SHOULD_STAY_SAFE: Scenario[] = [
   {
     id: 'gluten-free-brewers-yeast-supplement',
     ingredients: ['gluten free brewers yeast', 'rice flour'],
+    expect: 'SAFE',
+  },
+  {
+    id: 'fromage-bleu-not-ble',
+    ingredients: ['fromage bleu', 'sel'],
     expect: 'SAFE',
   },
 ]

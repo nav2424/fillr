@@ -217,7 +217,10 @@ export function buildScoringData(
       const display = scanResult.product.ingredientText ?? ''
       const haystack = safety && safety.length > 0 ? safety : display
       const segments = haystack.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-      const celiacMatches = runCeliacCheck(segments, haystack)
+      const celiacMatches = runCeliacCheck(segments, haystack, {
+        allergens_tags: scanResult.product.allergensTags,
+        traces_tags: scanResult.product.tracesTags,
+      })
       celiacSeverity = getCeliacSeverity(celiacMatches)
     }
   }

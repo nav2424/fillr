@@ -343,7 +343,10 @@ async function buildScanFromCachedBarcodeProduct(
     ]
       .filter(Boolean)
       .join(' ')
-    const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || ingredientText)
+    const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || ingredientText, {
+      allergens_tags: detectionFields.allergens_tags,
+      traces_tags: detectionFields.traces_tags,
+    })
     output.celiac = {
       celiacModeEnabled: true,
       matchedGlutenSignals: celiacMatches.map((m) => ({
@@ -980,7 +983,10 @@ export async function rescanWithManualIngredients(
       .split(/[,;]/)
       .map((s) => s.trim())
       .filter(Boolean)
-    const celiacMatches = runCeliacCheck(ingredients, safety)
+    const celiacMatches = runCeliacCheck(ingredients, safety, {
+      allergens_tags: product.allergensTags,
+      traces_tags: product.tracesTags,
+    })
     output.celiac = {
       celiacModeEnabled: true,
       matchedGlutenSignals: celiacMatches.map((m) => ({
@@ -1129,8 +1135,9 @@ export async function createScanResultFromIngredientText(
 
   if (celiac) {
     const safety = ingredients_text_safety.trim() || ingredients_text
+    const celiacHaystack = [safety, containsText, mayContainText].filter(Boolean).join(' ')
     const ingredients = safety.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-    const celiacMatches = runCeliacCheck(ingredients, safety)
+    const celiacMatches = runCeliacCheck(ingredients, celiacHaystack || safety)
     output.celiac = {
       celiacModeEnabled: true,
       matchedGlutenSignals: celiacMatches.map((m) => ({
