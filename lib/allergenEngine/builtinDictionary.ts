@@ -64,7 +64,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     id: 'peanuts',
     name: 'Peanuts',
     synonyms: [
-      'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
+      'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'arachides', 'peanut oil', 'peanut butter',
       'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
     ],
   },
@@ -78,8 +78,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'macadamia', 'macadamias', 'brazil nut', 'brazil nuts', 'pine nut', 'pine nuts',
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
-      'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'amande', 'amandes', 'noisette', 'noisettes', 'noix de cajou', 'noix de Grenoble', 'pacane',
+      'pistache', 'pignon', 'châtaigne',
+      'fruits à coque', 'fruits a coque',
     ],
   },
   {
@@ -89,7 +90,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'poissons', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
     ],
   },
   {
@@ -130,7 +131,19 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
   {
     id: 'sulfites',
     name: 'Sulfites',
-    synonyms: ['sulfites', 'sulphites', 'sulfiting agents', 'sulfur dioxide', 'sodium sulfite', 'sodium bisulfite', 'sodium metabisulfite', 'potassium sulfite', 'potassium bisulfite', 'potassium metabisulfite'],
+    synonyms: [
+      'sulfites', 'sulphites', 'sulfiting agents', 'sulphiting agents',
+      'sulfur dioxide', 'sulphur dioxide', 'dioxyde de soufre', 'anhydride sulfureux',
+      'sodium sulfite', 'sodium sulphite',
+      'sodium bisulfite', 'sodium bisulphite',
+      'sodium metabisulfite', 'sodium metabisulphite',
+      'potassium sulfite', 'potassium sulphite',
+      'potassium bisulfite', 'potassium bisulphite',
+      'potassium metabisulfite', 'potassium metabisulphite',
+      'e220', 'e 220', 'e221', 'e 221', 'e222', 'e 222', 'e223', 'e 223',
+      'e224', 'e 224', 'e225', 'e 225', 'e226', 'e 226', 'e227', 'e 227',
+      'e228', 'e 228',
+    ],
   },
 ]
 
