@@ -11,7 +11,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'milk', 'whey', 'casein', 'lactose', 'cream', 'butter', 'butterfat',
       'milk powder', 'skim milk powder', 'milkfat', 'modified milk ingredients',
-      'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
+      'sodium caseinate', 'calcium caseinate', 'potassium caseinate', 'caseinate', 'caseinates',
+      'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
@@ -88,8 +89,11 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
+      'pollock', 'pollack', 'alaska pollock', 'herring', 'mackerel', 'hake',
+      'catfish', 'swordfish', 'whitefish', 'whiting', 'surimi',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'cabillaud', 'colin', 'hareng', 'maquereau', 'merlu'
     ],
   },
   {
@@ -108,6 +112,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'shrimp', 'prawn', 'prawns', 'crab', 'crabs', 'lobster', 'lobsters',
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
+      'calamari', 'calamar', 'krill',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
       'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
     ],

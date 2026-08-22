@@ -50,11 +50,6 @@ function formatOffStructuredIngredientText(raw?: string): string {
   return s.trim()
 }
 
-function stripBilingualSlashes(s: string): string {
-  if (!s.includes('/')) return s.trim()
-  return s.replace(/\/[^,\)]+/g, '').replace(/\s+/g, ' ').trim()
-}
-
 export interface OFFProductLike {
   product_name?: string
   product_name_en?: string
@@ -173,18 +168,20 @@ export function normalizeOFFProduct(
   })
 
   // 2) Contains (explicit allergen statement)
+  // Keep slash-separated allergen lists intact (e.g. "Milk / Soy / Wheat").
+  // Stripping after "/" was meant for bilingual "Milk / Lait" pairs but also
+  // dropped later English allergens before matching.
   const contains_text_raw =
     typeof offProduct.allergens === 'string' ? offProduct.allergens.trim() : ''
-  const contains_text = englishPrimarySegment(stripBilingualSlashes(contains_text_raw))
+  const contains_text = contains_text_raw
   const allergens_tags = Array.isArray(offProduct.allergens_tags)
     ? offProduct.allergens_tags
     : []
 
   // 3) May contain (traces) + cross-contact lines for matching / UI
   const traces_raw = typeof offProduct.traces === 'string' ? offProduct.traces.trim() : ''
-  const traces_stripped = englishPrimarySegment(stripBilingualSlashes(traces_raw))
   const may_contain_text = mergeMayContainParts(
-    traces_stripped,
+    traces_raw,
     cross_contact_warnings.length ? cross_contact_warnings.join('. ') : undefined
   )
   const traces_tags = Array.isArray(offProduct.traces_tags)
