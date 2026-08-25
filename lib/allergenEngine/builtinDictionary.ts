@@ -15,7 +15,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
-      'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
+      'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'yogourt', 'yaourt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
       'half and half', 'whipping cream', 'heavy cream', 'light cream',
       'lactalbumin', 'lactoglobulin', 'galactose', 'lactulose'
@@ -26,6 +26,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Eggs',
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
+      'mayo', 'meringue',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
       'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
     ],
@@ -41,7 +42,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'wheat dextrin', 'wheat berries', 'hydrolyzed wheat protein', 'hydrolysed wheat protein',
       'wheat protein', 'wheat protein isolate', 'spelt', 'kamut', 'couscous', 'bulgur', 'panko',
       'matzo', 'matzoh', 'barley', 'rye', 'malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour',
-      'soy sauce', 'shoyu',
+      'soy sauce', 'shoyu', 'seitan',
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
@@ -56,6 +57,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'soybean oil', 'soy oil', 'textured vegetable protein', 'tvp',
       'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce', 'soy protein',
       'soy flour', 'soy meal', 'hydrolyzed soy protein',
+      'tamari', 'shoyu', 'natto',
       'soja', 'lécithine de soja', 'huile de soja', 'farine de soja'
     ],
     flag_soy_derivatives: true,
