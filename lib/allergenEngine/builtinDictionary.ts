@@ -88,6 +88,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
+      'bass', 'sea bass', 'catfish', 'swordfish', 'whitefish',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
       'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
     ],
@@ -97,7 +98,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Sesame',
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
-      'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
+      'benne', 'gingelly', 'simsim', 'til', 'sesame oil', 'sesame paste',
       'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
     ],
   },
