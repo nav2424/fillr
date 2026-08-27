@@ -15,7 +15,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
-      'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
+      'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk', 'feta',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
       'half and half', 'whipping cream', 'heavy cream', 'light cream',
       'lactalbumin', 'lactoglobulin', 'galactose', 'lactulose'
@@ -64,7 +64,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     id: 'peanuts',
     name: 'Peanuts',
     synonyms: [
-      'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
+      'peanut', 'peanuts', 'groundnut', 'groundnuts', 'ground nut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
       'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
     ],
   },
