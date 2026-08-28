@@ -78,6 +78,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'macadamia', 'macadamias', 'brazil nut', 'brazil nuts', 'pine nut', 'pine nuts',
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
+      'filbert', 'filberts', 'cobnut', 'cobnuts', 'pignoli', 'pinoli',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
       'pistache', 'pignon', 'châtaigne'
     ],
@@ -89,6 +90,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
+      'worcestershire', 'worcestershire sauce', 'worcester sauce',
       'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
     ],
   },
@@ -155,7 +157,12 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'coconut', 'nutmeg', 'water chestnut', "châtaigne d'eau"
   ],
   soy: ['sunflower lecithin', 'lecithin from sunflower', 'canola lecithin', 'lecithin from canola', 'soy-free', 'sans soja'],
-  fish: ['fish-free', 'sans poisson'],
+  fish: [
+    'fish-free', 'sans poisson',
+    'vegan worcestershire', 'vegan worcestershire sauce',
+    'anchovy-free worcestershire', 'anchovy-free worcestershire sauce',
+    'fish-free worcestershire',
+  ],
   sesame: ['sesame-free', 'sans sésame'],
 }
 
