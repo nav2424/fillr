@@ -79,7 +79,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pistaches', 'pignon', 'pignons', 'pignons de pin', 'pignon de pin',
+      'pinon', 'pinons', 'pinyon', 'pinyons', 'pinones', 'pinon nut', 'pinyon nut',
+      'châtaigne'
     ],
   },
   {
@@ -89,6 +91,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
+      'bonito', 'katsuobushi', 'katsuo bushi', 'skipjack',
       'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
     ],
   },
@@ -155,7 +158,10 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'coconut', 'nutmeg', 'water chestnut', "châtaigne d'eau"
   ],
   soy: ['sunflower lecithin', 'lecithin from sunflower', 'canola lecithin', 'lecithin from canola', 'soy-free', 'sans soja'],
-  fish: ['fish-free', 'sans poisson'],
+  fish: [
+    'fish-free', 'sans poisson',
+    'vegan bonito', 'plant-based bonito', 'vegan katsuobushi',
+  ],
   sesame: ['sesame-free', 'sans sésame'],
 }
 
