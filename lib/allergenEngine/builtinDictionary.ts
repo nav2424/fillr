@@ -27,7 +27,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'eggnog', 'lait de poule'
     ],
   },
   {
@@ -136,7 +137,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
 
 /** Anti-matches: terms that should NOT trigger the allergen (false positive prevention).
  * For milk: "peanut butter" etc. only apply when matching "butter"/"cream" (via shouldSkipMilkButterCream).
- * These apply when matching the allergen's generic terms. */
+ * These apply when matching the allergen's generic terms.
+ * Never list a real allergen food whose name merely contains a synonym (e.g. eggnog):
+ * section-wide anti-matching would skip that synonym for the whole label. */
 export const ANTI_MATCHES: Record<string, string[]> = {
   milk: [
     'soy milk', 'almond milk', 'coconut milk', 'oat milk', 'rice milk', 'hemp milk',
@@ -145,7 +148,7 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'lactic acid', 'sodium lactate', 'calcium lactate'
     // peanut butter, cocoa butter, etc. handled by shouldSkipMilkButterCream for term "butter"/"cream"
   ],
-  eggs: ['eggplant', 'eggnog'],
+  eggs: ['eggplant'],
   wheat: [
     'wheatgrass', 'glutamate', 'monosodium glutamate', 'msg', 'glutamic acid',
     'gluten-free', 'sans gluten', 'wheat-free', 'buckwheat', 'sweet buckwheat',
