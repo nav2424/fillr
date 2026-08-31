@@ -11,6 +11,7 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  { re: /\bcontiene\s*:?\s*/i, name: 'contiene' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]

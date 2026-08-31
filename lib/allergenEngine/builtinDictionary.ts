@@ -13,7 +13,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'milk powder', 'skim milk powder', 'milkfat', 'modified milk ingredients',
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
-      'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'lait', 'leche', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +27,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'huevo', 'huevos',
     ],
   },
   {
@@ -65,7 +66,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'cacahuate', 'cacahuates',
     ],
   },
   {
@@ -89,7 +91,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'pescado',
     ],
   },
   {
@@ -98,7 +101,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'sésamo', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'ajonjolí', 'ajonjoli',
     ],
   },
   {
@@ -109,7 +113,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'mariscos', 'camarón', 'camaron', 'camarones',
     ],
   },
   {
