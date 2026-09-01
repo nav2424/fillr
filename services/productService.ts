@@ -58,6 +58,11 @@ import { supabase } from '../lib/supabase'
 import { yieldToMainThread } from '../lib/yieldToMainThread'
 import { enqueueNonCriticalWrite } from '../lib/nonCriticalWriteQueue'
 import { trackScanResultMetric } from '../lib/scanResultMetrics'
+import {
+  INGREDIENT_SOURCE_PREFERENCE_MARGIN,
+  resolveProductUpsertIngredient,
+  scoreIngredientSource,
+} from '../lib/productIngredientSource'
 
 function supabaseClientConfigured(): boolean {
   return Boolean(
@@ -66,11 +71,25 @@ function supabaseClientConfigured(): boolean {
   )
 }
 
+type CachedBarcodeProduct = {
+  barcode: string
+  name: string
+  brand: string | null
+  ingredient_text: string | null
+  nutrition_json: Record<string, unknown> | null
+  source: string | null
+  updated_at: string | null
+}
+
 /**
  * After OFF product data is fetched and parsed, upsert into `public.products`.
  * Non-blocking for scan UX — callers should `void … .catch(() => {})`.
  */
-async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: string): Promise<void> {
+async function upsertProductToDatabase(
+  offProduct: OFFProductLike,
+  barcode: string,
+  existingCached?: CachedBarcodeProduct | null
+): Promise<void> {
   if (!supabaseClientConfigured()) return
   const bc = barcode.trim()
   if (!bc) return
@@ -85,10 +104,25 @@ async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: stri
     const brand =
       typeof brandsRaw === 'string' && brandsRaw.trim() ? brandsRaw.split(',')[0].trim() : null
 
-    const ingredientText =
+    const offIngredientText =
       (typeof offProduct.ingredients_text_en === 'string' && offProduct.ingredients_text_en.trim()) ||
       (typeof offProduct.ingredients_text === 'string' && offProduct.ingredients_text.trim()) ||
       null
+    const existing =
+      existingCached !== undefined ? existingCached : await getCachedProductByBarcode(bc)
+    const offUpdatedAt =
+      typeof (offProduct as { last_modified_t?: number }).last_modified_t === 'number'
+        ? new Date((offProduct as { last_modified_t: number }).last_modified_t * 1000).toISOString()
+        : null
+    const resolvedIngredient = resolveProductUpsertIngredient({
+      offIngredientText,
+      offUpdatedAt,
+      existingIngredientText: existing?.ingredient_text,
+      existingSource: existing?.source,
+      existingUpdatedAt: existing?.updated_at,
+    })
+    const ingredientText = resolvedIngredient.ingredientText
+    const productSource = resolvedIngredient.source
 
     const imageUrl =
       (typeof offProduct.image_front_url === 'string' && offProduct.image_front_url) ||
@@ -120,7 +154,7 @@ async function upsertProductToDatabase(offProduct: OFFProductLike, barcode: stri
         image_url: imageUrl,
         ingredient_text: ingredientText,
         nutrition_json: nutritionJson,
-        source: 'openfoodfacts',
+        source: productSource,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'barcode' }
@@ -213,16 +247,6 @@ export async function backfillBarcodeIngredientData(params: {
 
 function isFillrDemoBarcode(raw: string): boolean {
   return isDemoScanBarcode(raw)
-}
-
-type CachedBarcodeProduct = {
-  barcode: string
-  name: string
-  brand: string | null
-  ingredient_text: string | null
-  nutrition_json: Record<string, unknown> | null
-  source: string | null
-  updated_at: string | null
 }
 
 async function getCachedProductByBarcode(barcode: string): Promise<CachedBarcodeProduct | null> {
@@ -382,28 +406,6 @@ async function buildScanFromCachedBarcodeProduct(
     finalResult = await maybeMarkScanPendingDecode(finalResult, dietaryProfile, barcode)
   }
   return { ok: true, result: finalResult, dietaryProfile }
-}
-
-function scoreIngredientSource(
-  ingredientText: string,
-  sourceLabel: string,
-  updatedAt?: string | null
-): number {
-  const text = String(ingredientText ?? '').trim()
-  if (!text) return 0
-  const parsedCount = parseIngredients(text, 'barcode').length
-  let score = 0
-  score += Math.min(text.length, 5000) / 25
-  score += Math.min(parsedCount * 16, 220)
-  if (/\bingredients?\s*:/i.test(text)) score += 40
-  if (/openfoodfacts/i.test(sourceLabel)) score += 20
-  if (/backfilled|photo_ocr|manual_entry/i.test(sourceLabel)) score += 35
-  if (updatedAt && !Number.isNaN(Date.parse(updatedAt))) {
-    const ageDays = (Date.now() - Date.parse(updatedAt)) / (1000 * 60 * 60 * 24)
-    if (ageDays <= 30) score += 20
-    else if (ageDays <= 180) score += 10
-  }
-  return Math.round(score)
 }
 
 /** OpenAI ingredient enrichment can be slow on poor networks; fallback copy fills in if this fires. */
@@ -649,10 +651,11 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
         }
       }
 
-      // Fire-and-forget — never block the scan path on Supabase
-      void upsertProductToDatabase(offResult.offProduct, offResult.barcode).catch(() => {})
-
+      // Read cache before upsert so a racing OFF write cannot hide a richer OCR/manual backfill
+      // on this scan. Upsert itself also refuses to clobber learned text unless OFF is clearly better.
       const cached = await getCachedProductByBarcode(offResult.barcode)
+      void upsertProductToDatabase(offResult.offProduct, offResult.barcode, cached).catch(() => {})
+
       if (cached?.ingredient_text) {
         const offScore = scoreIngredientSource(
           ingredientText,
@@ -666,7 +669,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
           cached.source ?? 'unknown',
           cached.updated_at
         )
-        if (cachedScore >= offScore + 18) {
+        if (cachedScore >= offScore + INGREDIENT_SOURCE_PREFERENCE_MARGIN) {
           void trackScanResultMetric({
             name: 'source_decision',
             barcode: offResult.barcode,
@@ -686,7 +689,7 @@ export async function scanProductFast(params: ScanProductParams): Promise<ScanPr
           )
           if (fusedPreferred?.ok) return fusedPreferred
         }
-        if (cachedScore < offScore + 18) {
+        if (cachedScore < offScore + INGREDIENT_SOURCE_PREFERENCE_MARGIN) {
           void trackScanResultMetric({
             name: 'source_decision',
             barcode: offResult.barcode,
