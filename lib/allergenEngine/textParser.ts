@@ -11,6 +11,8 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  // Word-boundary after the verb so "enthalten" (kann Spuren … enthalten) is not treated as Contains.
+  { re: /\benth[äa]lt\b\s*:?\s*/i, name: 'enthalt' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]
