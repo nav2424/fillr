@@ -18,7 +18,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
       'half and half', 'whipping cream', 'heavy cream', 'light cream',
-      'lactalbumin', 'lactoglobulin', 'galactose', 'lactulose'
+      'lactalbumin', 'lactoglobulin', 'galactose', 'lactulose',
+      'milch', 'vollmilch', 'magermilch', 'milchpulver', 'vollmilchpulver',
+      'magermilchpulver', 'molke', 'molkenprotein'
     ],
   },
   {
@@ -27,7 +29,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'ei', 'eier', 'eigelb', 'eiweiss', 'eiweiß', 'eiklar', 'vollei'
     ],
   },
   {
@@ -45,6 +48,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'weizen', 'weizenmehl', 'weizenstärke', 'weizenstaerke',
+      'gerstenmalz', 'gerstenmalzextrakt',
     ],
     gluten_as_wheat: true,
   },
@@ -56,7 +61,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'soybean oil', 'soy oil', 'textured vegetable protein', 'tvp',
       'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce', 'soy protein',
       'soy flour', 'soy meal', 'hydrolyzed soy protein',
-      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja'
+      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja',
+      'sojalecithin'
     ],
     flag_soy_derivatives: true,
   },
@@ -65,7 +71,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'erdnuss', 'erdnüsse', 'erdnusse'
     ],
   },
   {
@@ -89,7 +96,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'fisch'
     ],
   },
   {
@@ -98,7 +106,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'sesam'
     ],
   },
   {
@@ -109,7 +118,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'garnelen', 'garnele', 'krebstiere', 'weichtiere'
     ],
   },
   {
@@ -226,6 +236,9 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'weizenmehl',
+      'weizenstärke',
+      'weizenstaerke',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -240,6 +253,8 @@ export const CELIAC_RULES = {
       'barley malt flavoring',
       'malt vinegar',
       'rye malt',
+      'gerstenmalzextrakt',
+      'gerstenmalz',
     ],
     severity: 'AVOID' as const,
     signalType: 'BARLEY_MALT' as const,
@@ -265,6 +280,10 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'enthalt weizen',
+      'enthalt gluten',
+      'enthält weizen',
+      'enthält gluten',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
