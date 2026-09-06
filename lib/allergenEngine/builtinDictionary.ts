@@ -14,6 +14,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'melk', 'melkpoeder', 'karnemelk', 'kaas', 'boter', 'slagroom', 'kwark', 'weipoeder',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +28,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'ei', 'eieren', 'eigeel', 'eipoeder',
     ],
   },
   {
@@ -45,6 +47,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'tarwe', 'tarwemeel', 'tarwebloem', 'tarwezetmeel',
     ],
     gluten_as_wheat: true,
   },
@@ -65,7 +68,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'pinda', 'pindas', 'pindakaas', 'pindaolie', 'aardnoot', 'aardnoten',
     ],
   },
   {
@@ -79,7 +83,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'amandel', 'amandelen', 'hazelnoot', 'hazelnoten', 'walnoot', 'walnoten',
+      'cashewnoot', 'cashewnoten', 'pijnboompitten', 'schaalvruchten', 'noten',
     ],
   },
   {
@@ -89,7 +95,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'vis', 'vissen', 'visolie', 'ansjovis',
     ],
   },
   {
@@ -98,7 +105,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'sesam', 'sesamzaad', 'sesamzaadjes', 'sesamolie',
     ],
   },
   {
@@ -109,7 +117,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'garnaal', 'garnalen', 'schaaldieren', 'weekdieren', 'kreeft', 'mosselen',
     ],
   },
   {
@@ -226,6 +235,12 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'tarwe',
+      'tarwemeel',
+      'tarwebloem',
+      'tarwezetmeel',
+      'gerst',
+      'rogge',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +280,11 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'bevat gluten',
+      'bevat tarwe',
+      'bevat gerst',
+      'bevat rogge',
+      'glutenhoudend',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
@@ -300,6 +320,10 @@ export const CELIAC_RULES = {
       'traces de ble',
       'peut contenir des traces de ble',
       'peut contenir des traces de gluten',
+      'kan tarwe bevatten',
+      'kan gluten bevatten',
+      'sporen van tarwe',
+      'sporen van gluten',
     ],
     severity: 'CAUTION' as const,
     signalType: 'MAY_CONTAIN' as const,
