@@ -52,6 +52,10 @@ test('parseSections treats Bevat as a Contains header and does not steal bevatte
   const may = parseSections('rijstebloem, zout. Kan bevatten: noten')
   assert.match(may.may_contain_text, /noten/i)
   assert.doesNotMatch(may.contains_text, /noten/i)
+
+  const out = detect(['tree_nuts'], 'rijstebloem, zout. Kan bevatten: noten')
+  assert.equal(out.overall_status, 'MAY_CONTAIN')
+  assert.ok(out.matched_allergens.some((m) => m.allergen_id === 'tree_nuts'))
 })
 
 test('English Ingredients: prefix still strips after adding Ingrediënten', () => {
