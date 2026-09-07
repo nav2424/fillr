@@ -19,6 +19,8 @@ export function normalizeText(text: string): string {
     .toLowerCase()
     .replace(/\u0153/g, 'oe') // œ → oe (œufs, œuf)
     .replace(/\u0152/g, 'oe') // Œ → oe
+    .replace(/\u0142/g, 'l') // ł → l (Polish masło, żółtko, składniki; NFKD does not fold ł)
+    .replace(/\u0141/g, 'l') // Ł → l
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritics (arachide variants, etc.)
     .replace(/[\u2018\u2019\u201a\u201b\u201c\u201d\u201e\u201f]/g, "'") // curly apostrophes
