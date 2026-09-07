@@ -14,6 +14,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'mleko', 'mleko w proszku', 'serwatka', 'ser', 'sery', 'twaróg',
+      'śmietana', 'śmietanka', 'jogurt', 'masło', 'maślanka', 'kazeina', 'laktoza',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +29,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'jajko', 'jajka', 'jaja', 'żółtko', 'białko jaja',
     ],
   },
   {
@@ -45,6 +48,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'pszenica', 'mąka pszenna', 'pszenny', 'pszenna', 'pszenne',
     ],
     gluten_as_wheat: true,
   },
@@ -65,7 +69,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'orzeszki ziemne', 'orzech ziemny', 'orzechy ziemne', 'pasta arachidowa',
+      'masło arachidowe', 'arachidowy', 'arachidowe', 'arachidowa',
     ],
   },
   {
@@ -79,7 +85,11 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'migdał', 'migdały', 'orzechy laskowe', 'orzech laskowy',
+      'orzechy włoskie', 'orzech włoski', 'orzechy nerkowca', 'nerkowiec',
+      'pistacje', 'pistacja', 'orzechy piniowe', 'orzeszki piniowe',
+      'orzechy brazylijskie', 'orzechy makadamia', 'orzechy',
     ],
   },
   {
@@ -89,7 +99,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'ryba', 'ryby', 'olej rybny', 'łosoś', 'tuńczyk', 'dorsz', 'śledź', 'makrela',
     ],
   },
   {
@@ -98,7 +109,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'sezam', 'nasiona sezamu', 'olej sezamowy', 'sezamowy',
     ],
   },
   {
@@ -109,7 +121,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'krewetka', 'krewetki', 'krab', 'kraby', 'homar', 'małże', 'ostrygi',
+      'skorupiaki', 'mięczaki',
     ],
   },
   {
@@ -226,6 +240,10 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'pszenica',
+      'mąka pszenna',
+      'jęczmień',
+      'żyto',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +283,11 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'zawiera gluten',
+      'zawiera pszenicę',
+      'zawiera pszenice',
+      'zawiera jęczmień',
+      'zawiera żyto',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
@@ -300,6 +323,10 @@ export const CELIAC_RULES = {
       'traces de ble',
       'peut contenir des traces de ble',
       'peut contenir des traces de gluten',
+      'może zawierać gluten',
+      'może zawierać pszenicę',
+      'moze zawierac gluten',
+      'moze zawierac pszenice',
     ],
     severity: 'CAUTION' as const,
     signalType: 'MAY_CONTAIN' as const,
