@@ -19,6 +19,10 @@ export function normalizeText(text: string): string {
     .toLowerCase()
     .replace(/\u0153/g, 'oe') // œ → oe (œufs, œuf)
     .replace(/\u0152/g, 'oe') // Œ → oe
+    // æ/ø do not NFKD-decompose. JS word boundaries treat them as non-word
+    // chars, so `æg` / `jordnød` would never match unless folded to ASCII.
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'o')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritics (arachide variants, etc.)
     .replace(/[\u2018\u2019\u201a\u201b\u201c\u201d\u201e\u201f]/g, "'") // curly apostrophes

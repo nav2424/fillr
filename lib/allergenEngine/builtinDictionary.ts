@@ -14,6 +14,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'mælk', 'mælkepulver', 'skummetmælk', 'kærnemælk',
+      'ost', 'smør', 'fløde', 'piskefløde', 'valle', 'vallepulver',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +29,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'æg', 'æggehvide', 'æggeblomme', 'æggepulver',
     ],
   },
   {
@@ -45,6 +48,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'hvede', 'hvedemel', 'hvedestivelse', 'hvedeprotein', 'hvedeklid', 'grahamsmel',
+      'byg', 'rug',
     ],
     gluten_as_wheat: true,
   },
@@ -65,7 +70,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'jordnød', 'jordnødder', 'jordnøddeolie', 'jordnøddesmør', 'jordnøddeprotein',
     ],
   },
   {
@@ -79,7 +85,10 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'mandel', 'mandler', 'hasselnød', 'hasselnødder', 'valnød', 'valnødder',
+      'cashewnød', 'cashewnødder', 'pekannød', 'paranød', 'pistacie', 'pistacienød',
+      'pinjekerner', 'makadamianød', 'nødder',
     ],
   },
   {
@@ -89,7 +98,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'fisk', 'fiskeolie', 'fiskesovs', 'laks', 'tunfisk', 'tun', 'torsk', 'makrel', 'sild', 'ansjos',
     ],
   },
   {
@@ -98,7 +108,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'sesam', 'sesamfrø', 'sesamolie',
     ],
   },
   {
@@ -109,7 +120,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'reje', 'rejer', 'krabbe', 'hummer', 'muslinger', 'østers',
+      'bløddyr', 'krebsdyr', 'skaldyr',
     ],
   },
   {
@@ -226,6 +239,13 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'hvedemel',
+      'hvedestivelse',
+      'hvedeprotein',
+      'hvedeklid',
+      'grahamsmel',
+      'bygmel',
+      'rugmel',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +285,10 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'indeholder gluten',
+      'indeholder: gluten',
+      'indeholder hvede',
+      'indeholder: hvede',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
