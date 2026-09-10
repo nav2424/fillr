@@ -11,11 +11,14 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  // Require a colon so Finnish "ei sisällä" / running-text "sisältää" is not stolen,
+  // and so "saattaa sisältää" / "voi sisältää" can be classified as may-contain first.
+  { re: /\bsisältää\s*:\s*/i, name: 'sisaltaa' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|ainesosat)\s*:?\s*/i
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +30,8 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /saattaa\s+sisältää\s*:?\s*/i,
+  /voi\s+sisältää\s*:?\s*/i,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,
