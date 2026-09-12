@@ -14,6 +14,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'mlieko', 'mlieka', 'sušené mlieko', 'syr', 'syry', 'smotana', 'jogurt',
+      'srvátka', 'tvaroh', 'mliečna sušina',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +29,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'vajce', 'vajcia', 'vaječný', 'vaječná', 'vaječné',
+      'vaječný bielok', 'vaječný žĺtok', 'vaječný prášok', 'žĺtok',
     ],
   },
   {
@@ -45,6 +49,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'pšenica', 'pšeničná', 'pšeničný', 'pšeničné', 'pšeničná múka', 'pšeničný škrob',
+      'pšeničný lepek', 'jačmeň', 'raž', 'lepek',
     ],
     gluten_as_wheat: true,
   },
@@ -65,7 +71,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'arašidy', 'arašid', 'arašidové maslo', 'arašidový olej',
+      'arašidová pasta', 'podzemnica',
     ],
   },
   {
@@ -79,7 +87,10 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'mandle', 'lieskové orechy', 'lieskový orech', 'vlašské orechy', 'kešu',
+      'pistácie', 'para orechy', 'pekanové orechy', 'makadamia',
+      'orechy',
     ],
   },
   {
@@ -89,7 +100,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'ryba', 'ryby', 'rybie', 'losos', 'tuniak', 'treska', 'makrela', 'sardinky',
     ],
   },
   {
@@ -98,7 +110,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'sezam', 'sezamové semienka', 'sezamové semená', 'sezamový olej',
     ],
   },
   {
@@ -109,18 +122,19 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'krevety', 'kôrovce', 'mäkkýše', 'krab', 'mušle',
     ],
   },
   {
     id: 'mustard',
     name: 'Mustard',
-    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde'],
+    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde', 'horčica'],
   },
   {
     id: 'celery',
     name: 'Celery',
-    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri'],
+    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri', 'zeler'],
   },
   {
     id: 'lupin',
@@ -226,6 +240,13 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'pšenica',
+      'pšeničná múka',
+      'pšeničný škrob',
+      'pšeničný lepek',
+      'jačmeň',
+      'jačmenná múka',
+      'ražná múka',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +286,9 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'obsahuje: lepek',
+      'obsahuje: pšenica',
+      'obsahuje: pšenicu',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
