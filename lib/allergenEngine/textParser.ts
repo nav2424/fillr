@@ -11,11 +11,16 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  // Require a colon so Romanian "nu conține" is not stolen,
+  // and so "poate conține" can be classified as may-contain first.
+  { re: /\bconține\s*:\s*/i, name: 'contine' },
+  { re: /\bcontine\s*:\s*/i, name: 'contine_ocr' },
+  { re: /\balergeni\s*:?\s*/i, name: 'alergeni' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|ingrediente)\s*:?\s*/i
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +32,10 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /poate\s+conține\s+urme\s+(de\s*)?/i,
+  /poate\s+contine\s+urme\s+(de\s*)?/i,
+  /poate\s+conține\s*:?/i,
+  /poate\s+contine\s*:?/i,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,
