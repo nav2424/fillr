@@ -14,6 +14,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'мляко', 'млечен', 'млечни', 'сирене', 'сметана', 'извара', 'казеин', 'лактоза', 'суроватка',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +28,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'яйца', 'яйце', 'яйчен', 'яйчен белтък', 'яйчен жълтък', 'яйчен прах', 'яйца на прах'
     ],
   },
   {
@@ -45,6 +47,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'пшеница', 'пшенично брашно', 'пшеничен', 'пшенично нишесте', 'ръж', 'ечемик', 'лимец', 'глутен',
     ],
     gluten_as_wheat: true,
   },
@@ -56,7 +59,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'soybean oil', 'soy oil', 'textured vegetable protein', 'tvp',
       'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce', 'soy protein',
       'soy flour', 'soy meal', 'hydrolyzed soy protein',
-      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja'
+      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja',
+      'соя', 'соев', 'соево', 'соеви', 'соев лецитин', 'соево масло', 'соево брашно'
     ],
     flag_soy_derivatives: true,
   },
@@ -65,7 +69,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'фъстъци', 'фъстъчено масло', 'фъстъчено брашно', 'фъстъчено'
     ],
   },
   {
@@ -79,7 +84,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'бадеми', 'лешници', 'орехи', 'кашу', 'шамфъстък', 'шам фъстък',
+      'пеканови орехи', 'бразилски орехи', 'макадамия', 'ядки', 'кестени'
     ],
   },
   {
@@ -89,7 +96,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'риба', 'рибен', 'рибена', 'рибно', 'сьомга', 'пъстърва', 'скумрия', 'херинга', 'аншоа', 'тон', 'риба тон'
     ],
   },
   {
@@ -98,7 +106,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'сусам', 'сусамово', 'сусамово семе', 'сусамово масло', 'тахан'
     ],
   },
   {
@@ -109,28 +118,29 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'скариди', 'ракообразни', 'раци', 'омари', 'миди', 'стриди', 'мекотели', 'калмари'
     ],
   },
   {
     id: 'mustard',
     name: 'Mustard',
-    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde'],
+    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde', 'горчица'],
   },
   {
     id: 'celery',
     name: 'Celery',
-    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri'],
+    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri', 'целина'],
   },
   {
     id: 'lupin',
     name: 'Lupin',
-    synonyms: ['lupin', 'lupine', 'lupini', 'lupin flour', 'lupin protein'],
+    synonyms: ['lupin', 'lupine', 'lupini', 'lupin flour', 'lupin protein', 'люпин'],
   },
   {
     id: 'sulfites',
     name: 'Sulfites',
-    synonyms: ['sulfites', 'sulphites', 'sulfiting agents', 'sulfur dioxide', 'sodium sulfite', 'sodium bisulfite', 'sodium metabisulfite', 'potassium sulfite', 'potassium bisulfite', 'potassium metabisulfite'],
+    synonyms: ['sulfites', 'sulphites', 'sulfiting agents', 'sulfur dioxide', 'sodium sulfite', 'sodium bisulfite', 'sodium metabisulfite', 'potassium sulfite', 'potassium bisulfite', 'potassium metabisulfite', 'сулфити', 'серен диоксид'],
   },
 ]
 
@@ -226,6 +236,15 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'пшеница',
+      'пшенично брашно',
+      'пшеничен',
+      'пшенично',
+      'ръж',
+      'ръжено',
+      'ечемик',
+      'ечемичен',
+      'лимец',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +284,10 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'съдържа: глутен',
+      'съдържа : глутен',
+      'съдържа: пшеница',
+      'алергени: глутен',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
@@ -300,6 +323,10 @@ export const CELIAC_RULES = {
       'traces de ble',
       'peut contenir des traces de ble',
       'peut contenir des traces de gluten',
+      'може да съдържа пшеница',
+      'може да съдържа глутен',
+      'може да съдържа следи от глутен',
+      'може да съдържа следи от пшеница',
     ],
     severity: 'CAUTION' as const,
     signalType: 'MAY_CONTAIN' as const,
