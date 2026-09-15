@@ -13,9 +13,13 @@ const CONTAINS_PATTERNS = [
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
+  // No \\b: JS word boundaries are ASCII-only, so they miss Cyrillic headers.
+  // Colon required so running-text "не съдържа яйца" is not stolen.
+  { re: /съдържа\s*:\s*/i, name: 'sadarja' },
+  { re: /алергени\s*:?\s*/i, name: 'alergeni_bg' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|съставки|състав)\s*:?\s*/i
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +31,8 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /може\s+да\s+съдържа\s+следи\s+(от\s*)?/i,
+  /може\s+да\s+съдържа\s*:?/i,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,
