@@ -13,9 +13,14 @@ const CONTAINS_PATTERNS = [
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
+  // No \\b: JS word boundaries are ASCII-only, so they miss Greek headers.
+  // Colon required so running-text "δεν περιέχει αυγά" is not stolen.
+  // [έε]/[όο] covers both tonos and ALL-CAPS forms that drop the accent.
+  { re: /περι[έε]χει\s*:/iu, name: 'periechei' },
+  { re: /αλλεργιογ[όο]να\s*:?/iu, name: 'allergiogona' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|συστατικ[άα])\s*:?\s*/iu
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +32,8 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /μπορε[ίι]\s+να\s+περι[έε]χει\s+[ίι]χνη\s+(απ[όο]\s*)?/iu,
+  /μπορε[ίι]\s+να\s+περι[έε]χει\s*:?/iu,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,

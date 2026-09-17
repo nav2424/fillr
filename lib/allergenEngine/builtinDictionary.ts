@@ -14,6 +14,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'sodium caseinate', 'calcium caseinate', 'milk protein', 'milk solids',
       'nonfat dry milk', 'dry milk', 'evaporated milk', 'condensed milk',
       'lait', 'lactosérum', 'caséine', 'beurre', 'crème', 'fromage',
+      'γάλα', 'γάλα σε σκόνη', 'τυρί', 'γιαούρτι', 'κεφίρ',
+      'καζεΐνη', 'λακτόζη', 'τυρόγαλα', 'ορός γάλακτος', 'γαλακτοκομικά',
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
@@ -27,7 +29,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'egg', 'eggs', 'egg white', 'egg yolk', 'albumen', 'albumin', 'mayonnaise',
       'ovalbumin', 'ovomucoid', 'lysozyme', 'egg powder', 'dried egg',
-      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf"
+      'œuf', 'oeuf', 'oeufs', "blanc d'œuf", "jaune d'œuf",
+      'αυγά', 'αυγό', 'ασπράδι αυγού', 'κρόκος αυγού', 'αυγά σε σκόνη'
     ],
   },
   {
@@ -45,6 +48,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       "brewer's yeast", 'brewers yeast', 'triticale', 'farro', 'einkorn', 'emmer',
       'blé', 'farine de blé', 'farine de froment', 'semoule', 'gluten', 'orge', 'seigle',
       'harina de trigo', 'salsa de soja',
+      'σιτάρι', 'σιταρένιο', 'σιταλεύρο', 'σιτάλευρο', 'αλεύρι σίτου',
+      'αλεύρι από σιτάρι', 'γλουτένη', 'κριθάρι', 'σίκαλη', 'σάλτσα σόγιας',
     ],
     gluten_as_wheat: true,
   },
@@ -56,7 +61,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'soybean oil', 'soy oil', 'textured vegetable protein', 'tvp',
       'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce', 'soy protein',
       'soy flour', 'soy meal', 'hydrolyzed soy protein',
-      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja'
+      'soja', 'lécithine de soja', 'huile de soja', 'farine de soja',
+      'σόγια', 'σογιέλαιο', 'σογιάλευρο', 'λεκιθίνη σόγιας', 'σάλτσα σόγιας'
     ],
     flag_soy_derivatives: true,
   },
@@ -65,7 +71,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     name: 'Peanuts',
     synonyms: [
       'peanut', 'peanuts', 'groundnut', 'arachis', 'arachide', 'peanut oil', 'peanut butter',
-      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes'
+      'peanut flour', 'peanut protein', 'cacahuète', 'cacahuètes',
+      'αραχίδες', 'αραχίδα', 'αράπικο φιστίκι', 'αράπικα φιστίκια', 'φυστικοβούτυρο'
     ],
   },
   {
@@ -79,7 +86,9 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'αμύγδαλα', 'αμύγδαλο', 'φουντούκια', 'φουντούκι', 'καρύδια',
+      'κάσιους', 'φιστίκι Αιγίνης', 'κουκουνάρι', 'καρποί με κέλυφος'
     ],
   },
   {
@@ -89,7 +98,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'ψάρι', 'ψάρια', 'σολομός', 'τόνος', 'μπακαλιάρος', 'ρέγκα', 'σαρδέλα'
     ],
   },
   {
@@ -98,7 +108,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'sesame', 'sesame seeds', 'sesame seed', 'tahini', 'tahina',
       'benne', 'gingelly', 'simsim', 'sesame oil', 'sesame paste',
-      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah'
+      'sésame', 'graines de sésame', 'tahin', 'halva', 'halvah',
+      'σουσάμι', 'σουσαμέλαιο', 'ταχίνι'
     ],
   },
   {
@@ -109,28 +120,29 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'γαρίδες', 'καβούρια', 'καρκινοειδή', 'μαλάκια', 'μύδια'
     ],
   },
   {
     id: 'mustard',
     name: 'Mustard',
-    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde'],
+    synonyms: ['mustard', 'mustard seed', 'mustard seeds', 'mustard oil', 'mustard powder', 'mustard flour', 'mustard extract', 'moutarde', 'graine de moutarde', 'μουστάρδα'],
   },
   {
     id: 'celery',
     name: 'Celery',
-    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri'],
+    synonyms: ['celery', 'celery seed', 'celery salt', 'celery root', 'celeriac', 'céleri', 'graine de céleri', 'σέλινο'],
   },
   {
     id: 'lupin',
     name: 'Lupin',
-    synonyms: ['lupin', 'lupine', 'lupini', 'lupin flour', 'lupin protein'],
+    synonyms: ['lupin', 'lupine', 'lupini', 'lupin flour', 'lupin protein', 'λούπινο'],
   },
   {
     id: 'sulfites',
     name: 'Sulfites',
-    synonyms: ['sulfites', 'sulphites', 'sulfiting agents', 'sulfur dioxide', 'sodium sulfite', 'sodium bisulfite', 'sodium metabisulfite', 'potassium sulfite', 'potassium bisulfite', 'potassium metabisulfite'],
+    synonyms: ['sulfites', 'sulphites', 'sulfiting agents', 'sulfur dioxide', 'sodium sulfite', 'sodium bisulfite', 'sodium metabisulfite', 'potassium sulfite', 'potassium bisulfite', 'potassium metabisulfite', 'θειώδη', 'διοξείδιο του θείου'],
   },
 ]
 
@@ -226,6 +238,14 @@ export const CELIAC_RULES = {
       'cebada',
       'centeno',
       'salsa de soja',
+      'σιτάρι',
+      'σιταλεύρο',
+      'σιτάλευρο',
+      'αλεύρι σίτου',
+      'αλεύρι από σιτάρι',
+      'κριθάρι',
+      'σίκαλη',
+      'σάλτσα σόγιας',
     ],
     severity: 'AVOID' as const,
     signalType: 'EXPLICIT_GRAIN' as const,
@@ -265,6 +285,10 @@ export const CELIAC_RULES = {
       'contiene gluten',
       'contiene cebada',
       'contiene centeno',
+      'περιέχει: γλουτένη',
+      'περιέχει γλουτένη',
+      'περιέχει: σιτάρι',
+      'αλλεργιογόνα: γλουτένη',
     ],
     severity: 'AVOID' as const,
     signalType: 'ALLERGEN_SECTION' as const,
@@ -300,6 +324,9 @@ export const CELIAC_RULES = {
       'traces de ble',
       'peut contenir des traces de ble',
       'peut contenir des traces de gluten',
+      'μπορεί να περιέχει γλουτένη',
+      'μπορεί να περιέχει σιτάρι',
+      'μπορεί να περιέχει ίχνη γλουτένης',
     ],
     severity: 'CAUTION' as const,
     signalType: 'MAY_CONTAIN' as const,
@@ -315,6 +342,8 @@ export const CELIAC_RULES = {
       'steel cut oats',
       'oat fiber',
       'oatmeal',
+      'βρώμη',
+      'νιφάδες βρώμης',
     ],
     severity: 'CAUTION' as const,
     signalType: 'OATS' as const,
