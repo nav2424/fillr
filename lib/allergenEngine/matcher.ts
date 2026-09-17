@@ -35,25 +35,31 @@ function sectionUsesNonWheatFlour(sectionText: string): boolean {
   return NON_WHEAT_FLOURS.some((flour) => norm.includes(normalizeText(flour)))
 }
 
+/**
+ * JS \\b is ASCII-only ([A-Za-z0-9_]). Greek/Cyrillic letters are non-word, so
+ * \\bαυγά\\b never matches "αυγά". Treat any unicode letter/number as a word char.
+ */
+function wholeWordRegex(term: string, flags: string): RegExp {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, flags)
+}
+
 /** Check if term matches as whole word (word boundaries) - "nut" does NOT match "donut" */
 function isWholeWordMatch(text: string, term: string): boolean {
   const normalizedText = normalizeText(text)
   const normalizedTerm = normalizeText(term)
+  if (!normalizedTerm) return false
 
   if (normalizedTerm.includes(' ')) {
     return normalizedText.includes(normalizedTerm)
   }
 
-  const escaped = normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`\\b${escaped}\\b`, 'i')
-  return regex.test(normalizedText)
+  return wholeWordRegex(normalizedTerm, 'u').test(normalizedText)
 }
 
 /** Extract exact matched substring for evidence (from original text) */
 function extractMatchText(text: string, term: string): string {
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const regex = new RegExp(`\\b${escaped}\\b`, 'i')
-  const m = text.match(regex)
+  const m = text.match(wholeWordRegex(term, 'iu'))
   return m ? m[0] : term
 }
 
