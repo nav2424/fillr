@@ -11,11 +11,15 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  // Require a colon so Slovenian "ne vsebuje" is not stolen,
+  // and so "lahko vsebuje" can be classified as may-contain first.
+  { re: /\bvsebuje\s*:\s*/i, name: 'vsebuje' },
+  { re: /\balergeni\s*:?\s*/i, name: 'alergeni' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|sestavine)\s*:?\s*/i
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +31,8 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /lahko\s+vsebuje\s+sledi\s+(od\s*)?/i,
+  /lahko\s+vsebuje\s*:?/i,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,
