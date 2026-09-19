@@ -11,11 +11,19 @@ export interface ParsedSections {
 const CONTAINS_PATTERNS = [
   { re: /\bcontains\s*:?\s*/i, name: 'contains' },
   { re: /\bcontient\s*:?\s*/i, name: 'contient' },
+  // Require a colon so running-text / negation is not stolen:
+  // Estonian "ei sisalda", Latvian "nesatur", Lithuanian "sudėtyje nėra".
+  { re: /\bsisaldab\s*:\s*/i, name: 'sisaldab' },
+  { re: /\bsatur\s*:\s*/i, name: 'satur' },
+  { re: /\bsudėtyje\s+yra\s*:\s*/i, name: 'sudetyje' },
+  { re: /\balergeenid\s*:\s*/i, name: 'alergeenid' },
+  { re: /\balergēni\s*:\s*/i, name: 'alergeni-lv' },
+  { re: /\balergenai\s*:\s*/i, name: 'alergenai' },
   { re: /allergens?\s*:?\s*/i, name: 'allergens' },
   { re: /allergènes?\s*:?\s*/i, name: 'allergenes' },
 ]
 
-const INGREDIENTS_PREFIX = /^ingredients?\s*:?\s*/i
+const INGREDIENTS_PREFIX = /^(?:ingredients?|koostisosad|koostis|sastāvdaļas|sudėtis)\s*:?\s*/i
 
 const MAY_CONTAIN_PATTERNS = [
   /may\s+contain\s*:?\s*/i,
@@ -27,6 +35,10 @@ const MAY_CONTAIN_PATTERNS = [
   /peut\s+contenir\s+/i,
   /peut\s+contenir\s+des\s+traces?\s+/i,
   /puede\s+contener\s+/i,
+  /võib\s+sisaldada\s*:?\s*/i,
+  /var\s+saturēt\s*:?\s*/i,
+  /gali\s+būti\s+pėdsak[uų]\s*:?\s*/i,
+  /gali\s+būti\s*:\s*/i,
   /processed\s+in\s+(a\s+)?facility\s+/i,
   /manufactured\s+in\s+(a\s+)?facility\s+/i,
   /made\s+in\s+(a\s+)?facility\s+/i,
