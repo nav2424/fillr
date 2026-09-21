@@ -88,8 +88,10 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
+      'mackerel', 'mackerels', 'herring', 'herrings', 'eel', 'eels', 'mahi mahi',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
-      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
+      'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine',
+      'maquereau', 'maquereaux', 'hareng', 'harengs', 'anguille'
     ],
   },
   {
@@ -108,8 +110,10 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'shrimp', 'prawn', 'prawns', 'crab', 'crabs', 'lobster', 'lobsters',
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
+      'calamari', 'krill', 'langostino', 'langostinos',
       'crustacean', 'crustaceans', 'mollusk', 'mollusks',
-      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
+      'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques',
+      'calmar', 'calmars', 'encornet', 'encornets'
     ],
   },
   {
@@ -155,7 +159,13 @@ export const ANTI_MATCHES: Record<string, string[]> = {
     'coconut', 'nutmeg', 'water chestnut', "châtaigne d'eau"
   ],
   soy: ['sunflower lecithin', 'lecithin from sunflower', 'canola lecithin', 'lecithin from canola', 'soy-free', 'sans soja'],
-  fish: ['fish-free', 'sans poisson'],
+  fish: [
+    'fish-free', 'sans poisson',
+    'vegan mackerel', 'plant-based mackerel', 'vegan herring', 'plant-based herring',
+  ],
+  shellfish: [
+    'vegan calamari', 'plant-based calamari',
+  ],
   sesame: ['sesame-free', 'sans sésame'],
 }
 
