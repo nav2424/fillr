@@ -108,6 +108,12 @@ const SHOULD_FLAG_AVOID: Scenario[] = [
     expectAnySignal: ['EXPLICIT_GRAIN'],
   },
   {
+    id: 'tamari-parenthetical-wheat',
+    ingredients: ['tamari (wheat, soybeans, salt)', 'sugar'],
+    expect: 'AVOID',
+    expectAnySignal: ['EXPLICIT_GRAIN'],
+  },
+  {
     id: 'french-contient-gluten-ancillary',
     ingredients: ['sugar', 'cocoa'],
     fullText: 'contient du gluten',

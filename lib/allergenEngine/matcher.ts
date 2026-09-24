@@ -301,9 +301,21 @@ function hasWholeWordMalt(text: string): boolean {
   return /\bmalt\b/i.test(text)
 }
 
-function isSafeNegativeCeliac(text: string): boolean {
-  const n = normalizeText(text)
-  return CELIAC_RULES.SAFE_NEGATIVES.some((term) => n.includes(normalizeText(term)))
+/**
+ * Remove lookalike phrases (buckwheat, tamari, wheatgrass, …) without dropping the rest of the line.
+ * Substring grain checks would otherwise treat "buckwheat" as wheat, but skipping the whole
+ * ingredient also hid a real grain in the same comma-segment — e.g. "tamari (wheat, soybeans)".
+ */
+function maskCeliacSafeNegatives(text: string): string {
+  let n = normalizeText(text)
+  const terms = CELIAC_RULES.SAFE_NEGATIVES.map((term) => normalizeText(term))
+    .filter((term) => term.length > 0)
+    .sort((a, b) => b.length - a.length)
+  for (const term of terms) {
+    if (!n.includes(term)) continue
+    n = n.split(term).join(' ')
+  }
+  return n.replace(/\s+/g, ' ').trim()
 }
 
 function pushUniqueCeliac(
@@ -329,11 +341,9 @@ export function runCeliacCheck(
     const ingredient = String(raw || '').trim()
     if (!ingredient) continue
     const lower = ingredient.toLowerCase()
+    const grainHaystack = maskCeliacSafeNegatives(lower)
 
-    // 2) anti-matches first — skip ingredient entirely (no GF note / oats on safe lines)
-    if (isSafeNegativeCeliac(lower)) continue
-
-    // 3) certified GF note (does not short-circuit other checks)
+    // Certified GF note uses the original line and does not short-circuit grain checks.
     if (CELIAC_RULES.CERTIFIED_GF.terms.some((t) => normalizeText(lower).includes(normalizeText(t)))) {
       pushUniqueCeliac(matches, {
         ingredient,
@@ -343,9 +353,10 @@ export function runCeliacCheck(
       })
     }
 
-    // 4) priority order — BARLEY_MALT before EXPLICIT_GRAINS so "barley malt extract" is BARLEY_MALT, not barley grain alone
+    // BARLEY_MALT before EXPLICIT_GRAINS so "barley malt extract" is BARLEY_MALT, not barley grain alone.
+    // Grain rules run on the masked line so "tamari (wheat" still sees wheat.
     const barleyMalt = CELIAC_RULES.BARLEY_MALT.terms.find((t) =>
-      normalizeText(lower).includes(normalizeText(t))
+      grainHaystack.includes(normalizeText(t))
     )
     if (barleyMalt) {
       pushUniqueCeliac(matches, {
@@ -358,7 +369,7 @@ export function runCeliacCheck(
     }
 
     const explicit = CELIAC_RULES.EXPLICIT_GRAINS.terms.find((t) =>
-      normalizeText(lower).includes(normalizeText(t))
+      grainHaystack.includes(normalizeText(t))
     )
     if (explicit) {
       pushUniqueCeliac(matches, {
@@ -371,7 +382,7 @@ export function runCeliacCheck(
     }
 
     const allergenSection = CELIAC_RULES.ALLERGEN_SECTION.terms.find((t) =>
-      normalizeText(lower).includes(normalizeText(t))
+      grainHaystack.includes(normalizeText(t))
     )
     if (allergenSection) {
       pushUniqueCeliac(matches, {
@@ -386,9 +397,9 @@ export function runCeliacCheck(
     const ambiguousMaltPhrase = CELIAC_RULES.AMBIGUOUS_MALT.terms.find((t) => {
       const nt = normalizeText(t)
       if (nt === 'malt') {
-        return hasWholeWordMalt(lower) && !normalizeText(lower).includes('maltodextrin')
+        return hasWholeWordMalt(grainHaystack) && !grainHaystack.includes('maltodextrin')
       }
-      return normalizeText(lower).includes(nt)
+      return grainHaystack.includes(nt)
     })
     if (ambiguousMaltPhrase) {
       pushUniqueCeliac(matches, {
@@ -401,7 +412,7 @@ export function runCeliacCheck(
     }
 
     const brewersYeast = CELIAC_RULES.BREWERS_YEAST.terms.find((t) =>
-      normalizeText(lower).includes(normalizeText(t))
+      grainHaystack.includes(normalizeText(t))
     )
     if (brewersYeast) {
       pushUniqueCeliac(matches, {
@@ -414,7 +425,7 @@ export function runCeliacCheck(
     }
 
     const oats = CELIAC_RULES.OATS.terms.find((t) =>
-      normalizeText(lower).includes(normalizeText(t))
+      grainHaystack.includes(normalizeText(t))
     )
     if (oats) {
       pushUniqueCeliac(matches, {
