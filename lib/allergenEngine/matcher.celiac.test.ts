@@ -90,3 +90,35 @@ test('wheat in parentheses on same line as glucose syrup -> AVOID', () => {
   const result = runCeliacCheck(ingredients, text)
   assert.equal(getCeliacSeverity(result), 'AVOID')
 })
+
+test('tamari sub-list that starts with wheat stays AVOID after comma split', () => {
+  const text = 'tamari (wheat, soybeans, salt), sugar'
+  const ingredients = text.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
+  const result = runCeliacCheck(ingredients, text)
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+  assert.ok(result.some((m) => m.signalType === 'EXPLICIT_GRAIN'))
+})
+
+test('tamari (wheat) as one ingredient -> AVOID', () => {
+  const result = runCeliacCheck(['tamari (wheat, soybeans, salt)'], '')
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+})
+
+test('wheat and buckwheat in one segment -> AVOID', () => {
+  const result = runCeliacCheck(['flour (wheat and buckwheat)'], '')
+  assert.equal(getCeliacSeverity(result), 'AVOID')
+})
+
+test('buckwheat alone stays SAFE', () => {
+  const result = runCeliacCheck(['buckwheat flour', 'water'], '')
+  assert.equal(getCeliacSeverity(result), 'SAFE')
+})
+
+test('gluten-free wheat starch stays SAFE', () => {
+  const result = runCeliacCheck(['gluten-free wheat starch'], '')
+  assert.equal(getCeliacSeverity(result), 'SAFE')
+  assert.equal(
+    result.find((m) => m.signalType === 'EXPLICIT_GRAIN'),
+    undefined
+  )
+})
