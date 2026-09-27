@@ -17,6 +17,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'mozzarella', 'cheddar', 'ricotta', 'mascarpone', 'parmesan cheese', 'parmesan',
       'cottage cheese', 'cream cheese', 'sour cream', 'yogurt', 'yoghurt', 'kefir', 'buttermilk',
       'ghee', 'curds', 'milkfat solids', 'anhydrous milkfat', 'rennet casein',
+      // Cheese names that often appear without the words "milk" or "cheese".
+      'queso', 'cotija', 'paneer', 'halloumi', 'burrata', 'gouda', 'brie', 'provolone',
       'half and half', 'whipping cream', 'heavy cream', 'light cream',
       'lactalbumin', 'lactoglobulin', 'galactose', 'lactulose'
     ],
