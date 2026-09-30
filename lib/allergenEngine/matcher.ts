@@ -77,19 +77,27 @@ function isMatchedTextAntiMatch(allergenId: string, matchText: string): boolean 
   return anti.some(antiTerm => normalizeText(antiTerm) === norm || norm.includes(normalizeText(antiTerm)))
 }
 
-/** Check negation patterns (e.g., "milk-free", "sans lait") */
-function hasNegation(text: string, allergenId: string, terms: string[]): boolean {
+/**
+ * Drop absence claims for this term only ("milk-free", "no milk", "free from milk").
+ * Do not treat a leading "free" as absence: "fat-free milk" and "milk, free-range eggs"
+ * still contain milk. "free range" / "free roaming" immediately after the term is not
+ * an absence claim either.
+ */
+function textWithoutLocalNegation(text: string, term: string): string {
   const normalized = normalizeText(text)
-  const negations = ['free', 'sans', 'sans ', 'no ', 'without', 'does not contain', 'ne contient pas']
-  for (const term of terms) {
-    const t = normalizeText(term)
-    for (const neg of negations) {
-      if (normalized.includes(`${t} ${neg}`) || normalized.includes(`${neg} ${t}`)) {
-        return true
-      }
-    }
-  }
-  return false
+  const t = normalizeText(term)
+  if (!t) return normalized
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`\\b${escaped}\\s+free(?!\\s+(?:range|roaming)\\b)`, 'gi'),
+    new RegExp(
+      `\\b(?:no|without|sans|free\\s+from|free\\s+of|does\\s+not\\s+contain|ne\\s+contient\\s+pas)\\s+${escaped}\\b`,
+      'gi'
+    ),
+  ]
+  let out = normalized
+  for (const re of patterns) out = out.replace(re, ' ')
+  return out.replace(/\s+/g, ' ').trim()
 }
 
 /** Special handling: milk + butter/cream - skip if non-dairy phrase */
@@ -131,8 +139,6 @@ function matchBuiltinInSection(
   const builtin = getBuiltinById(allergenId)
   if (!builtin) return null
 
-  if (hasNegation(sectionText, allergenId, builtin.synonyms)) return null
-
   let severity: Severity = section === 'may_contain' ? 'MAY_CONTAIN' : 'CONTAINS'
 
   for (const term of builtin.synonyms) {
@@ -151,7 +157,8 @@ function matchBuiltinInSection(
       continue
     }
 
-    if (isWholeWordMatch(sectionText, term)) {
+    const matchable = textWithoutLocalNegation(sectionText, term)
+    if (isWholeWordMatch(matchable, term)) {
       const match_text = extractMatchText(sectionText, term)
       if (isMatchedTextAntiMatch(allergenId, match_text)) continue
       if (allergenId === 'wheat' && ['malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour', 'malted'].some(t => normalizeText(t) === normalizeText(term))) {
