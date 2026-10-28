@@ -20,6 +20,7 @@ import { colors, homeWordmarkLayout, radius, spacing, typography } from '../../c
 import { FREE_SCAN_LIMIT } from '../../constants/subscription'
 import { HEALTH_DISCLAIMER_RATINGS_MODAL_CLOSE } from '../../constants/healthDisclaimer'
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../../constants/legalUrls'
+import { captureAccountDietaryProfile } from '../../lib/accountDietaryProfileSession'
 import { clearDisclaimerKeysOnSignOut } from '../../lib/disclaimerStorage'
 import { clearPendingSignupAfterOnboarding } from '../../lib/pendingSignup'
 import { useAuthStore } from '../../store/authStore'
@@ -217,6 +218,7 @@ export default function ProfileScreen() {
       await clearDisclaimerKeysOnSignOut()
       await clearPendingSignupAfterOnboarding()
       await logOutOfRevenueCat()
+      await captureAccountDietaryProfile(useAuthStore.getState().userId)
       void signOutSupabase()
       useUserStore.getState().resetForAccountDeletion()
       useScanHistoryStore.getState().clearAll()

@@ -20,6 +20,7 @@ import {
   signOutSupabase,
 } from '../lib/authService'
 import { useUserStore } from '../store/userStore'
+import { restoreAccountDietaryProfileIfBlank } from '../lib/accountDietaryProfileSession'
 import { logInToRevenueCat } from '../services/revenuecatService'
 
 /** Same shell as `sign-up.tsx` (plain View + KAV). Blur/card/ScrollView stacks broke TextInput on iOS Simulator. */
@@ -91,6 +92,8 @@ export default function LoginScreen() {
       void logInToRevenueCat(userId)
       if (!onboardingDone) {
         useUserStore.getState().clearOnboardingDraft()
+      } else {
+        await restoreAccountDietaryProfileIfBlank(userId)
       }
       router.replace('/')
     } catch (e) {

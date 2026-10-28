@@ -8,6 +8,7 @@ import { colors, spacing, typography } from '../constants/theme'
 import { useAuthStore } from '../store/authStore'
 import { useUserStore } from '../store/userStore'
 import { useScanHistoryStore } from '../store/scanHistoryStore'
+import { clearCapturedAccountDietaryProfile } from '../lib/accountDietaryProfileSession'
 import { clearDisclaimerKeysOnSignOut } from '../lib/disclaimerStorage'
 import { clearPendingSignupAfterOnboarding } from '../lib/pendingSignup'
 import { signOutSupabase } from '../lib/authService'
@@ -40,6 +41,7 @@ export default function DeleteAccountScreen() {
       await clearDisclaimerKeysOnSignOut()
       await clearPendingSignupAfterOnboarding()
       await logOutOfRevenueCat()
+      await clearCapturedAccountDietaryProfile(useAuthStore.getState().userId)
       void signOutSupabase()
       useScanHistoryStore.getState().clearAll()
       useUserStore.getState().resetForAccountDeletion()

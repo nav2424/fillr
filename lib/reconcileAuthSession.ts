@@ -10,6 +10,10 @@ import {
 import { clearPendingSignupAfterOnboarding } from './pendingSignup'
 import { logInToRevenueCat, logOutOfRevenueCat } from '../services/revenuecatService'
 import { useUserStore } from '../store/userStore'
+import {
+  captureAccountDietaryProfile,
+  restoreAccountDietaryProfileIfBlank,
+} from './accountDietaryProfileSession'
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -43,6 +47,7 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
       await logOutOfRevenueCat()
       await signOutSupabase()
       await clearPendingSignupAfterOnboarding()
+      await captureAccountDietaryProfile(state.userId)
       useUserStore.getState().resetForAccountDeletion()
       state.signOut()
     }
@@ -63,6 +68,9 @@ export async function reconcilePersistedAuthWithSupabase(): Promise<void> {
       void setOnboardingCompletedOnServer(supaUid)
     }
     state.setOnboardingFromServer(onboardingDone)
+    if (onboardingDone) {
+      await restoreAccountDietaryProfileIfBlank(supaUid)
+    }
     void logInToRevenueCat(supaUid)
   }
 }
