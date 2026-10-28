@@ -19,6 +19,7 @@ import {
   signOutSupabase,
 } from '../lib/authService'
 import { logInToRevenueCat } from '../services/revenuecatService'
+import { restoreAccountDietaryProfileIfBlank } from '../lib/accountDietaryProfileSession'
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../constants/legalUrls'
 import { wa } from '../constants/welcomeAuthTheme'
 import { WelcomeTopBar, HeroScanSection, AuthCard, CTAInfoCard } from '../components/welcomeAuth'
@@ -97,6 +98,8 @@ export default function WelcomeScreen() {
       void logInToRevenueCat(userId)
       if (!onboardingDone) {
         useUserStore.getState().clearOnboardingDraft()
+      } else {
+        await restoreAccountDietaryProfileIfBlank(userId)
       }
       router.replace('/')
     } catch (e) {
