@@ -30,9 +30,19 @@ export function normalizeText(text: string): string {
     .trim()
 }
 
-function sectionUsesNonWheatFlour(sectionText: string): boolean {
-  const norm = normalizeText(sectionText)
-  return NON_WHEAT_FLOURS.some((flour) => norm.includes(normalizeText(flour)))
+/**
+ * True only when this synonym is itself an explicit non-wheat flour
+ * ("rice flour", "almond flour", …). A different flour elsewhere in the
+ * ingredient list must not suppress semolina, durum, or wheat flour names.
+ */
+function termIsExplicitNonWheatFlour(sectionText: string, term: string): boolean {
+  const normSection = normalizeText(sectionText)
+  const normTerm = normalizeText(term)
+  if (!normTerm) return false
+  return NON_WHEAT_FLOURS.some((flour) => {
+    const normFlour = normalizeText(flour)
+    return normSection.includes(normFlour) && normFlour.includes(normTerm)
+  })
 }
 
 /** Check if term matches as whole word (word boundaries) - "nut" does NOT match "donut" */
@@ -145,8 +155,8 @@ function matchBuiltinInSection(
     }
     if (
       allergenId === 'wheat' &&
-      (term.includes('flour') || term === 'semolina' || term === 'durum') &&
-      sectionUsesNonWheatFlour(sectionText)
+      term.includes('flour') &&
+      termIsExplicitNonWheatFlour(sectionText, term)
     ) {
       continue
     }
