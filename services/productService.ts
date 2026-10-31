@@ -20,6 +20,7 @@ import {
 import { mapDetectionToFillrResult, parseIngredients } from '../lib/fillrAdapter'
 import { personalizeScanResult } from '../lib/personalizationEngine'
 import { detectAllergensEvidenceBased, buildUserAllergenConfig } from '../lib/allergenEngine'
+import { detectAllergensForCachedBarcodeScan } from '../lib/cachedBarcodeAllergenScan'
 import { getCeliacSeverity, runCeliacCheck } from '../lib/allergenEngine/matcher'
 import {
   analyzeIngredientsWithOpenAI,
@@ -310,21 +311,20 @@ async function buildScanFromCachedBarcodeProduct(
 
   const supplement = await resolveOffAllergenSupplementForCache(barcode, cached, offSupplement)
   const detectionFields = offSupplementToDetectionFields(supplement)
-  const ingredientsTextSafety =
-    detectionFields.ingredients_text_safety.trim() || ingredientText
+  const offSafetyText = detectionFields.ingredients_text_safety.trim()
 
   const userConfig = buildUserAllergenConfig(params.allergies)
-  const output = detectAllergensEvidenceBased(
+  // Search the learned label and the OFF ingredient text separately so a short OFF
+  // English field cannot hide an allergen that is only on the captured label.
+  const output = detectAllergensForCachedBarcodeScan(
     {
-      product_name: cached.name,
-      ingredients_text: ingredientText,
-      ingredients_text_safety: ingredientsTextSafety,
-      contains_text: detectionFields.contains_text,
-      may_contain_text: detectionFields.may_contain_text,
-      allergens_tags: detectionFields.allergens_tags,
-      traces_tags: detectionFields.traces_tags,
-      ingredients: undefined,
-      ingredients_tags: undefined,
+      productName: cached.name,
+      cachedIngredientText: ingredientText,
+      offSafetyText,
+      containsText: detectionFields.contains_text,
+      mayContainText: detectionFields.may_contain_text,
+      allergensTags: detectionFields.allergens_tags,
+      tracesTags: detectionFields.traces_tags,
     },
     userConfig
   )
@@ -332,12 +332,13 @@ async function buildScanFromCachedBarcodeProduct(
   const dietaryProfile = await getUserProfileForScan()
   const celiacStrict = Boolean(params.celiacStrictGluten ?? dietaryProfile.celiacStrictGluten)
   if (celiacStrict) {
-    const ingredients = ingredientText
-      .split(/[,;]/)
+    const celiacSource = [ingredientText, offSafetyText].filter(Boolean).join('\n')
+    const ingredients = celiacSource
+      .split(/[,;\n]/)
       .map((s) => s.trim())
       .filter(Boolean)
     const celiacHaystack = [
-      ingredientsTextSafety,
+      celiacSource,
       detectionFields.contains_text,
       detectionFields.may_contain_text,
     ]
