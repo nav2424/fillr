@@ -65,9 +65,19 @@ const OFF_TAG_TO_ID: Record<string, string> = {
   'peanuts': 'peanuts', 'en:peanuts': 'peanuts', 'fr:arachides': 'peanuts',
   'tree-nuts': 'tree_nuts', 'en:tree-nuts': 'tree_nuts', 'en:cashews': 'tree_nuts',
   'en:almonds': 'tree_nuts', 'en:walnuts': 'tree_nuts', 'en:hazelnuts': 'tree_nuts',
+  // OFF's parent tree-nut allergen is `en:nuts` (not peanuts). Nutella (3017620422003)
+  // publishes this tag while its English ingredient field is only "sugar, palm oil".
+  'nuts': 'tree_nuts', 'en:nuts': 'tree_nuts',
   'fish': 'fish', 'en:fish': 'fish', 'fr:poisson': 'fish',
   'shellfish': 'shellfish', 'en:shellfish': 'shellfish',
+  'crustaceans': 'shellfish', 'en:crustaceans': 'shellfish',
+  'molluscs': 'shellfish', 'en:molluscs': 'shellfish',
+  'mollusks': 'shellfish', 'en:mollusks': 'shellfish',
   'sesame': 'sesame', 'en:sesame-seeds': 'sesame', 'en:sesame': 'sesame', 'fr:sesame': 'sesame',
+  'en:sulphur-dioxide-and-sulphites': 'sulfites',
+  'sulphur_dioxide_and_sulphites': 'sulfites',
+  'en:sulfur-dioxide-and-sulfites': 'sulfites',
+  'sulfur_dioxide_and_sulfites': 'sulfites',
 }
 
 function normalizeOFFTag(tag: string): string | null {
