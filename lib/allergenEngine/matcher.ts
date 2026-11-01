@@ -98,6 +98,16 @@ function shouldSkipMilkButterCream(text: string): boolean {
   return NON_DAIRY_BUTTER_CREAM.some(p => norm.includes(normalizeText(p)))
 }
 
+/**
+ * "nuts" is the tree-nut declaration on labels ("mixed nuts", "Contains: nuts").
+ * Grape-Nuts is a wheat cereal. Skip the bare word only when every "nuts" token
+ * is that cereal name, so "grape-nuts, almonds" still matches via almonds.
+ */
+function bareNutsIsOnlyGrapeNuts(sectionText: string): boolean {
+  const rest = normalizeText(sectionText).replace(/\bgrape nuts\b/g, ' ')
+  return !/\bnuts\b/.test(rest)
+}
+
 /** Special handling: soy + lecithin - only match when soy is explicit; skip when sunflower/canola */
 function shouldSkipSoyLecithin(text: string): boolean {
   const norm = normalizeText(text)
@@ -148,6 +158,9 @@ function matchBuiltinInSection(
       (term.includes('flour') || term === 'semolina' || term === 'durum') &&
       sectionUsesNonWheatFlour(sectionText)
     ) {
+      continue
+    }
+    if (allergenId === 'tree_nuts' && normalizeText(term) === 'nuts' && bareNutsIsOnlyGrapeNuts(sectionText)) {
       continue
     }
 

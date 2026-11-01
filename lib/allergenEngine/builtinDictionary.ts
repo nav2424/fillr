@@ -79,7 +79,8 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'chestnut', 'chestnuts', 'marzipan', 'praline', 'nougat', 'gianduja', 'frangipane',
       'nutella', 'hazelnut paste', 'almond paste', 'cashew butter', 'almond butter',
       'amande', 'noisette', 'noix de cajou', 'noix de Grenoble', 'pacane',
-      'pistache', 'pignon', 'châtaigne'
+      'pistache', 'pignon', 'châtaigne',
+      'nuts'
     ],
   },
   {
@@ -108,7 +109,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
       'shrimp', 'prawn', 'prawns', 'crab', 'crabs', 'lobster', 'lobsters',
       'clam', 'clams', 'mussel', 'mussels', 'oyster', 'oysters',
       'scallop', 'scallops', 'squid', 'octopus', 'crawfish', 'crayfish',
-      'crustacean', 'crustaceans', 'mollusk', 'mollusks',
+      'crustacean', 'crustaceans', 'mollusk', 'mollusks', 'mollusc', 'molluscs',
       'crevette', 'crabe', 'homard', 'huître', 'crustacés', 'mollusques'
     ],
   },
