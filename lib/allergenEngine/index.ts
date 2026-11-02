@@ -42,11 +42,15 @@ export function buildUserAllergenConfig(allergies: string[]): UserAllergenConfig
     if (builtinId && !builtin_ids.includes(builtinId)) {
       builtin_ids.push(builtinId)
     } else if (!builtinId) {
+      const bare = norm.replace(/[^a-z0-9_]/g, '')
+      if (!bare) continue
+      // Profile keys use underscores (`passion_fruit`); labels use spaces.
+      const phrase = bare.replace(/_/g, ' ')
       custom_rules.push({
-        id: `custom_${norm.replace(/[^a-z0-9_]/g, '')}`,
-        name: a,
+        id: `custom_${bare}`,
+        name: phrase,
         match_mode: 'EXACT_PHRASE',
-        terms: [a],
+        terms: [phrase],
         enabled_sections: ['ingredients', 'contains', 'may_contain'],
         severity_level: 'allergy',
       })
