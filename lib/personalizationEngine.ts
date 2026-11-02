@@ -80,6 +80,20 @@ function getSensitivityExplanation(key: string, ingredient: string): string {
   return explanations[key] ?? `Relevant for your ${key} sensitivity.`
 }
 
+/**
+ * Custom hits are stored as `custom_<profile key>` while the profile keeps the bare key
+ * (`kiwi`, `corn`). Exact key equality dropped those hits and the scan became SAFE.
+ */
+function matchesProfileAllergy(allergenKey: string, userKeys: Set<string>): boolean {
+  const key = allergenKey.toLowerCase()
+  if (userKeys.has(key)) return true
+  if (key.startsWith('custom_')) {
+    const bare = key.slice('custom_'.length)
+    return bare.length > 0 && userKeys.has(bare)
+  }
+  return false
+}
+
 /** Filter allergens to only those in user's allergy list */
 function filterAllergensForUser(
   matchedAllergens: MatchedAllergen[],
@@ -87,7 +101,7 @@ function filterAllergensForUser(
 ): MatchedAllergen[] {
   if (userAllergies.length === 0) return []
   const userSet = new Set(userAllergies.map((a) => a.toLowerCase()))
-  return matchedAllergens.filter((m) => userSet.has(m.allergenKey.toLowerCase()))
+  return matchedAllergens.filter((m) => matchesProfileAllergy(m.allergenKey, userSet))
 }
 
 /** One UI row per profile allergen key (merges bilingual / multi-line evidence). */
