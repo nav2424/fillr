@@ -163,6 +163,32 @@ function matchBuiltinInSection(
   return null
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasWholeWord(text: string, term: string): boolean {
+  if (!text || !term) return false
+  return new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(text)
+}
+
+/**
+ * Parenthetical evidence must name the allergen.
+ * Plural crumbs ("flavor(s)") and shared tokens ("bicarbonate (sodium)",
+ * "lecithin (soy)" vs the wheat synonym "soy sauce") are not evidence.
+ * A long trailing chemical name still counts: "(caseinate)" → sodium caseinate.
+ */
+function parentheticalMatchesSynonym(normInParens: string, synonym: string): boolean {
+  const norm = normalizeText(synonym)
+  if (!norm || !normInParens) return false
+  if (normInParens === norm) return true
+  if (hasWholeWord(normInParens, norm)) return true
+  if (normInParens.length < 6) return false
+  if (!hasWholeWord(norm, normInParens)) return false
+  const words = norm.split(' ')
+  return words[words.length - 1] === normInParens
+}
+
 /** Parentheses proximity: "X (Y)" where Y matches allergen → explicit evidence of Y */
 function extractParenthesesEvidence(
   sectionText: string,
@@ -181,10 +207,7 @@ function extractParenthesesEvidence(
     for (const allergenId of builtinIds) {
       const builtin = getBuiltinById(allergenId)
       if (!builtin) continue
-      const matched = builtin.synonyms.some(syn => {
-        const norm = normalizeText(syn)
-        return normInParens === norm || normInParens.includes(norm) || norm.includes(normInParens)
-      })
+      const matched = builtin.synonyms.some((syn) => parentheticalMatchesSynonym(normInParens, syn))
       if (matched) {
         if (isAntiMatchSection(allergenId, sectionText, inParens)) continue
         if (allergenId === 'milk' && shouldSkipMilkButterCream(sectionText)) continue
