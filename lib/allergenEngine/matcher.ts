@@ -6,6 +6,7 @@ import {
   ANTI_MATCHES,
   CELIAC_RULES,
   NON_DAIRY_BUTTER_CREAM,
+  NON_DAIRY_MILK,
   NON_WHEAT_FLOURS,
   getBuiltinById,
 } from './builtinDictionary'
@@ -98,6 +99,37 @@ function shouldSkipMilkButterCream(text: string): boolean {
   return NON_DAIRY_BUTTER_CREAM.some(p => norm.includes(normalizeText(p)))
 }
 
+/**
+ * Remove plant-milk phrases so "coconut milk powder" does not satisfy the
+ * multi-word synonym "milk powder". Real dairy later in the same section stays.
+ */
+function textWithoutNonDairyMilkPhrases(sectionText: string): string {
+  let norm = normalizeText(sectionText)
+  const phrases = NON_DAIRY_MILK.map((phrase) => normalizeText(phrase))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  for (const phrase of phrases) {
+    if (!norm.includes(phrase)) continue
+    norm = norm.split(phrase).join(' ')
+  }
+  return norm.replace(/\s+/g, ' ').trim()
+}
+
+function milkTermSurvivesNonDairyPhrases(sectionText: string, term: string): boolean {
+  return isWholeWordMatch(textWithoutNonDairyMilkPhrases(sectionText), term)
+}
+
+/** Parenthetical is only a plant milk (optionally "powder" / "solids"), not dairy. */
+function parentheticalIsNonDairyMilkOnly(inParens: string): boolean {
+  const norm = normalizeText(inParens)
+  const phrases = NON_DAIRY_MILK.map((phrase) => normalizeText(phrase)).filter(Boolean)
+  if (!phrases.some((phrase) => norm.includes(phrase))) return false
+  const milk = getBuiltinById('milk')
+  if (!milk) return false
+  const stripped = textWithoutNonDairyMilkPhrases(inParens)
+  return !milk.synonyms.some((syn) => isWholeWordMatch(stripped, syn))
+}
+
 /** Special handling: soy + lecithin - only match when soy is explicit; skip when sunflower/canola */
 function shouldSkipSoyLecithin(text: string): boolean {
   const norm = normalizeText(text)
@@ -152,6 +184,9 @@ function matchBuiltinInSection(
     }
 
     if (isWholeWordMatch(sectionText, term)) {
+      if (allergenId === 'milk' && !milkTermSurvivesNonDairyPhrases(sectionText, term)) {
+        continue
+      }
       const match_text = extractMatchText(sectionText, term)
       if (isMatchedTextAntiMatch(allergenId, match_text)) continue
       if (allergenId === 'wheat' && ['malt', 'malt extract', 'malt syrup', 'malt vinegar', 'malt flour', 'malted'].some(t => normalizeText(t) === normalizeText(term))) {
@@ -188,6 +223,7 @@ function extractParenthesesEvidence(
       if (matched) {
         if (isAntiMatchSection(allergenId, sectionText, inParens)) continue
         if (allergenId === 'milk' && shouldSkipMilkButterCream(sectionText)) continue
+        if (allergenId === 'milk' && parentheticalIsNonDairyMilkOnly(inParens)) continue
         results.push({ allergenId, match_text: fullPhrase })
         break
       }
