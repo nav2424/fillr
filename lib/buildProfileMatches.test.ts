@@ -405,6 +405,24 @@ test('parenthetical sub-ingredients drive palm oil avoiding', () => {
   assert.ok(result.avoidingMatches.includes('palm oil'))
 })
 
+test('vegan conflict ignores plant butters and milks but still flags bacon and milk', () => {
+  const profile = { ...BASE_PROFILE, preferences: ['vegan'] }
+  const plant = buildProfileMatches(profile, ['cocoa butter', 'coconut milk', 'butternut squash'])
+  assert.equal(plant.goalConflicts.includes('Vegan'), false)
+  assert.equal(plant.preferencePenalty, 0)
+
+  const animal = buildProfileMatches(profile, ['bacon', 'salt'])
+  assert.ok(animal.goalConflicts.includes('Vegan'))
+
+  const mixed = buildProfileMatches(profile, ['cocoa butter', 'skim milk'])
+  assert.ok(mixed.goalConflicts.includes('Vegan'))
+  assert.ok(mixed.goalConflictDetails.some((d) => d.ingredients.includes('skim milk')))
+  assert.equal(
+    mixed.goalConflictDetails.some((d) => d.ingredients.includes('cocoa butter')),
+    false
+  )
+})
+
 test('no parenthetical raw text behaves like two-arg buildProfileMatches', () => {
   const withRaw = buildProfileMatches(
     { ...BASE_PROFILE, sensitivities: ['lactose'] },

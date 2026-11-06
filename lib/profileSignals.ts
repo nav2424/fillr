@@ -159,19 +159,19 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   vegan: {
     label: 'Vegan',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum|\bghee\b|\bbacon\b|\bham\b|\bturkey\b|\bshrimp\b|\bprawns?\b|\bcrab\b|\blobster\b|\boysters?\b|\bmussels?\b|\bscallops?\b|\bclams?\b|\bsquid\b|\boctopus\b|\bcrayfish\b|\bcrawfish\b/i,
     conflictPenalty: 25,
   },
   vegetarian: {
     label: 'Vegetarian',
     conflictPattern:
-      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
+      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920|\bbacon\b|\bham\b|\bshrimp\b|\bprawns?\b|\bcrab\b|\blobster\b|\boysters?\b|\bmussels?\b|\bscallops?\b|\bclams?\b|\bsquid\b|\boctopus\b|\bcrayfish\b|\bcrawfish\b/i,
     conflictPenalty: 25,
   },
   plant_based: {
     label: 'Plant-based',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|\bghee\b|\bbacon\b|\bham\b|\bturkey\b|\bshrimp\b|\bprawns?\b|\bcrab\b|\blobster\b|\boysters?\b|\bmussels?\b|\bscallops?\b|\bclams?\b|\bsquid\b|\boctopus\b|\bcrayfish\b|\bcrawfish\b/i,
     conflictPenalty: 20,
   },
   less_processed: {
@@ -183,7 +183,7 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   kosher: {
     label: 'Kosher',
     conflictPattern:
-      /\bpork\b|bacon|ham|lard|shellfish|shrimp|crab|lobster|gelatin|cochineal|e120|non.kosher/i,
+      /\bpork\b|bacon|ham|lard|shellfish|shrimp|crab|lobster|gelatin|cochineal|e120|non.kosher|\bprawns?\b|\boysters?\b|\bmussels?\b|\bscallops?\b|\bclams?\b|\bsquid\b|\boctopus\b|\bcrayfish\b|\bcrawfish\b/i,
     conflictPenalty: 22,
   },
   halal: {
@@ -208,6 +208,23 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
     conflictPattern: /\bsugar\b|glucose|fructose|corn syrup|maltose|maltodextrin|hfcs|dextrose/i,
     conflictPenalty: 14,
   },
+}
+
+/**
+ * Plant foods whose names contain milk, butter, cream, or egg.
+ * Vegan and plant-based checks run on the raw label, so these phrases have to be
+ * removed before the conflict regex or cocoa butter / coconut milk scan as animal products.
+ * "milk-free" and "egg-free" are claims, not ingredients.
+ */
+const PLANT_DERIVED_SOUNDALIKE =
+  /\b(?:cocoa|shea|apple|peanut|cashew|almond|sunflower|seed|nut|coconut)\s+butters?\b|\b(?:coconut|almond|oat|rice|soy|soya|hemp|cashew|macadamia|pea|flax|quinoa|spelt)[\s-]?milks?\b|\b(?:oat|almond|soy|soya|rice|coconut)milks?\b|\bcoconut[\s-]+creams?\b|\bcreamed coconut\b|\bcream of tartar\b|\bbutternut\b|\bbutter beans?\b|\b(?:milk|egg|dairy)[\s-]+free\b/gi
+
+const PLANT_MASK_PREFERENCES = new Set(['vegan', 'plant_based'])
+
+export function textForPreferenceConflict(preferenceKey: string, text: string): string {
+  if (!text || !PLANT_MASK_PREFERENCES.has(preferenceKey)) return text || ''
+  PLANT_DERIVED_SOUNDALIKE.lastIndex = 0
+  return text.replace(PLANT_DERIVED_SOUNDALIKE, ' ')
 }
 
 // --- GOAL SIGNALS -----------------------------------------------------------

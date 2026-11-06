@@ -11,7 +11,7 @@ import type {
   CeliacResult,
 } from '../types'
 import { SENSITIVITY_OPTIONS } from '../types'
-import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS } from './profileSignals'
+import { PREFERENCE_SIGNALS, SENSITIVITY_SIGNALS, textForPreferenceConflict } from './profileSignals'
 
 export interface UserProfile {
   allergies: string[]
@@ -148,7 +148,8 @@ function classifyPreferenceConflicts(
     const key = normalizePreferenceKey(rawKey)
     const signal = PREFERENCE_SIGNALS[key]
     if (!signal?.conflictPattern) continue
-    if (!signal.conflictPattern.test(ingredientText)) continue
+    const haystack = textForPreferenceConflict(key, ingredientText)
+    if (!signal.conflictPattern.test(haystack)) continue
     if (hardSafetyPreferences.has(key)) hasHardConflict = true
     else hasSoftConflict = true
     if (hasHardConflict && hasSoftConflict) break
