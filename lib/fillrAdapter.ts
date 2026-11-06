@@ -25,7 +25,7 @@ import {
 } from './ingredientTextParsing'
 import { lookupIngredientAmbiguity } from './ingredientAmbiguity'
 import type { IngredientTextParseSource } from './ingredientParseSource'
-import { SENSITIVITY_SIGNALS } from './profileSignals'
+import { SENSITIVITY_SIGNALS, textForPreferenceConflict } from './profileSignals'
 
 export { prepareIngredientTextForAnalysis } from './ingredientTextParsing'
 
@@ -1219,9 +1219,14 @@ export function mapDetectionToFillrResult(
       verdictOverride = 'NEUTRAL'
     }
 
+    const plantConflictKey = params.preferences.includes('vegan')
+      ? 'vegan'
+      : params.preferences.includes('plant_based')
+        ? 'plant_based'
+        : 'vegetarian'
     if (
       wantsPlantBased &&
-      PREFERENCE_REGEX.dairyEgg.test(ingredientLower) &&
+      PREFERENCE_REGEX.dairyEgg.test(textForPreferenceConflict(plantConflictKey, ingredientLower)) &&
       !isNonDairyButterOrLactateSoundalike(ingredientLower)
     ) {
       preferenceNotes.push(`Because you’re aiming for plant-based, this ingredient may not fit your preferences.`)

@@ -13,6 +13,7 @@ import {
   GOAL_SIGNALS,
   AVOIDING_SIGNALS,
   UNDETECTABLE_AVOIDING_KEYS,
+  textForPreferenceConflict,
 } from './profileSignals'
 import { migrateGoalKey } from './goalKeyMigration'
 import { shouldAttachGoalConflictsToIngredients } from './goalApplicability'
@@ -153,7 +154,9 @@ export function buildProfileMatches(
     }
 
     if (signal.conflictPattern && signal.conflictPenalty) {
-      const hits = allNames.filter((name) => signal.conflictPattern!.test(name))
+      const hits = allNames.filter((name) =>
+        signal.conflictPattern!.test(textForPreferenceConflict(prefKey, name))
+      )
       if (hits.length > 0) {
         goalConflicts.push(signal.label)
         mergeConflictIngredients(goalConflictIngredientMap, signal.label, hits)
