@@ -5,6 +5,7 @@ import type { CeliacMatch, MatchedAllergen, SectionSource, Severity } from './ty
 import {
   ANTI_MATCHES,
   CELIAC_RULES,
+  FRENCH_PLANT_DAIRY_PHRASES,
   NON_DAIRY_BUTTER_CREAM,
   NON_WHEAT_FLOURS,
   getBuiltinById,
@@ -98,6 +99,36 @@ function shouldSkipMilkButterCream(text: string): boolean {
   return NON_DAIRY_BUTTER_CREAM.some(p => norm.includes(normalizeText(p)))
 }
 
+const FRENCH_PLANT_DAIRY_NORMALIZED = [...FRENCH_PLANT_DAIRY_PHRASES]
+  .map((phrase) => normalizeText(phrase))
+  .filter(Boolean)
+  .sort((a, b) => b.length - a.length)
+
+/** Drop French plant-milk / plant-butter phrases so `lait` / `beurre` / `crème` can still match real dairy beside them. */
+function blankFrenchPlantDairy(normalized: string): string {
+  let out = normalized
+  for (const phrase of FRENCH_PLANT_DAIRY_NORMALIZED) {
+    if (!out.includes(phrase)) continue
+    out = out.split(phrase).join(' ')
+  }
+  return out.replace(/\s+/g, ' ').trim()
+}
+
+function isFrenchPlantDairySynonym(term: string): boolean {
+  const normalized = normalizeText(term)
+  return normalized === 'lait' || normalized === 'beurre' || normalized === 'creme'
+}
+
+function milkSynonymStillMatches(normalizedText: string, synonyms: string[]): boolean {
+  return synonyms.some((syn) => {
+    const norm = normalizeText(syn)
+    if (!norm) return false
+    if (norm.includes(' ')) return normalizedText.includes(norm)
+    const escaped = norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(normalizedText)
+  })
+}
+
 /** Special handling: soy + lecithin - only match when soy is explicit; skip when sunflower/canola */
 function shouldSkipSoyLecithin(text: string): boolean {
   const norm = normalizeText(text)
@@ -139,6 +170,10 @@ function matchBuiltinInSection(
     if (isAntiMatchSection(allergenId, sectionText, term)) continue
     if (allergenId === 'milk' && (term === 'butter' || term === 'cream') && shouldSkipMilkButterCream(sectionText)) {
       continue
+    }
+    if (allergenId === 'milk' && isFrenchPlantDairySynonym(term)) {
+      const withoutPlantDairy = blankFrenchPlantDairy(normalizeText(sectionText))
+      if (!isWholeWordMatch(withoutPlantDairy, term)) continue
     }
     if (allergenId === 'soy' && (term.includes('lecithin') || term === 'lécithine de soja') && shouldSkipSoyLecithin(sectionText)) {
       continue
@@ -188,6 +223,15 @@ function extractParenthesesEvidence(
       if (matched) {
         if (isAntiMatchSection(allergenId, sectionText, inParens)) continue
         if (allergenId === 'milk' && shouldSkipMilkButterCream(sectionText)) continue
+        if (allergenId === 'milk') {
+          const withoutPlantDairy = blankFrenchPlantDairy(normInParens)
+          if (
+            withoutPlantDairy !== normInParens &&
+            !milkSynonymStillMatches(withoutPlantDairy, builtin.synonyms)
+          ) {
+            continue
+          }
+        }
         results.push({ allergenId, match_text: fullPhrase })
         break
       }

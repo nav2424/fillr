@@ -179,6 +179,37 @@ export const NON_DAIRY_MILK = [
   'quinoa milk', 'spelt milk'
 ]
 
+/**
+ * French plant milks and plant butters. `lait`, `beurre`, and `crème` are milk
+ * synonyms, so these phrases are dairy evidence only after the phrase is removed.
+ * Stored in label form; matching normalizes accents and apostrophes.
+ */
+export const FRENCH_PLANT_DAIRY_PHRASES = [
+  'lait de coco',
+  'lait de soja',
+  'lait d\'amande',
+  'lait d\'amandes',
+  'lait d\'avoine',
+  'lait de riz',
+  'lait de cajou',
+  'lait de chanvre',
+  'lait d\'épeautre',
+  'lait de noisette',
+  'lait de noisettes',
+  'crème de coco',
+  'crème de noix de coco',
+  'beurre de cacao',
+  'beurre de karité',
+  'beurre de cacahuète',
+  'beurre de cacahuètes',
+  'beurre d\'arachide',
+  'beurre d\'amande',
+  'beurre d\'amandes',
+  'beurre de noisette',
+  'beurre de noisettes',
+  'beurre de noix de coco',
+]
+
 export const CELIAC_RULES = {
   EXPLICIT_GRAINS: {
     terms: [
