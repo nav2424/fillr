@@ -156,22 +156,23 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
     conflictPattern: /oil|butter|cream|sugar|glucose|fructose|corn syrup|lard|shortening/i,
     conflictPenalty: 8,
   },
+  // Species names (tuna, salmon, cod, …) do not contain the substring "fish".
   vegan: {
     label: 'Vegan',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum|\btuna\b|\bsalmon\b|\bcod\b|\bsardines?\b|\btrout\b|\btilapia\b|\bpollock\b|\bmackerel\b|\bherring\b|\bhaddock\b|\bhalibut\b|\bbonito\b|\balbacore\b/i,
     conflictPenalty: 25,
   },
   vegetarian: {
     label: 'Vegetarian',
     conflictPattern:
-      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
+      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920|\btuna\b|\bsalmon\b|\bcod\b|\bsardines?\b|\btrout\b|\btilapia\b|\bpollock\b|\bmackerel\b|\bherring\b|\bhaddock\b|\bhalibut\b|\bbonito\b|\balbacore\b/i,
     conflictPenalty: 25,
   },
   plant_based: {
     label: 'Plant-based',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|\btuna\b|\bsalmon\b|\bcod\b|\bsardines?\b|\btrout\b|\btilapia\b|\bpollock\b|\bmackerel\b|\bherring\b|\bhaddock\b|\bhalibut\b|\bbonito\b|\balbacore\b/i,
     conflictPenalty: 20,
   },
   less_processed: {
