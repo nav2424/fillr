@@ -88,6 +88,7 @@ export const BUILTIN_ALLERGENS: BuiltinAllergen[] = [
     synonyms: [
       'fish', 'anchovy', 'anchovies', 'salmon', 'tuna', 'cod', 'haddock',
       'tilapia', 'trout', 'sardine', 'sardines', 'halibut', 'flounder',
+      'swai', 'basa', 'pangasius', 'pangasianodon',
       'fish oil', 'fish sauce', 'fish paste', 'fish extract',
       'poisson', 'anchois', 'saumon', 'thon', 'morue', 'sardine'
     ],
