@@ -159,7 +159,7 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   vegan: {
     label: 'Vegan',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|(?<!product of\s)(?<!made in\s)(?<!imported from\s)\bturkey\b(?!\s+tail\b)|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
     conflictPenalty: 25,
   },
   vegetarian: {
@@ -171,7 +171,7 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   plant_based: {
     label: 'Plant-based',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|(?<!product of\s)(?<!made in\s)(?<!imported from\s)\bturkey\b(?!\s+tail\b)|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
     conflictPenalty: 20,
   },
   less_processed: {
