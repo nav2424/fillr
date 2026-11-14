@@ -34,6 +34,19 @@ export interface PreferenceSignal {
   conflictPenalty?: number
 }
 
+/**
+ * Animal collagen. Hard diet patterns already match gelatin, but supplement
+ * labels say "collagen peptides" and that wording does not contain gelatin,
+ * meat, or beef. Plant marketing and explicit negatives stay non-conflicts.
+ * Kosher collagen exists (certified bovine peptides), so this is not a kosher rule.
+ */
+export const ANIMAL_COLLAGEN_PATTERN =
+  /(?<!vegan\s)(?<!plant-based\s)(?<!plant based\s)(?<!vegetarian\s)(?<!non-)(?<!non\s)\bcollagen\b(?![\s-]+(?:free|alternative|builder)\b)/i
+
+function withAnimalCollagen(base: RegExp): RegExp {
+  return new RegExp(`${base.source}|${ANIMAL_COLLAGEN_PATTERN.source}`, 'i')
+}
+
 export interface GoalSignal {
   label: string
   /**
@@ -158,20 +171,23 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   vegan: {
     label: 'Vegan',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+    conflictPattern: withAnimalCollagen(
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i
+    ),
     conflictPenalty: 25,
   },
   vegetarian: {
     label: 'Vegetarian',
-    conflictPattern:
-      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
+    conflictPattern: withAnimalCollagen(
+      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i
+    ),
     conflictPenalty: 25,
   },
   plant_based: {
     label: 'Plant-based',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+    conflictPattern: withAnimalCollagen(
+      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i
+    ),
     conflictPenalty: 20,
   },
   less_processed: {
