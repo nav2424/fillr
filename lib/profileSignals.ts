@@ -188,7 +188,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    // French "alcool" is beverage ethanol (Herta pâte brisée, vanilla "contient alcool").
+    // Spirit vinegar and fatty / sugar alcohols are not. English "alcohol" is separate.
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b|(?<!vinaigre\s+d['’]?\s*)(?<!sans[-\s])(?<!sans\s+l['’])(?<!non[-\s])(?<!benzyl[-\s])(?<!cetyl[-\s])(?<!c[eé]tyl[-\s])(?<!stearyl[-\s])(?<!st[eé]aryl[-\s])(?<!cetearyl[-\s])(?<!c[eé]t[eé]aryl[-\s])(?<!isopropyl[-\s])(?<!polyvinyl[-\s])(?<!phenylethyl[-\s])(?<!ph[eé]nyl[eé]thyl[-\s])\balcool\b(?![\s-]*(?:benzylique|c[eé]tylique|st[eé]arylique|c[eé]t[eé]arylique|isopropylique|polyvinylique|ph[eé]nyl[eé]thylique|de[\s-]+sucres?))/i,
     conflictPenalty: 22,
   },
   paleo: {
