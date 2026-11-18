@@ -188,7 +188,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    // UK/Scotch labels spell whiskey as whisky. French rum is rhum (not rhume).
+    // Cognac does not contain brandy, rum, or alcohol.
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|\brhum\b|vodka|\bwhisk(?:e)?y\b|\bcognac\b|brandy|liqueur|ethanol\b/i,
     conflictPenalty: 22,
   },
   paleo: {
