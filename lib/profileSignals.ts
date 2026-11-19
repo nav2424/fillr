@@ -188,7 +188,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    // German/Nordic "alkohol" and ethyl/äthyl/etylalkohol are beverage ethanol.
+    // alkoholfrei, "ohne/utan/uden/uten alkohol", and fatty or sugar alcohols are not.
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b|(?<!ohne[-\s])(?<!utan[-\s])(?<!uden[-\s])(?<!uten[-\s])(?<!bez[-\s])(?<!benzyl[-\s]?)(?<!cetyl[-\s]?)(?<!stearyl[-\s]?)(?<!cetearyl[-\s]?)(?<!isopropyl[-\s]?)(?<!polyvinyl[-\s]?)(?<!phenylethyl[-\s]?)(?<!phenethyl[-\s]?)(?<!zucker[-\s]?)(?<![A-Za-zÄÖÜäöüßÅåÆæØø])(?:(?:e|ä)thyl|etyl)?alkohol(?![A-Za-zÄÖÜäöüßÅåÆæØø])(?![\s-]*(?:freie[mnrs]?|frei|fritt|fria|frie|fri|nélkül)\b)/i,
     conflictPenalty: 22,
   },
   paleo: {
