@@ -158,20 +158,21 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   vegan: {
     label: 'Vegan',
+    // French "porc" is pork. Word boundaries keep porcini mushrooms from matching.
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|\bporcs?\b|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
     conflictPenalty: 25,
   },
   vegetarian: {
     label: 'Vegetarian',
     conflictPattern:
-      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
+      /\bmeat\b|chicken|beef|pork|\bporcs?\b|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
     conflictPenalty: 25,
   },
   plant_based: {
     label: 'Plant-based',
     conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+      /milk|eggs?\b|meat|chicken|beef|pork|\bporcs?\b|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
     conflictPenalty: 20,
   },
   less_processed: {
@@ -183,12 +184,13 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   kosher: {
     label: 'Kosher',
     conflictPattern:
-      /\bpork\b|bacon|ham|lard|shellfish|shrimp|crab|lobster|gelatin|cochineal|e120|non.kosher/i,
+      /\bpork\b|\bporcs?\b|bacon|ham|lard|shellfish|shrimp|crab|lobster|gelatin|cochineal|e120|non.kosher/i,
     conflictPenalty: 22,
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    conflictPattern:
+      /\bpork\b|\bporcs?\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
     conflictPenalty: 22,
   },
   paleo: {
