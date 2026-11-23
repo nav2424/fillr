@@ -188,7 +188,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    // German white/red wine. Word boundaries keep vinegar (Weißweinessig) and
+    // alcohol-free dessert wine (Apfeldessertwein) from matching.
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|wine\b|\b(?:weisswein|wei(?:\u00df|\u1e9e)wein|rotwein)\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
     conflictPenalty: 22,
   },
   paleo: {
