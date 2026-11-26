@@ -188,7 +188,8 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   halal: {
     label: 'Halal',
-    conflictPattern: /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b/i,
+    conflictPattern:
+      /\bpork\b|bacon|ham|lard|wine\b|beer\b|rum\b|vodka|whiskey|brandy|liqueur|ethanol\b|\bkirschwasser\b|\bbirnenbrand\b|\bgrappa\b|\beierlik(?:ör|oer)\b(?!\s*-?\s*(?:geschmack|aroma))/i,
     conflictPenalty: 22,
   },
   paleo: {
