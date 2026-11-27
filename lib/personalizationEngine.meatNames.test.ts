@@ -118,6 +118,9 @@ test('flavor names, citrus rind, and plant lookalikes stay safe', () => {
     }
   }
   assert.equal(statusFor(['vegetarian'], 'œufs de poules, sel'), 'SAFE')
+  assert.equal(statusFor(['vegan'], 'Jambon de dinde, eau, sel'), 'UNSAFE')
+  assert.equal(statusFor(['halal'], 'Jambon de dinde, eau, sel'), 'SAFE')
+  assert.equal(statusFor(['kosher'], 'Jambon de dinde, eau, sel'), 'SAFE')
 })
 
 test('fit score flags the meat gap and ignores gooseberry', () => {
