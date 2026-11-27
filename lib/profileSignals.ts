@@ -132,6 +132,21 @@ export const SENSITIVITY_SIGNALS: Record<string, SensitivitySignal> = {
 
 // --- PREFERENCE SIGNALS -----------------------------------------------------
 
+/**
+ * Meat names missing from the English chicken/beef/pork/lamb list.
+ * Vegan, vegetarian, and plant-based only — beef, poultry, and rabbit can be halal or kosher.
+ * A flavor prefix (arôme, saveur, goût, flavor) keeps "saveur poulet" noodles from matching.
+ * Word boundaries keep gooseberry, citrus rind, poule/poules, and sauce poulette unmatched.
+ * "duck sauce" is a fruit condiment; bare "rind" is citrus peel, so only Rindfleisch matches.
+ */
+const ADDITIONAL_MEAT_PATTERN =
+  '(?<!aromes\\s)(?<!arômes\\s)(?<!arome\\s)(?<!arôme\\s)(?<!saveurs\\s)(?<!saveur\\s)' +
+  '(?<!gouts\\s)(?<!goûts\\s)(?<!gout\\s)(?<!goût\\s)' +
+  '(?<!flavours\\s)(?<!flavour\\s)(?<!flavors\\s)(?<!flavor\\s)' +
+  '(?<!arome de\\s)(?<!arôme de\\s)(?<!saveur de\\s)(?<!gout de\\s)(?<!goût de\\s)' +
+  '\\b(?:poulets?|b(?:œuf|oeuf)s?|canards?|dind(?:e|on)s?|veaux?|veal|agneaux?|foies?|oies?|lapins?|(?<!welsh\\s)rabbits?|rindfleisch|ducks?|geese|goose)\\b' +
+  '(?!\\s+sauce\\b)'
+
 export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   high_protein: {
     label: 'High protein',
@@ -158,20 +173,26 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   vegan: {
     label: 'Vegan',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+    conflictPattern: new RegExp(
+      `milk|eggs?\\b|meat|chicken|beef|pork|lamb|${ADDITIONAL_MEAT_PATTERN}|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum`,
+      'i'
+    ),
     conflictPenalty: 25,
   },
   vegetarian: {
     label: 'Vegetarian',
-    conflictPattern:
-      /\bmeat\b|chicken|beef|pork|lamb|turkey|\bfish\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920/i,
+    conflictPattern: new RegExp(
+      `\\bmeat\\b|chicken|beef|pork|lamb|turkey|${ADDITIONAL_MEAT_PATTERN}|\\bfish\\b|shellfish|gelatin|gelatine|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|l.cysteine|e920`,
+      'i'
+    ),
     conflictPenalty: 25,
   },
   plant_based: {
     label: 'Plant-based',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+    conflictPattern: new RegExp(
+      `milk|eggs?\\b|meat|chicken|beef|pork|lamb|${ADDITIONAL_MEAT_PATTERN}|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920`,
+      'i'
+    ),
     conflictPenalty: 20,
   },
   less_processed: {
