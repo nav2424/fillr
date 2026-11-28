@@ -132,6 +132,21 @@ export const SENSITIVITY_SIGNALS: Record<string, SensitivitySignal> = {
 
 // --- PREFERENCE SIGNALS -----------------------------------------------------
 
+/**
+ * French dairy and egg names missing from the English milk/egg/butter/cream list.
+ * Vegan and plant-based only — vegetarian diets include eggs and dairy, and these
+ * words are not halal or kosher conflicts.
+ * OFF emphasizes allergens with underscores (_lait_, _oeufs_), so the boundary is
+ * alphanumeric rather than \b. "sans lait" / "sans œufs" stay unmatched.
+ * Plant milks and plant butters stay unmatched.
+ */
+const FRENCH_DAIRY_EGG_PATTERN = [
+  "(?<![0-9A-Za-z])(?<!sans\\s)(?:œ|Œ|oe)ufs?(?![0-9A-Za-z])",
+  "(?<![0-9A-Za-z])(?<!sans\\s)lait(?![0-9A-Za-z])(?!\\s+d['’](?:amandes?|avoine|épeautre|epeautre|noisettes?))(?!\\s+de\\s+(?:coco|soja|riz|cajou|chanvre|noisettes?))",
+  "(?<![0-9A-Za-z])(?<!sans\\s)beurre(?![0-9A-Za-z])(?!\\s+d['’](?:arachides?|amandes?))(?!\\s+de\\s+(?:cacao|karit[ée]|cacahu[eè]tes?|noisettes?|noix\\s+de\\s+coco|coco))",
+  "(?<![0-9A-Za-z])(?<!sans\\s)cr[eèÈ]me(?![0-9A-Za-z])(?!\\s+de\\s+(?:coco|noix\\s+de\\s+coco))",
+].join('|')
+
 export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   high_protein: {
     label: 'High protein',
@@ -158,8 +173,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   vegan: {
     label: 'Vegan',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum/i,
+    conflictPattern: new RegExp(
+      `milk|eggs?\\b|meat|chicken|beef|pork|lamb|${FRENCH_DAIRY_EGG_PATTERN}|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920|castoreum`,
+      'i'
+    ),
     conflictPenalty: 25,
   },
   vegetarian: {
@@ -170,8 +187,10 @@ export const PREFERENCE_SIGNALS: Record<string, PreferenceSignal> = {
   },
   plant_based: {
     label: 'Plant-based',
-    conflictPattern:
-      /milk|eggs?\b|meat|chicken|beef|pork|lamb|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920/i,
+    conflictPattern: new RegExp(
+      `milk|eggs?\\b|meat|chicken|beef|pork|lamb|${FRENCH_DAIRY_EGG_PATTERN}|fish|shellfish|honey|gelatin|gelatine|whey|casein|lactose|cream|butter|cheese|yogurt|yoghurt|lard|tallow|anchov|rennet|isinglass|carmine|e120|cochineal|shellac|e904|l.cysteine|e920`,
+      'i'
+    ),
     conflictPenalty: 20,
   },
   less_processed: {
